@@ -41,6 +41,7 @@ type PolicyDecision struct {
 
 type DeviceBehavior interface {
 	Kind() model.DeviceKind
+	Profile() model.DeviceProfile
 	BGPBehavior
 	CheckControlEgress(device model.Node, msg ControlMessage) bool
 	CheckControlIngress(device model.Node, msg ControlMessage) bool
@@ -52,6 +53,10 @@ type DeviceBehavior interface {
 
 func (b baseDeviceBehavior) Kind() model.DeviceKind {
 	return b.kind
+}
+
+func (b baseDeviceBehavior) Profile() model.DeviceProfile {
+	return model.ProfileFor(b.kind)
 }
 
 func (b baseDeviceBehavior) CheckControlIngress(device model.Node, msg ControlMessage) bool {
@@ -133,7 +138,7 @@ func evaluateACL(device model.Node, acl model.ACL, binding model.ACLBinding, spe
 	}
 	defaultAction := acl.DefaultAction
 	if defaultAction == "" {
-		defaultAction = defaultACLActionForDevice(device.Kind)
+		defaultAction = model.ProfileFor(device.Kind).ACLProfile().DefaultACLAction(model.ACLDefaultPermit)
 	}
 	denied := defaultAction == model.ACLDefaultDeny
 	reason := "default permit by acl " + acl.Name
@@ -205,15 +210,6 @@ func prefixSetIsAny(set model.PrefixSet) bool {
 	return ok && exact.Prefix.String() == "0.0.0.0/0"
 }
 
-func defaultACLActionForDevice(kind model.DeviceKind) model.ACLDefaultAction {
-	switch kind {
-	case model.KindCEOS, model.KindSRLinux:
-		return model.ACLDefaultDeny
-	default:
-		return model.ACLDefaultPermit
-	}
-}
-
 func (p PacketMessage) NormalizedSpec() model.PacketSpec {
 	spec := p.Spec
 	if spec.DstSet == nil && p.DstSet != nil {
@@ -235,9 +231,7 @@ func (p PacketMessage) NormalizedSpec() model.PacketSpec {
 }
 
 func interfaceMatches(policyInterface, packetInterface string) bool {
-	return model.EquivalentInterfaceName(model.KindFRR, policyInterface, packetInterface) ||
-		model.EquivalentInterfaceName(model.KindCEOS, policyInterface, packetInterface) ||
-		model.EquivalentInterfaceName(model.KindSRLinux, policyInterface, packetInterface)
+	return model.AnyEquivalentInterfaceName(policyInterface, packetInterface)
 }
 
 func mustPrefix(prefix string) netip.Prefix {

@@ -316,7 +316,11 @@ func collectRouteTables(ctx context.Context, runner ribcompare.Runner, nodes []m
 		model.KindCEOS:    ceosRouteTableCollector{},
 		model.KindSRLinux: srlinuxRouteTableCollector{},
 	}
-	for _, kind := range []model.DeviceKind{model.KindFRR, model.KindCEOS, model.KindSRLinux} {
+	for _, kind := range model.RegisteredDeviceKinds() {
+		collector := collectors[kind]
+		if collector == nil || !model.ProfileFor(kind).LiveProfile().SupportsRouteTableCollection() {
+			continue
+		}
 		var selected []model.Node
 		for _, node := range nodes {
 			if node.Kind == kind {
@@ -326,7 +330,7 @@ func collectRouteTables(ctx context.Context, runner ribcompare.Runner, nodes []m
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collectors[kind].CollectRouteTables(ctx, runner, selected)
+		routes, err := collector.CollectRouteTables(ctx, runner, selected)
 		if err != nil {
 			return nil, err
 		}

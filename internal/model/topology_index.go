@@ -166,12 +166,12 @@ func (idx *TopologyIndex) ConnectedClass(node string, iface Interface, prefix Pr
 					return ConnectedRouteClassLink
 				}
 			}
-			if isServiceNode(n) && isLoopbackInterface(iface.Name) {
+			if isServiceNode(n) && ProfileFor(n.Kind).InterfaceProfile().IsLoopbackInterface(iface.Name) {
 				return ConnectedRouteClassService
 			}
 		}
 	}
-	if isLoopbackInterface(iface.Name) {
+	if ProfileFor(KindFRR).InterfaceProfile().IsLoopbackInterface(iface.Name) {
 		return ConnectedRouteClassLoopback
 	}
 	if prefix.Bits() == prefix.Addr().BitLen() {
@@ -209,11 +209,6 @@ func (idx *TopologyIndex) ConnectedClassForRoute(node, prefix, iface string) Con
 		}
 	}
 	return ""
-}
-
-func isLoopbackInterface(name string) bool {
-	name = strings.ToLower(strings.TrimSpace(name))
-	return name == "lo" || strings.HasPrefix(name, "lo") || strings.HasPrefix(name, "loopback")
 }
 
 func isServiceNode(n Node) bool {

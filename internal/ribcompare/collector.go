@@ -37,8 +37,11 @@ func CollectBGPOnlyWithRunner(ctx context.Context, runner Runner, nodes []model.
 func collectBGP(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
 	var out []NormalizedBgpRoute
 	collectors := collectorsByKind()
-	for _, kind := range []model.DeviceKind{model.KindFRR, model.KindCEOS, model.KindSRLinux} {
+	for _, kind := range model.RegisteredDeviceKinds() {
 		collector := collectors[kind]
+		if collector == nil || !model.ProfileFor(kind).LiveProfile().SupportsBGPRIBCollection() {
+			continue
+		}
 		selected := bgpCollectionNodes(kind, NodesByKind(nodes, kind))
 		if len(selected) == 0 {
 			continue
@@ -68,7 +71,7 @@ func CollectFRRWithRunner(ctx context.Context, runner Runner, nodes []model.Node
 func SupportedNodes(nodes []model.Node) []model.Node {
 	var out []model.Node
 	for _, n := range nodes {
-		if _, ok := collectorsByKind()[n.Kind]; ok {
+		if _, ok := collectorsByKind()[n.Kind]; ok && model.ProfileFor(n.Kind).LiveProfile().SupportsBGPRIBCollection() {
 			out = append(out, n)
 		}
 	}
@@ -90,12 +93,9 @@ func NodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
 }
 
 func bgpCollectionNodes(kind model.DeviceKind, nodes []model.Node) []model.Node {
-	if kind == model.KindFRR {
-		return nodes
-	}
 	var out []model.Node
 	for _, n := range nodes {
-		if n.ASN != 0 {
+		if model.ProfileFor(kind).LiveProfile().IncludeInBGPRIBCollection(n) {
 			out = append(out, n)
 		}
 	}
@@ -186,8 +186,11 @@ func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.N
 func collectNonBGPRoutes(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
 	var out []NormalizedBgpRoute
 	collectors := collectorsByKind()
-	for _, kind := range []model.DeviceKind{model.KindFRR, model.KindCEOS, model.KindSRLinux} {
+	for _, kind := range model.RegisteredDeviceKinds() {
 		collector := collectors[kind]
+		if collector == nil || !model.ProfileFor(kind).LiveProfile().SupportsRouteTableCollection() {
+			continue
+		}
 		selected := NodesByKind(nodes, kind)
 		if len(selected) == 0 {
 			continue
