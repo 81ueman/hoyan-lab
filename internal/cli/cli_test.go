@@ -610,6 +610,28 @@ func TestModelRIBCommandUsesRouteSourceTableForNonBGPProtocol(t *testing.T) {
 	}
 }
 
+func TestModelRIBCommandFiltersOSPFProtocol(t *testing.T) {
+	var out bytes.Buffer
+	cmd := NewModelRIBCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(ioDiscard{})
+	cmd.SetArgs([]string{
+		"--topology", filepath.Join("..", "..", "labs", "ospf-multi-area", "hoyan.clab.yml"),
+		"--node", "r1",
+		"--prefix", "10.255.4.4/32",
+		"ospf",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"NODE", "PREFIX", "SOURCE", "OSPF-TYPE", "METRIC", "r1", "10.255.4.4/32", "ospf", "inter-area"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("ospf table missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestModelRIBCommandRejectsInvalidProtocolArgument(t *testing.T) {
 	cmd := NewModelRIBCommand()
 	cmd.SetOut(ioDiscard{})
@@ -620,7 +642,7 @@ func TestModelRIBCommandRejectsInvalidProtocolArgument(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Execute() error = nil")
 	}
-	if !strings.Contains(err.Error(), "protocol must be one of bgp, connected, static, aggregate, or blackhole") {
+	if !strings.Contains(err.Error(), "protocol must be one of bgp, connected, static, ospf, aggregate, or blackhole") {
 		t.Fatalf("error = %q, want protocol validation", err.Error())
 	}
 }

@@ -360,7 +360,13 @@ func routeTablesByKind(ctx context.Context, runner ribcompare.Runner, nodes []mo
 			if err != nil {
 				return nil, err
 			}
-			routes, err := ribcompare.ParseFRRRouteTable(n.Name, data)
+			ospfData, ospfErr := runner.Run(ctx, "docker", "exec", "-i", n.RuntimeName(), "vtysh", "-c", "show ip ospf route json")
+			if ospfErr != nil && strings.Contains(string(ospfData), "ospfd is not running") {
+				ospfData = nil
+			} else if ospfErr != nil {
+				return nil, ospfErr
+			}
+			routes, err := ribcompare.ParseFRRRouteTableWithOSPF(n.Name, data, ospfData)
 			if err != nil {
 				return nil, err
 			}
