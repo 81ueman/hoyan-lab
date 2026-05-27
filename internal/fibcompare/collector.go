@@ -16,25 +16,21 @@ func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Option
 	if len(unsupported) > 0 && !opts.AllowUnsupported {
 		return nil, UnsupportedNodesError{Nodes: unsupported}
 	}
-	frrNodes := nodesByKind(nodes, model.KindFRR)
-	if len(frrNodes) > 0 {
-		routes, err := frrCollector{}.Collect(ctx, runner, frrNodes)
-		if err != nil {
-			return nil, err
+	collectors := fibCollectorsByID()
+	for _, kind := range model.RegisteredDeviceKinds() {
+		collectorID, ok := model.ProfileFor(kind).LiveProfile().FIBCollector()
+		if !ok {
+			continue
 		}
-		out = append(out, routes...)
-	}
-	ceosNodes := nodesByKind(nodes, model.KindCEOS)
-	if len(ceosNodes) > 0 {
-		routes, err := ceosCollector{}.Collect(ctx, runner, ceosNodes)
-		if err != nil {
-			return nil, err
+		collector := collectors[collectorID]
+		if collector == nil {
+			continue
 		}
-		out = append(out, routes...)
-	}
-	srlinuxNodes := nodesByKind(nodes, model.KindSRLinux)
-	if len(srlinuxNodes) > 0 {
-		routes, err := srlinuxCollector{}.Collect(ctx, runner, srlinuxNodes)
+		selected := nodesByKind(nodes, kind)
+		if len(selected) == 0 {
+			continue
+		}
+		routes, err := collector.Collect(ctx, runner, selected)
 		if err != nil {
 			return nil, err
 		}
@@ -46,8 +42,10 @@ func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Option
 
 func SupportedNodes(nodes []model.Node) []model.Node {
 	var out []model.Node
+	collectors := fibCollectorsByID()
 	for _, n := range nodes {
-		if model.ProfileFor(n.Kind).LiveProfile().SupportsFIBCollection() {
+		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().FIBCollector()
+		if ok && collectors[collectorID] != nil {
 			out = append(out, n)
 		}
 	}
@@ -56,8 +54,10 @@ func SupportedNodes(nodes []model.Node) []model.Node {
 
 func unsupportedNodes(nodes []model.Node) []string {
 	var out []string
+	collectors := fibCollectorsByID()
 	for _, n := range nodes {
-		if !model.ProfileFor(n.Kind).LiveProfile().SupportsFIBCollection() {
+		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().FIBCollector()
+		if !ok || collectors[collectorID] == nil {
 			out = append(out, n.Name+"("+string(n.Kind)+")")
 		}
 	}
@@ -78,6 +78,14 @@ func nodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
 type frrCollector struct{}
 type ceosCollector struct{}
 type srlinuxCollector struct{}
+
+func fibCollectorsByID() map[model.LiveCollectorID]Collector {
+	return map[model.LiveCollectorID]Collector{
+		model.LiveCollectorFRR:     frrCollector{},
+		model.LiveCollectorCEOS:    ceosCollector{},
+		model.LiveCollectorSRLinux: srlinuxCollector{},
+	}
+}
 
 func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedFIBRoute, error) {
 	var out []NormalizedFIBRoute

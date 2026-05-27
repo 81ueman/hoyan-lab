@@ -35,6 +35,10 @@ type LiveProfile interface {
 	SupportsBGPRIBCollection() bool
 	SupportsRouteTableCollection() bool
 	SupportsFIBCollection() bool
+	BGPRIBCollector() (LiveCollectorID, bool)
+	RouteTableCollector() (LiveCollectorID, bool)
+	FIBCollector() (LiveCollectorID, bool)
+	ShouldCollectBGP(node Node) bool
 	IncludeInBGPRIBCollection(node Node) bool
 }
 
@@ -191,27 +195,66 @@ func (p fibProfile) ExpectedFIBRouteVisible(source RouteSourceKind, class Connec
 
 type liveProfile struct {
 	supported           bool
+	bgpRIBCollector     LiveCollectorID
+	routeTableCollector LiveCollectorID
+	fibCollector        LiveCollectorID
 	requireASNForBGPRIB bool
 }
 
 func (p liveProfile) SupportsBGPRIBCollection() bool {
-	return p.supported
+	return p.supported || p.bgpRIBCollector != ""
 }
 
 func (p liveProfile) SupportsRouteTableCollection() bool {
-	return p.supported
+	return p.supported || p.routeTableCollector != ""
 }
 
 func (p liveProfile) SupportsFIBCollection() bool {
-	return p.supported
+	return p.supported || p.fibCollector != ""
+}
+
+func (p liveProfile) BGPRIBCollector() (LiveCollectorID, bool) {
+	if p.bgpRIBCollector == "" {
+		return "", p.supported
+	}
+	return p.bgpRIBCollector, true
+}
+
+func (p liveProfile) RouteTableCollector() (LiveCollectorID, bool) {
+	if p.routeTableCollector == "" {
+		return "", p.supported
+	}
+	return p.routeTableCollector, true
+}
+
+func (p liveProfile) FIBCollector() (LiveCollectorID, bool) {
+	if p.fibCollector == "" {
+		return "", p.supported
+	}
+	return p.fibCollector, true
+}
+
+func (p liveProfile) ShouldCollectBGP(node Node) bool {
+	if !p.SupportsBGPRIBCollection() {
+		return false
+	}
+	if p.requireASNForBGPRIB && node.ASN == 0 {
+		return false
+	}
+	return true
 }
 
 func (p liveProfile) IncludeInBGPRIBCollection(node Node) bool {
-	if !p.supported {
-		return false
-	}
-	return !p.requireASNForBGPRIB || node.ASN != 0
+	return p.ShouldCollectBGP(node)
 }
+
+type LiveCollectorID string
+
+const (
+	LiveCollectorFRR     LiveCollectorID = "frr"
+	LiveCollectorCEOS    LiveCollectorID = "ceos"
+	LiveCollectorSRLinux LiveCollectorID = "srlinux"
+)
 
 type configProfile struct {
 	kind             DeviceKind
@@ -260,21 +303,35 @@ var (
 			KindFRR,
 			aclProfile{},
 			fibProfile{},
-			liveProfile{supported: true},
+			liveProfile{
+				bgpRIBCollector:     LiveCollectorFRR,
+				routeTableCollector: LiveCollectorFRR,
+				fibCollector:        LiveCollectorFRR,
+			},
 			configProfile{kind: KindFRR, parse: true, ospf: true, routeMap: true, ospfVRFFromIface: true, routeMapVendor: "FRR"},
 		),
 		KindCEOS: newDeviceProfile(
 			KindCEOS,
 			aclProfile{defaultAction: ACLDefaultDeny},
 			fibProfile{},
-			liveProfile{supported: true, requireASNForBGPRIB: true},
+			liveProfile{
+				bgpRIBCollector:     LiveCollectorCEOS,
+				routeTableCollector: LiveCollectorCEOS,
+				fibCollector:        LiveCollectorCEOS,
+				requireASNForBGPRIB: true,
+			},
 			configProfile{kind: KindCEOS, parse: true, ospf: true, routeMap: true, routeMapVendor: "cEOS"},
 		),
 		KindSRLinux: newDeviceProfile(
 			KindSRLinux,
 			aclProfile{defaultAction: ACLDefaultDeny},
 			fibProfile{hideLoopbackConnected: true},
-			liveProfile{supported: true, requireASNForBGPRIB: true},
+			liveProfile{
+				bgpRIBCollector:     LiveCollectorSRLinux,
+				routeTableCollector: LiveCollectorSRLinux,
+				fibCollector:        LiveCollectorSRLinux,
+				requireASNForBGPRIB: true,
+			},
 			configProfile{kind: KindSRLinux, parse: true, routeMapVendor: "SR Linux"},
 		),
 	}
