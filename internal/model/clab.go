@@ -29,6 +29,7 @@ type clabFile struct {
 type clabNode struct {
 	Kind          string   `yaml:"kind"`
 	Group         string   `yaml:"group"`
+	NetworkMode   string   `yaml:"network-mode"`
 	MgmtIPv4      string   `yaml:"mgmt-ipv4"`
 	Binds         []string `yaml:"binds"`
 	StartupConfig string   `yaml:"startup-config"`
@@ -37,6 +38,11 @@ type clabNode struct {
 type LoadLabTopologyOptions struct {
 	CollectWarnings bool
 	StrictConfig    bool
+}
+
+type clabTransitAttachment struct {
+	Node string
+	Intf string
 }
 
 func LoadLabTopology(clabPath string) (*Topology, error) {
@@ -66,8 +72,13 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	transitNodes := map[string]bool{}
 	for _, name := range names {
 		cnode := raw.Topology.Nodes[name]
+		if isL2TransitNode(cnode) {
+			transitNodes[name] = true
+			continue
+		}
 		kind := normalizeKind(cnode.Kind)
 		configPath := resolveConfigPath(cnode)
 		if configPath == "" {
@@ -155,6 +166,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 	if opts.StrictConfig && len(warnings) > 0 {
 		return nil, warnings, UnsupportedConfigError{Warnings: warnings}
 	}
+	transitAttachments := map[string][]clabTransitAttachment{}
 	for i, link := range raw.Topology.Links {
 		if len(link.Endpoints) != 2 {
 			return nil, nil, fmt.Errorf("link %d must have two endpoints", i)
@@ -166,6 +178,18 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		bNode, bIntf, err := splitEndpoint(link.Endpoints[1])
 		if err != nil {
 			return nil, nil, err
+		}
+		aTransit := transitNodes[aNode]
+		bTransit := transitNodes[bNode]
+		switch {
+		case aTransit && bTransit:
+			return nil, nil, fmt.Errorf("link %s-%s connects two L2 transit nodes", link.Endpoints[0], link.Endpoints[1])
+		case aTransit:
+			transitAttachments[aNode] = append(transitAttachments[aNode], clabTransitAttachment{Node: bNode, Intf: bIntf})
+			continue
+		case bTransit:
+			transitAttachments[bNode] = append(transitAttachments[bNode], clabTransitAttachment{Node: aNode, Intf: aIntf})
+			continue
 		}
 		a, _ := topo.Node(aNode)
 		b, _ := topo.Node(bNode)
@@ -182,6 +206,44 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 			Cost:   1,
 			Subnet: subnet.String(),
 		})
+	}
+	segments := make([]string, 0, len(transitAttachments))
+	for segment := range transitAttachments {
+		segments = append(segments, segment)
+	}
+	sort.Strings(segments)
+	for _, segment := range segments {
+		attachments := transitAttachments[segment]
+		if len(attachments) < 2 {
+			return nil, nil, fmt.Errorf("L2 transit node %s has fewer than two router attachments", segment)
+		}
+		sort.Slice(attachments, func(i, j int) bool {
+			if attachments[i].Node == attachments[j].Node {
+				return attachments[i].Intf < attachments[j].Intf
+			}
+			return attachments[i].Node < attachments[j].Node
+		})
+		for i := 0; i < len(attachments); i++ {
+			for j := i + 1; j < len(attachments); j++ {
+				aRef := attachments[i]
+				bRef := attachments[j]
+				a, _ := topo.Node(aRef.Node)
+				b, _ := topo.Node(bRef.Node)
+				subnet, err := linkSubnet(a, aRef.Intf, b, bRef.Intf)
+				if err != nil {
+					return nil, nil, fmt.Errorf("%s:%s-%s:%s via %s: %w", aRef.Node, aRef.Intf, bRef.Node, bRef.Intf, segment, err)
+				}
+				topo.Links = append(topo.Links, Link{
+					Name:   linkName(segment, aRef.Node+"-"+aRef.Intf, bRef.Node, bRef.Intf),
+					A:      aRef.Node,
+					B:      bRef.Node,
+					AIntf:  aRef.Intf,
+					BIntf:  bRef.Intf,
+					Cost:   1,
+					Subnet: subnet.String(),
+				})
+			}
+		}
 	}
 	resolveNeighborNodes(topo)
 	if err := topo.Validate(); err != nil {
@@ -236,6 +298,13 @@ func normalizeKind(kind string) DeviceKind {
 	default:
 		return DeviceKind(kind)
 	}
+}
+
+func isL2TransitNode(n clabNode) bool {
+	group := strings.ToLower(strings.TrimSpace(n.Group))
+	kind := strings.ToLower(strings.TrimSpace(n.Kind))
+	mode := strings.ToLower(strings.TrimSpace(n.NetworkMode))
+	return group == "switch" || group == "l2" || kind == "bridge" || mode == "bridge"
 }
 
 func resolveConfigPath(n clabNode) string {

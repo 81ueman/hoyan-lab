@@ -1,0 +1,14 @@
+name: ospf-broadcast
+description: Four-router FRR OSPF lab with three routers on one broadcast segment.
+nos:
+  - frr
+checks:
+  - verify
+  - snapshot
+  - rib-compare
+  - fib-compare
+  - live-check
+features:
+  - ospf
+  - ospf-broadcast
+  - multi-access
