@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -129,9 +130,39 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 			return nil, fmt.Errorf("%s FRR BGP RIB: %w", n.Name, err)
 		}
 		out = append(out, routes...)
+		for _, vrf := range frrVRFsFromNode(n) {
+			cmd := fmt.Sprintf("show bgp vrf %s ipv4 unicast json", vrf)
+			data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", cmd)
+			if err != nil {
+				if strings.Contains(string(data), "bgpd is not running") {
+					continue
+				}
+				return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, cmd, err)
+			}
+			routes, err := ParseFRRVRF(n.Name, vrf, data)
+			if err != nil {
+				return nil, fmt.Errorf("%s FRR BGP RIB vrf %s: %w", n.Name, vrf, err)
+			}
+			out = append(out, routes...)
+		}
 	}
 	sortRoutes(out)
 	return out, nil
+}
+
+func frrVRFsFromNode(n model.Node) []string {
+	seen := map[string]bool{}
+	var vrfs []string
+	for _, iface := range n.Interfaces {
+		vrf := string(model.NormalizeNetworkInstance(string(iface.VRF)))
+		if vrf == "" || vrf == string(model.NetworkInstanceDefault) || seen[vrf] {
+			continue
+		}
+		seen[vrf] = true
+		vrfs = append(vrfs, vrf)
+	}
+	sort.Strings(vrfs)
+	return vrfs
 }
 
 func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {

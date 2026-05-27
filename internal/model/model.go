@@ -99,19 +99,21 @@ type ConfiguredRoute struct {
 }
 
 type BGPRedistribution struct {
-	Kind     RouteSourceKind `yaml:"kind" json:"kind"`
-	RouteMap string          `yaml:"route_map,omitempty" json:"route_map,omitempty"`
-	Source   ConfigSource    `yaml:"source,omitempty" json:"source,omitempty"`
+	NetworkInstance NetworkInstanceID `yaml:"network_instance,omitempty" json:"network_instance,omitempty"`
+	Kind            RouteSourceKind   `yaml:"kind" json:"kind"`
+	RouteMap        string            `yaml:"route_map,omitempty" json:"route_map,omitempty"`
+	Source          ConfigSource      `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
 type BGPNeighbor struct {
-	Address      string `yaml:"address"`
-	RemoteAS     uint32 `yaml:"remote_as"`
-	Activated    bool   `yaml:"activated"`
-	NextHopSelf  bool   `yaml:"next_hop_self"`
-	PeerNode     string `yaml:"peer_node"`
-	ImportPolicy string `yaml:"import_policy"`
-	ExportPolicy string `yaml:"export_policy"`
+	NetworkInstance NetworkInstanceID `yaml:"network_instance,omitempty" json:"network_instance,omitempty"`
+	Address         string            `yaml:"address"`
+	RemoteAS        uint32            `yaml:"remote_as"`
+	Activated       bool              `yaml:"activated"`
+	NextHopSelf     bool              `yaml:"next_hop_self"`
+	PeerNode        string            `yaml:"peer_node"`
+	ImportPolicy    string            `yaml:"import_policy"`
+	ExportPolicy    string            `yaml:"export_policy"`
 }
 
 type OSPFProcess struct {
@@ -520,24 +522,27 @@ func validateBGPNeighborReferences(n Node, nodes map[string]Node) error {
 	neighborAddresses := map[string]bool{}
 	neighborPeers := map[string]bool{}
 	for _, neighbor := range n.Neighbors {
+		vrf := NormalizeNetworkInstance(string(neighbor.NetworkInstance))
 		if neighbor.Address != "" {
 			if _, err := netip.ParseAddr(neighbor.Address); err != nil {
 				return fmt.Errorf("node %s neighbor %s has invalid address: %w", n.Name, neighbor.Address, err)
 			}
-			if neighborAddresses[neighbor.Address] {
+			addressKey := string(vrf) + "|" + neighbor.Address
+			if neighborAddresses[addressKey] {
 				return fmt.Errorf("node %s has duplicate neighbor address %s", n.Name, neighbor.Address)
 			}
-			neighborAddresses[neighbor.Address] = true
+			neighborAddresses[addressKey] = true
 		}
 		if neighbor.PeerNode != "" {
 			peer, ok := nodes[neighbor.PeerNode]
 			if !ok {
 				return fmt.Errorf("node %s neighbor %s references unknown peer node %s", n.Name, neighborLabel(neighbor), neighbor.PeerNode)
 			}
-			if neighborPeers[neighbor.PeerNode] {
+			peerKey := string(vrf) + "|" + neighbor.PeerNode
+			if neighborPeers[peerKey] {
 				return fmt.Errorf("node %s has duplicate neighbor peer node %s", n.Name, neighbor.PeerNode)
 			}
-			neighborPeers[neighbor.PeerNode] = true
+			neighborPeers[peerKey] = true
 			if neighbor.Address != "" && !nodeOwnsAddress(peer, neighbor.Address) {
 				return fmt.Errorf("node %s neighbor %s address is not on peer node %s", n.Name, neighbor.Address, neighbor.PeerNode)
 			}

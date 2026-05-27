@@ -221,7 +221,7 @@ func (e *Engine) Simulate() {
 			e.installConfiguredRoute(origin, route)
 		}
 		for _, route := range origin.Routes {
-			if route.Kind == model.RouteSourceAggregate {
+			if route.Kind == model.RouteSourceAggregate || route.Kind == model.RouteSourceBGP {
 				continue
 			}
 			e.installConfiguredRoute(origin, route)
@@ -239,6 +239,30 @@ func (e *Engine) Simulate() {
 					Condition:   originCond,
 				}
 				e.addRIB(origin.Name, prefix, route)
+				e.walkBGP(route)
+			}
+			for _, network := range origin.Routes {
+				if network.Kind != model.RouteSourceBGP || network.Prefix.IsZero() {
+					continue
+				}
+				network.Node = origin.Name
+				if network.NetworkInstance == "" {
+					network.NetworkInstance = model.NetworkInstanceDefault
+				}
+				if network.AFI == "" {
+					network.AFI = model.AFIIPv4
+				}
+				originCond := failure.NodeVar(origin.Name)
+				route := RIBEntry{
+					NLRI:        RouteNLRI{Prefix: network.Prefix},
+					Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
+					Provenance:  RouteProvenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
+					SourceKind:  model.RouteSourceBGP,
+					RouteSource: network,
+					BaseCond:    originCond,
+					Condition:   originCond,
+				}
+				e.addRIB(origin.Name, network.Prefix, route)
 				e.walkBGP(route)
 			}
 		}
@@ -317,6 +341,11 @@ func (e *Engine) redistributedRoutes(node model.Node) []RIBEntry {
 	var out []RIBEntry
 	for _, redist := range node.Redistribute {
 		for _, route := range e.redistributionCandidates(node, redist.Kind) {
+			redistVRF := model.NormalizeNetworkInstance(string(redist.NetworkInstance))
+			routeVRF := model.NormalizeNetworkInstance(string(route.NetworkInstance))
+			if routeVRF != redistVRF {
+				continue
+			}
 			entry := e.bgpRouteFromConfiguredRoute(node, route)
 			if redist.RouteMap != "" {
 				decision := applyRoutePolicy(e.idx, node, "", redist.RouteMap, entry)
@@ -356,7 +385,7 @@ func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.Config
 		SourceKind: model.RouteSourceBGP,
 		RouteSource: model.ConfiguredRoute{
 			Node:            node.Name,
-			NetworkInstance: model.NetworkInstanceDefault,
+			NetworkInstance: model.NormalizeNetworkInstance(string(route.NetworkInstance)),
 			AFI:             model.AFIIPv4,
 			Prefix:          route.Prefix,
 			Kind:            model.RouteSourceBGP,
@@ -620,7 +649,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 	curBehavior := BehaviorFor(curNode.Kind)
 	for _, adj := range e.idx.Adj[model.NodeID(current)] {
 		next := string(adj.To)
-		session, ok := e.bgpSession(current, next)
+		session, ok := e.bgpSession(current, next, route.RouteSource.NetworkInstance)
 		if !ok {
 			continue
 		}
@@ -644,7 +673,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		if !nextBehavior.CheckControlIngress(nextNode, importMsg) {
 			continue
 		}
-		receiverSession, _ := e.bgpSession(next, current)
+		receiverSession, _ := e.bgpSession(next, current, route.RouteSource.NetworkInstance)
 		imported := nextBehavior.ImportRoute(nextNode, curNode, receiverSession, exported.Route)
 		if !imported.Accept {
 			continue
@@ -702,12 +731,16 @@ func (e *Engine) applyAggregateSuppression(node model.Node, route RIBEntry) RIBE
 	return route.Normalize()
 }
 
-func (e *Engine) bgpSession(a, b string) (model.BGPNeighbor, bool) {
+func (e *Engine) bgpSession(a, b string, vrf model.NetworkInstanceID) (model.BGPNeighbor, bool) {
 	an, ok := e.idx.Node(a)
 	if !ok {
 		return model.BGPNeighbor{}, false
 	}
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	for _, peer := range an.Neighbors {
+		if model.NormalizeNetworkInstance(string(peer.NetworkInstance)) != vrf {
+			continue
+		}
 		if peer.PeerNode == b && (peer.Activated || peer.RemoteAS != 0) {
 			return peer, true
 		}
