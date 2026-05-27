@@ -57,7 +57,7 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 				if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
 					continue
 				}
-				if n.Kind == model.KindSRLinux && entry.SourceKind == model.RouteSourceConnected && entry.ConnectedClass == model.ConnectedRouteClassLoopback {
+				if !model.ProfileFor(n.Kind).FIBProfile().ExpectedFIBRouteVisible(entry.SourceKind, entry.ConnectedClass) {
 					continue
 				}
 				if entry.Condition == nil || !entry.Condition.Eval(ctx) {

@@ -119,7 +119,7 @@ func comparableNextHops(idx *model.TopologyIndex, node string, hops []Normalized
 			unresolved = append(unresolved, unresolvedNextHop(idx, node, hop))
 			continue
 		}
-		if opts.AllowUnsupported && !supportsLiveFIB(peerNode.Kind) {
+		if opts.AllowUnsupported && !model.ProfileFor(peerNode.Kind).LiveProfile().SupportsFIBCollection() {
 			continue
 		}
 		out = append(out, hop)
@@ -158,22 +158,14 @@ func isManagementInterface(idx *model.TopologyIndex, node, iface string) bool {
 	if iface == "" {
 		return false
 	}
-	if strings.EqualFold(iface, "eth0") || strings.EqualFold(iface, "mgmt0") || strings.EqualFold(iface, "Management1") || strings.EqualFold(iface, "mgmt") {
-		return true
-	}
 	if idx == nil {
-		return false
+		return model.ProfileFor(model.KindFRR).InterfaceProfile().IsManagementInterface(nil, iface)
 	}
 	n, ok := idx.Node(node)
 	if !ok {
-		return false
+		return model.ProfileFor(model.KindFRR).InterfaceProfile().IsManagementInterface(nil, iface)
 	}
-	for _, local := range n.Interfaces {
-		if model.EquivalentInterfaceName(n.Kind, local.Name, iface) {
-			return strings.HasPrefix(strings.ToLower(local.Name), "mgmt")
-		}
-	}
-	return false
+	return model.ProfileFor(n.Kind).InterfaceProfile().IsManagementInterface(n.Interfaces, iface)
 }
 
 func dedupeUnresolvedNextHops(in []UnresolvedNextHop) []UnresolvedNextHop {
@@ -214,13 +206,4 @@ func peerForNextHopInterface(idx *model.TopologyIndex, node, iface string) (stri
 func isNodeName(idx *model.TopologyIndex, name string) bool {
 	_, ok := idx.Node(name)
 	return ok
-}
-
-func supportsLiveFIB(kind model.DeviceKind) bool {
-	switch kind {
-	case model.KindFRR, model.KindCEOS, model.KindSRLinux:
-		return true
-	default:
-		return false
-	}
 }

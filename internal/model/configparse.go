@@ -113,6 +113,9 @@ func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResul
 	if err != nil {
 		return ParseResult{}, err
 	}
+	if !ProfileFor(kind).ConfigProfile().SupportsConfigParse() {
+		return ParseResult{}, fmt.Errorf("unsupported config kind %q", kind)
+	}
 	switch kind {
 	case KindFRR, KindCEOS:
 		return parseFRRLike(kind, path, string(data), collectWarnings)
@@ -124,7 +127,7 @@ func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResul
 }
 
 func isOSPFConfigKind(kind DeviceKind) bool {
-	return kind == KindFRR || kind == KindCEOS
+	return ProfileFor(kind).ConfigProfile().SupportsOSPFConfig()
 }
 
 func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (ParseResult, error) {
@@ -837,15 +840,7 @@ func ospfInterface(ospf *OSPFProcess, name string) *OSPFInterface {
 }
 
 func ospfInterfaceVRF(kind DeviceKind, ifaces []Interface, name string) NetworkInstanceID {
-	if kind != KindFRR {
-		return NetworkInstanceDefault
-	}
-	for _, iface := range ifaces {
-		if EquivalentInterfaceName(kind, iface.Name, name) {
-			return NormalizeNetworkInstance(string(iface.VRF))
-		}
-	}
-	return NetworkInstanceDefault
+	return ProfileFor(kind).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
 }
 
 func parseFRRLikeOSPFVRF(fields []string) NetworkInstanceID {
@@ -1763,14 +1758,7 @@ func prefixSetOrNil(prefix Prefix) PrefixSet {
 }
 
 func defaultACLAction(kind DeviceKind, fallback ACLDefaultAction) ACLDefaultAction {
-	switch kind {
-	case KindCEOS, KindSRLinux:
-		return ACLDefaultDeny
-	case KindFRR:
-		return fallback
-	default:
-		return fallback
-	}
+	return ProfileFor(kind).ACLProfile().DefaultACLAction(fallback)
 }
 
 func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string, lineNo int, raw string, fields []string) error {
@@ -1881,16 +1869,11 @@ func srLinuxRoutingPolicyKind(fields []string) string {
 }
 
 func isRouteMapPolicyKind(kind DeviceKind) bool {
-	return kind == KindFRR || kind == KindCEOS
+	return ProfileFor(kind).ConfigProfile().SupportsRouteMapPolicy()
 }
 
 func routeMapVendorName(kind DeviceKind) string {
-	switch kind {
-	case KindCEOS:
-		return "cEOS"
-	default:
-		return "FRR"
-	}
+	return ProfileFor(kind).ConfigProfile().RouteMapVendorName()
 }
 
 func getNeighbor(neighbors map[string]*BGPNeighbor, vrf NetworkInstanceID, addr string) *BGPNeighbor {

@@ -47,7 +47,7 @@ func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Option
 func SupportedNodes(nodes []model.Node) []model.Node {
 	var out []model.Node
 	for _, n := range nodes {
-		if supportsLiveFIB(n.Kind) {
+		if model.ProfileFor(n.Kind).LiveProfile().SupportsFIBCollection() {
 			out = append(out, n)
 		}
 	}
@@ -57,7 +57,7 @@ func SupportedNodes(nodes []model.Node) []model.Node {
 func unsupportedNodes(nodes []model.Node) []string {
 	var out []string
 	for _, n := range nodes {
-		if !supportsLiveFIB(n.Kind) {
+		if !model.ProfileFor(n.Kind).LiveProfile().SupportsFIBCollection() {
 			out = append(out, n.Name+"("+string(n.Kind)+")")
 		}
 	}
