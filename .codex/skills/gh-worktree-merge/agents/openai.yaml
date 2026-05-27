@@ -1,0 +1,4 @@
+interface:
+  display_name: "GH Worktree Merge"
+  short_description: "Merge PRs without switching worktrees"
+  default_prompt: "Use $gh-worktree-merge when merging a GitHub PR from a feature worktree while main stays checked out in the repository root."
