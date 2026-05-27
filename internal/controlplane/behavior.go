@@ -77,7 +77,7 @@ func (b baseDeviceBehavior) EvaluateDataACL(device model.Node, pkt PacketMessage
 		if binding.Node != device.Name || binding.Direction != stage {
 			continue
 		}
-		if binding.Interface != "" && !interfaceMatches(binding.Interface, iface) {
+		if binding.Interface != "" && !interfaceMatches(device.Kind, binding.Interface, iface) {
 			continue
 		}
 		acl, ok := aclByName(acls, device.Name, binding.ACLName)
@@ -230,8 +230,8 @@ func (p PacketMessage) NormalizedSpec() model.PacketSpec {
 	return spec.WithNormalizedPorts()
 }
 
-func interfaceMatches(policyInterface, packetInterface string) bool {
-	return model.AnyEquivalentInterfaceName(policyInterface, packetInterface)
+func interfaceMatches(kind model.DeviceKind, policyInterface, packetInterface string) bool {
+	return model.ProfileFor(kind).InterfaceProfile().EquivalentInterfaceName(policyInterface, packetInterface)
 }
 
 func mustPrefix(prefix string) netip.Prefix {

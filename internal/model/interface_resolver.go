@@ -20,6 +20,10 @@ func InterfaceAliases(kind DeviceKind, clabName string) []string {
 	return ProfileFor(kind).InterfaceProfile().InterfaceAliases(clabName)
 }
 
+func CanonicalInterfaceName(kind DeviceKind, name string) string {
+	return ProfileFor(kind).InterfaceProfile().CanonicalInterfaceName(name)
+}
+
 func ResolveInterface(node Node, clabName string) (InterfaceRef, bool) {
 	return resolveInterface(node, "", clabName)
 }

@@ -82,3 +82,24 @@ func TestEquivalentInterfaceName(t *testing.T) {
 		t.Fatalf("FRR eth1 should not match Ethernet1")
 	}
 }
+
+func TestCanonicalInterfaceNameByDeviceKind(t *testing.T) {
+	tests := []struct {
+		kind DeviceKind
+		in   string
+		want string
+	}{
+		{kind: KindFRR, in: "eth1", want: "eth1"},
+		{kind: KindFRR, in: "eth1.0", want: "eth1"},
+		{kind: KindCEOS, in: "eth1", want: "Ethernet1"},
+		{kind: KindCEOS, in: "eth1.0", want: "Ethernet1"},
+		{kind: KindCEOS, in: "Ethernet1", want: "Ethernet1"},
+		{kind: KindSRLinux, in: "e1-4", want: "ethernet-1/4"},
+		{kind: KindSRLinux, in: "ethernet-1/4.0", want: "ethernet-1/4"},
+	}
+	for _, tt := range tests {
+		if got := CanonicalInterfaceName(tt.kind, tt.in); got != tt.want {
+			t.Fatalf("CanonicalInterfaceName(%s, %q) = %q, want %q", tt.kind, tt.in, got, tt.want)
+		}
+	}
+}
