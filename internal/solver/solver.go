@@ -1,6 +1,6 @@
 package solver
 
-import "github.com/81ueman/network-sandbox/hoyan/internal/symbolic"
+import "github.com/81ueman/hoyan-lab/internal/symbolic"
 
 type FailureElementKind string
 

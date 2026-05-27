@@ -3,9 +3,9 @@ package fibcompare
 import (
 	"net/netip"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/dataplane"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/dataplane"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 func Expected(topo *model.Topology) []NormalizedFIBRoute {

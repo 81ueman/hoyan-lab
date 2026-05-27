@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/controlplane"
-	"github.com/81ueman/network-sandbox/hoyan/internal/failure"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/controlplane"
+	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 func AssertSymbolicConcreteParity(t *testing.T, engine *Engine, from, to, protocol string, cases []failure.Set) {

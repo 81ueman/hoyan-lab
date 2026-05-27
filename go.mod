@@ -1,4 +1,4 @@
-module github.com/81ueman/network-sandbox/hoyan
+module github.com/81ueman/hoyan-lab
 
 go 1.24
 

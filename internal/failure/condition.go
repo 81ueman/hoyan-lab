@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/symbolic"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/symbolic"
 )
 
 type Cond interface {

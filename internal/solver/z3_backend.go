@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/symbolic"
+	"github.com/81ueman/hoyan-lab/internal/symbolic"
 )
 
 type Z3Backend struct{}

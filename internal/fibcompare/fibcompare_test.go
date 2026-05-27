@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestParseLinuxIPRoute(t *testing.T) {

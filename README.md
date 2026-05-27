@@ -1,8 +1,25 @@
 # Hoyan-Style WAN Verifier Lab
 
-This directory contains a medium-size WAN sandbox inspired by the Hoyan
-SIGCOMM 2020 paper. The lab uses containerlab for the runnable topology and a
-Go verifier for offline route, packet, and failure reachability checks.
+This repository contains a medium-size WAN sandbox and verifier inspired by the
+Hoyan papers. It is a partial reference implementation for study and
+experimentation, not the production Hoyan system and not an implementation
+published by the paper authors.
+
+Related papers:
+
+- Fangdan Ye et al., "Accuracy, Scalability, Coverage: A Practical
+  Configuration Verifier on a Global WAN", SIGCOMM 2020.
+  - DOI: https://doi.org/10.1145/3387514.3406217
+  - SIGCOMM 2020 program: https://conferences.sigcomm.org/sigcomm/2020/program.html
+  - PDF copy: https://ennanzhai.github.io/pub/hoyan-sigcomm20.pdf
+- Yifei Yuan et al., "New Evolution of Hoyan: Enhancing Scalability, Usability,
+  and Accuracy for Alibaba's Global WAN Verification", SIGCOMM 2025.
+  - DOI: https://doi.org/10.1145/3718958.3754343
+  - SIGCOMM 2025 program: https://conferences.sigcomm.org/sigcomm/2025/program/papers-info/
+  - PDF copy: https://ennanzhai.github.io/pub/sigcomm25-hoyan2.pdf
+
+The lab uses containerlab for the runnable topology and a Go verifier for
+offline route, packet, and failure reachability checks.
 
 The verifier treats the selected lab directory as the source of truth.
 `labs/base-wan` is the default lab. Each lab's `hoyan.clab.yml` provides
@@ -58,7 +75,6 @@ go run ./cmd/hoyan model packet-classes --lab labs/acl-semantics --prefix 10.4.0
 ## Verify
 
 ```bash
-cd hoyan
 go run ./cmd/hoyan verify
 ```
 

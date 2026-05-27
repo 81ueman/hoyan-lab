@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func applyRoutePolicy(idx *model.TopologyIndex, node model.Node, peerName string, policyName string, route RIBEntry) BGPRouteDecision {

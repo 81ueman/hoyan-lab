@@ -3,9 +3,9 @@ package dataplane
 import (
 	"net/netip"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/controlplane"
-	"github.com/81ueman/network-sandbox/hoyan/internal/failure"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/controlplane"
+	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func (e *Engine) RouteReachable(from, prefix string, failures failure.Set) (Path, bool) {

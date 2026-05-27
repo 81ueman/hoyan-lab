@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/cli"
+	"github.com/81ueman/hoyan-lab/internal/cli"
 )
 
 func main() {

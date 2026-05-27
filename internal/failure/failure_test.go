@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/solver"
-	"github.com/81ueman/network-sandbox/hoyan/internal/symbolic"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/symbolic"
 )
 
 func TestSetAndContext(t *testing.T) {

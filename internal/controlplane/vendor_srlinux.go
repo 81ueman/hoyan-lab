@@ -1,6 +1,6 @@
 package controlplane
 
-import "github.com/81ueman/network-sandbox/hoyan/internal/model"
+import "github.com/81ueman/hoyan-lab/internal/model"
 
 type srlinuxBehavior struct{ baseDeviceBehavior }
 

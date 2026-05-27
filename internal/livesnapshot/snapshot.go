@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/fibcompare"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/ribcompare"
 	"gopkg.in/yaml.v3"
 )
 

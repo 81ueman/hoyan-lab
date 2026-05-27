@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/livesnapshot"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/ribcompare"
-	"github.com/81ueman/network-sandbox/hoyan/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 type fakeRunner struct {

@@ -6,8 +6,8 @@ import (
 	"io"
 	"sort"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/ribcompare"
 )
 
 const containerNftablesConfig = "/etc/hoyan/nftables.conf"

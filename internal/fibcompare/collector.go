@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]NormalizedFIBRoute, error) {

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/controlplane"
-	"github.com/81ueman/network-sandbox/hoyan/internal/dataplane"
-	"github.com/81ueman/network-sandbox/hoyan/internal/failure"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/controlplane"
+	"github.com/81ueman/hoyan-lab/internal/dataplane"
+	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 type RIBEntry = controlplane.RIBEntry

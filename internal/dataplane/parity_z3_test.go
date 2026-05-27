@@ -5,8 +5,8 @@ package dataplane
 import (
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/failure"
-	"github.com/81ueman/network-sandbox/hoyan/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.T) {

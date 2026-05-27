@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 type runnerFunc func(ctx context.Context, name string, args ...string) ([]byte, error)

@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
-	"github.com/81ueman/network-sandbox/hoyan/internal/sim"
-	"github.com/81ueman/network-sandbox/hoyan/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 type VerifyOptions struct {

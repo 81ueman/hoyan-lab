@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestRIBEntryNormalizeSeparatesRouteModelFields(t *testing.T) {

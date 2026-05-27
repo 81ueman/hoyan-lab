@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/network-sandbox/hoyan/internal/failure"
-	"github.com/81ueman/network-sandbox/hoyan/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 type RIBEntry struct {
