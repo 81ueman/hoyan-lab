@@ -47,6 +47,12 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 				if route.Condition == nil || !route.Condition.Eval(ctx) {
 					continue
 				}
+				// OSPF keeps alternate remote paths so failure checks can prove
+				// fallback reachability. FRR's route table is a point-in-time SPF
+				// result, so only selected remote OSPF routes are expected live.
+				if route.SourceKind == model.RouteSourceOSPF && route.Provenance.OriginNode != n.Name && (route.SelectedCond == nil || !route.SelectedCond.Eval(ctx)) {
+					continue
+				}
 				if !routeComparableInLiveRIB(idx, n.Name, route) {
 					continue
 				}
@@ -76,7 +82,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 }
 
 func sortedProtocolKeys(m map[string][]NormalizedBgpPath) []string {
-	order := []string{"bgp", "connected", "static", "blackhole"}
+	order := []string{"bgp", "ospf", "connected", "static", "blackhole"}
 	var out []string
 	seen := map[string]bool{}
 	for _, protocol := range order {
@@ -100,6 +106,8 @@ func expectedRouteProtocol(route sim.RIBEntry) string {
 		return "connected"
 	case model.RouteSourceStatic:
 		return "static"
+	case model.RouteSourceOSPF:
+		return "ospf"
 	case model.RouteSourceBlackhole:
 		return "blackhole"
 	default:
@@ -129,6 +137,8 @@ func routeComparableInLiveRIB(idx *model.TopologyIndex, node string, route sim.R
 		return comparableConnectedClass(route.RouteSource.ConnectedClass)
 	case model.RouteSourceStatic:
 		return route.RouteSource.NextHop != ""
+	case model.RouteSourceOSPF:
+		return route.Provenance.OriginNode == node || route.ForwardingNextHop.Node != ""
 	case model.RouteSourceBlackhole:
 		return true
 	default:

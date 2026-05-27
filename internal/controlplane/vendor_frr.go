@@ -17,6 +17,15 @@ type frrDecisionProcess struct{ defaultBGPDecisionProcess }
 func (d frrDecisionProcess) Less(receiver model.Node, a, b RIBEntry) bool {
 	a = a.Normalize()
 	b = b.Normalize()
+	if a.SourceKind == model.RouteSourceOSPF && b.SourceKind == model.RouteSourceOSPF {
+		if a.RouteSource.Metric != b.RouteSource.Metric {
+			return a.RouteSource.Metric < b.RouteSource.Metric
+		}
+		if len(a.Links) != len(b.Links) {
+			return len(a.Links) < len(b.Links)
+		}
+		return strings.Join(a.Nodes, ",") > strings.Join(b.Nodes, ",")
+	}
 	if a.LocalPref != b.LocalPref {
 		return a.LocalPref > b.LocalPref
 	}

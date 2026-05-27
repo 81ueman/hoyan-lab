@@ -147,6 +147,8 @@ func fibAdminDistance(route controlplane.RIBEntry) int {
 		return 0
 	case model.RouteSourceStatic, model.RouteSourceBlackhole:
 		return 1
+	case model.RouteSourceOSPF:
+		return 110
 	default:
 		return 200
 	}

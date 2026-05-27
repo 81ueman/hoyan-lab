@@ -294,6 +294,11 @@ func configPaths(topologyPath string) ([]string, error) {
 			if target == "/etc/frr/frr.conf" || target == "/etc/frr/daemons" || target == "/etc/frr/vtysh.conf" || target == "/etc/hoyan/nftables.conf" {
 				seen[filepath.Clean(parts[0])] = true
 			}
+			if target == "/etc/frr" {
+				seen[filepath.Clean(filepath.Join(parts[0], "frr.conf"))] = true
+				seen[filepath.Clean(filepath.Join(parts[0], "daemons"))] = true
+				seen[filepath.Clean(filepath.Join(parts[0], "vtysh.conf"))] = true
+			}
 		}
 	}
 	var out []string

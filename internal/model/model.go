@@ -31,6 +31,7 @@ type Node struct {
 	Interfaces     []Interface         `yaml:"interfaces"`
 	Neighbors      []BGPNeighbor       `yaml:"neighbors"`
 	Redistribute   []BGPRedistribution `yaml:"redistribute,omitempty"`
+	OSPF           OSPFProcess         `yaml:"ospf,omitempty"`
 	PrefixLists    []PrefixList        `yaml:"prefix_lists"`
 	ASPathLists    []ASPathList        `yaml:"as_path_lists"`
 	CommunityLists []CommunityList     `yaml:"community_lists"`
@@ -66,6 +67,7 @@ const (
 	RouteSourceConnected RouteSourceKind = "connected"
 	RouteSourceStatic    RouteSourceKind = "static"
 	RouteSourceBGP       RouteSourceKind = "bgp"
+	RouteSourceOSPF      RouteSourceKind = "ospf"
 	RouteSourceAggregate RouteSourceKind = "aggregate"
 	RouteSourceBlackhole RouteSourceKind = "blackhole"
 )
@@ -108,6 +110,28 @@ type BGPNeighbor struct {
 	PeerNode     string `yaml:"peer_node"`
 	ImportPolicy string `yaml:"import_policy"`
 	ExportPolicy string `yaml:"export_policy"`
+}
+
+type OSPFProcess struct {
+	Enabled           bool                     `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	RouterID          string                   `yaml:"router_id,omitempty" json:"router_id,omitempty"`
+	Networks          []OSPFNetwork            `yaml:"networks,omitempty" json:"networks,omitempty"`
+	PassiveInterfaces []string                 `yaml:"passive_interfaces,omitempty" json:"passive_interfaces,omitempty"`
+	Interfaces        map[string]OSPFInterface `yaml:"interfaces,omitempty" json:"interfaces,omitempty"`
+}
+
+type OSPFNetwork struct {
+	Prefix Prefix       `yaml:"prefix" json:"prefix"`
+	Area   string       `yaml:"area" json:"area"`
+	Source ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
+}
+
+type OSPFInterface struct {
+	Name    string       `yaml:"name" json:"name"`
+	Area    string       `yaml:"area,omitempty" json:"area,omitempty"`
+	Cost    int          `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Passive bool         `yaml:"passive,omitempty" json:"passive,omitempty"`
+	Source  ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
 type PrefixList struct {

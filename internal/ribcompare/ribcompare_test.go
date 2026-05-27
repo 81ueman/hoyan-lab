@@ -114,6 +114,58 @@ func TestExpectedConnectedRoutesCarryClassAndIncludeLoopbackService(t *testing.T
 	}
 }
 
+func TestExpectedOSPFRoutesIncludeLocalAndSelectedRemoteRoutes(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfExpectedNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31", "eth2": "198.51.100.7/31"}, map[string]int{"eth1": 10, "eth2": 1}),
+			ospfExpectedNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31"}, map[string]int{"eth1": 10, "eth2": 1}),
+			ospfExpectedNode("r3", "10.255.3.3/32", map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.4/31"}, map[string]int{"eth1": 1, "eth2": 1}),
+			ospfExpectedNode("r4", "10.255.4.4/32", map[string]string{"eth1": "198.51.100.6/31", "eth2": "198.51.100.5/31"}, map[string]int{"eth1": 1, "eth2": 1}),
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+			{Name: "r2-r3", A: "r2", AIntf: "eth2", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
+			{Name: "r3-r4", A: "r3", AIntf: "eth2", B: "r4", BIntf: "eth2", Cost: 1, Subnet: "198.51.100.4/31"},
+			{Name: "r4-r1", A: "r4", AIntf: "eth1", B: "r1", BIntf: "eth2", Cost: 1, Subnet: "198.51.100.6/31"},
+		},
+	}
+	routes := Expected(topo)
+	r1ToR2 := routeByNodePrefixProtocol(routes, "r1", "10.255.2.2/32", "ospf")
+	if r1ToR2 == nil || len(r1ToR2.Paths) != 1 || r1ToR2.Paths[0].NextHop != "198.51.100.6" {
+		t.Fatalf("r1 OSPF route to r2 loopback = %#v, want selected remote route via r4", r1ToR2)
+	}
+	if local := routeByNodePrefixProtocol(routes, "r1", "10.255.1.1/32", "ospf"); local == nil || len(local.Paths) != 1 || local.Paths[0].NextHop != "" {
+		t.Fatalf("local OSPF loopback route = %#v, want directly connected OSPF route", local)
+	}
+	if connected := routeByNodePrefixProtocol(routes, "r1", "198.51.100.0/31", "ospf"); connected == nil || len(connected.Paths) != 1 || connected.Paths[0].NextHop != "" {
+		t.Fatalf("local connected OSPF network = %#v, want directly connected OSPF route", connected)
+	}
+}
+
+func ospfExpectedNode(name, loopback string, ifaces map[string]string, costs map[string]int) model.Node {
+	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
+	ospfIfaces := map[string]model.OSPFInterface{"lo": {Name: "lo", Area: "0", Passive: true}}
+	networks := []model.OSPFNetwork{{Prefix: model.MustPrefix(loopback), Area: "0"}}
+	for name, addr := range ifaces {
+		interfaces = append(interfaces, model.Interface{Name: name, Address: addr})
+		ospfIfaces[name] = model.OSPFInterface{Name: name, Area: "0", Cost: costs[name]}
+		networks = append(networks, model.OSPFNetwork{Prefix: model.MustPrefix(addr), Area: "0"})
+	}
+	return model.Node{
+		Name:       name,
+		Kind:       model.KindFRR,
+		Loopback:   loopback,
+		Prefixes:   model.MustPrefixes(loopback),
+		Interfaces: interfaces,
+		OSPF: model.OSPFProcess{
+			Enabled:           true,
+			Networks:          networks,
+			PassiveInterfaces: []string{"lo"},
+			Interfaces:        ospfIfaces,
+		},
+	}
+}
+
 func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
@@ -166,6 +218,26 @@ func TestParseFRRRouteTableStaticAndConnected(t *testing.T) {
 	}
 	if routeByPrefixProtocol(routes, "10.0.0.0/24", "bgp") != nil {
 		t.Fatalf("BGP route table entry should be excluded: %#v", routes)
+	}
+}
+
+func TestParseFRRRouteTableOSPF(t *testing.T) {
+	data := []byte(`{
+  "10.255.2.2/32": [
+    {
+      "prefix": "10.255.2.2/32",
+      "protocol": "ospf",
+      "selected": true,
+      "nexthops": [{"ip": "198.51.100.6", "interfaceName": "eth2"}]
+    }
+  ]
+}`)
+	routes, err := ParseFRRRouteTable("r1", data)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTable() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].Protocol != "ospf" || routes[0].Paths[0].NextHop != "198.51.100.6" {
+		t.Fatalf("routes = %#v, want OSPF route with next-hop", routes)
 	}
 }
 
@@ -733,6 +805,15 @@ func routeByPrefix(routes []NormalizedBgpRoute, prefix string) *NormalizedBgpRou
 func routeByPrefixProtocol(routes []NormalizedBgpRoute, prefix, protocol string) *NormalizedBgpRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
+			return &routes[i]
+		}
+	}
+	return nil
+}
+
+func routeByNodePrefixProtocol(routes []NormalizedBgpRoute, node, prefix, protocol string) *NormalizedBgpRoute {
+	for i := range routes {
+		if routes[i].Node == node && routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
 			return &routes[i]
 		}
 	}
