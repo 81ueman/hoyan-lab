@@ -1,0 +1,31 @@
+version: hoyan/v1
+
+vars:
+  service_ip: 10.4.1.10
+  customers: [cust-bj, cust-sh, cust-gz]
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  one-core-link-failure:
+    snapshot: current
+    failures:
+      max: 1
+      include_link_roles: [core]
+
+intents:
+  - name: customers-https-survives-one-core-link-failure
+    forall:
+      src: ${customers}
+    check:
+      table: packet
+      scenario: one-core-link-failure
+      packet:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 443
+      assert:
+        reachable: true

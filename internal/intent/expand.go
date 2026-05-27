@@ -79,8 +79,15 @@ func substituteCheck(in Check, vars map[string]any, group map[string]string) Che
 		Table:    substituteString(in.Table, vars, group),
 		Scenario: substituteString(in.Scenario, vars, group),
 		Where:    substituteMap(in.Where, vars, group),
-		GroupBy:  append([]string(nil), in.GroupBy...),
-		Assert:   substituteAssertion(in.Assert, vars, group),
+		Packet: PacketCheck{
+			From:     substituteString(in.Packet.From, vars, group),
+			VRF:      substituteString(in.Packet.VRF, vars, group),
+			To:       substituteString(in.Packet.To, vars, group),
+			Protocol: substituteString(in.Packet.Protocol, vars, group),
+			DstPort:  in.Packet.DstPort,
+		},
+		GroupBy: append([]string(nil), in.GroupBy...),
+		Assert:  substituteAssertion(in.Assert, vars, group),
 	}
 	if in.Compare != nil {
 		out.Compare = &CompareCheck{

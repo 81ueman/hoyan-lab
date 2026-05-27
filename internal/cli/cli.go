@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/intent"
 	"github.com/81ueman/hoyan-lab/internal/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
@@ -180,6 +181,11 @@ func NewVerifyCommand() *cobra.Command {
 			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, &opts.queriesPath); err != nil {
 				return err
 			}
+			if !cmd.Flags().Changed("queries") {
+				if path, ok := labIntentFile(opts.labPath); ok {
+					return runIntentVerifyFile(cmd, path, opts.format)
+				}
+			}
 			if err := runVerify(cmd.Context(), opts, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 				return err
 			}
@@ -196,6 +202,49 @@ func NewVerifyCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.noCollapse, "no-collapse", false, "show raw prefix-class results instead of collapsed equivalent groups")
 	cmd.Flags().StringVar(&opts.format, "format", "table", "output format: table or json")
 	return cmd
+}
+
+func labIntentFile(labPath string) (string, bool) {
+	labDir, err := resolveLabDir(labPath)
+	if err != nil {
+		return "", false
+	}
+	path := filepath.Join(labDir, labIntentPath)
+	info, err := os.Stat(path)
+	return path, err == nil && !info.IsDir()
+}
+
+func runIntentVerifyFile(cmd *cobra.Command, path string, format string) error {
+	doc, err := loadIntentFile(path)
+	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+	report, err := intent.Verify(doc)
+	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+	if format == "json" {
+		if err := writeFormatJSONOnly(cmd.OutOrStdout(), "json", report); err != nil {
+			return err
+		}
+	} else if format == "" || format == "table" {
+		for _, result := range report.Results {
+			status := strings.ToUpper(result.Status)
+			fmt.Fprintf(cmd.OutOrStdout(), "[%s] %s table=%s scenario=%s\n", status, result.Name, result.Table, result.Scenario)
+			if result.Actual.Reachable != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "  reachable: %v\n", *result.Actual.Reachable)
+			}
+			if result.Actual.Reason != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "  reason: %s\n", result.Actual.Reason)
+			}
+		}
+	} else {
+		return fmt.Errorf("unsupported --format %q", format)
+	}
+	if report.Summary.Failed > 0 {
+		return ExitError{Code: 1, Err: fmt.Errorf("intent verification failed")}
+	}
+	return nil
 }
 
 type verifyOptions struct {
