@@ -30,13 +30,18 @@ func CollectBGPOnlyWithRunner(ctx context.Context, runner Runner, nodes []model.
 
 func collectBGP(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
 	var out []NormalizedBgpRoute
-	collectors := collectorsByKind()
+	collectors := bgpCollectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
-		collector := collectors[kind]
-		if collector == nil || !model.ProfileFor(kind).LiveProfile().SupportsBGPRIBCollection() {
+		profile := model.ProfileFor(kind).LiveProfile()
+		collectorID, ok := profile.BGPRIBCollector()
+		if !ok {
 			continue
 		}
-		selected := bgpCollectionNodes(kind, NodesByKind(nodes, kind))
+		collector := collectors[collectorID]
+		if collector == nil {
+			continue
+		}
+		selected := bgpCollectionNodes(profile, NodesByKind(nodes, kind))
 		if len(selected) == 0 {
 			continue
 		}
@@ -64,8 +69,10 @@ func CollectFRRWithRunner(ctx context.Context, runner Runner, nodes []model.Node
 
 func SupportedNodes(nodes []model.Node) []model.Node {
 	var out []model.Node
+	collectors := bgpCollectorsByID()
 	for _, n := range nodes {
-		if _, ok := collectorsByKind()[n.Kind]; ok && model.ProfileFor(n.Kind).LiveProfile().SupportsBGPRIBCollection() {
+		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().BGPRIBCollector()
+		if ok && collectors[collectorID] != nil {
 			out = append(out, n)
 		}
 	}
@@ -86,10 +93,10 @@ func NodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
 	return out
 }
 
-func bgpCollectionNodes(kind model.DeviceKind, nodes []model.Node) []model.Node {
+func bgpCollectionNodes(profile model.LiveProfile, nodes []model.Node) []model.Node {
 	var out []model.Node
 	for _, n := range nodes {
-		if model.ProfileFor(kind).LiveProfile().IncludeInBGPRIBCollection(n) {
+		if profile.ShouldCollectBGP(n) {
 			out = append(out, n)
 		}
 	}
@@ -100,11 +107,19 @@ type frrCollector struct{}
 type ceosCollector struct{}
 type srlinuxCollector struct{}
 
-func collectorsByKind() map[model.DeviceKind]Collector {
-	return map[model.DeviceKind]Collector{
-		model.KindFRR:     frrCollector{},
-		model.KindCEOS:    ceosCollector{},
-		model.KindSRLinux: srlinuxCollector{},
+func bgpCollectorsByID() map[model.LiveCollectorID]BgpRibCollector {
+	return map[model.LiveCollectorID]BgpRibCollector{
+		model.LiveCollectorFRR:     frrCollector{},
+		model.LiveCollectorCEOS:    ceosCollector{},
+		model.LiveCollectorSRLinux: srlinuxCollector{},
+	}
+}
+
+func routeTableCollectorsByID() map[model.LiveCollectorID]RouteTableCollector {
+	return map[model.LiveCollectorID]RouteTableCollector{
+		model.LiveCollectorFRR:     frrCollector{},
+		model.LiveCollectorCEOS:    ceosCollector{},
+		model.LiveCollectorSRLinux: srlinuxCollector{},
 	}
 }
 
@@ -178,11 +193,19 @@ func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.N
 }
 
 func collectNonBGPRoutes(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
+	return CollectRouteTablesWithRunner(ctx, runner, nodes)
+}
+
+func CollectRouteTablesWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
 	var out []NormalizedBgpRoute
-	collectors := collectorsByKind()
+	collectors := routeTableCollectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
-		collector := collectors[kind]
-		if collector == nil || !model.ProfileFor(kind).LiveProfile().SupportsRouteTableCollection() {
+		collectorID, ok := model.ProfileFor(kind).LiveProfile().RouteTableCollector()
+		if !ok {
+			continue
+		}
+		collector := collectors[collectorID]
+		if collector == nil {
 			continue
 		}
 		selected := NodesByKind(nodes, kind)

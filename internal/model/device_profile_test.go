@@ -70,3 +70,28 @@ func TestDeviceProfileRegistrationRestoresPreviousProfile(t *testing.T) {
 		t.Fatalf("restored unknown profile SupportsFIBCollection = %v, want false", got)
 	}
 }
+
+func TestLiveProfileCollectorRegistry(t *testing.T) {
+	tests := []struct {
+		kind          DeviceKind
+		wantCollector LiveCollectorID
+	}{
+		{kind: KindFRR, wantCollector: LiveCollectorFRR},
+		{kind: KindCEOS, wantCollector: LiveCollectorCEOS},
+		{kind: KindSRLinux, wantCollector: LiveCollectorSRLinux},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.kind), func(t *testing.T) {
+			live := ProfileFor(tt.kind).LiveProfile()
+			if got, ok := live.BGPRIBCollector(); !ok || got != tt.wantCollector {
+				t.Fatalf("BGPRIBCollector = %q, %v; want %q, true", got, ok, tt.wantCollector)
+			}
+			if got, ok := live.RouteTableCollector(); !ok || got != tt.wantCollector {
+				t.Fatalf("RouteTableCollector = %q, %v; want %q, true", got, ok, tt.wantCollector)
+			}
+			if got, ok := live.FIBCollector(); !ok || got != tt.wantCollector {
+				t.Fatalf("FIBCollector = %q, %v; want %q, true", got, ok, tt.wantCollector)
+			}
+		})
+	}
+}
