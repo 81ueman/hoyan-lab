@@ -71,6 +71,46 @@ func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
 	}
 }
 
+func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfBroadcastNode("r1", "10.255.1.1/32", "198.51.100.1/29", 5),
+			ospfBroadcastNode("r2", "10.255.2.2/32", "198.51.100.2/29", 2),
+			ospfBroadcastNode("r3", "10.255.3.3/32", "198.51.100.3/29", 3),
+		},
+		Links: []model.Link{
+			{Name: "sw1-r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+			{Name: "sw1-r1-r3", A: "r1", AIntf: "eth1", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+			{Name: "sw1-r2-r3", A: "r2", AIntf: "eth1", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	engine := NewEngine(idx, map[string]map[string][]RIBEntry{})
+	states := engine.ospfInterfaceStates()
+	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != toState.Area {
+			return "", false
+		}
+		return fromState.Area, true
+	})
+	if len(adjs) != 2 {
+		t.Fatalf("r1 adjacencies = %#v, want r2 and r3 on shared segment", adjs)
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	routes := rib["r1"]["10.255.3.3/32"]
+	if len(routes) == 0 {
+		t.Fatalf("r1 did not learn r3 loopback")
+	}
+	best := routes[0].Normalize()
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 5 || best.NextHop != "r3" || best.RouteSource.OSPFRouteType != "intra-area" {
+		t.Fatalf("best route = %#v, want OSPF metric 5 via r3", best)
+	}
+}
+
 func TestOSPFStubSuppressesExternalAndInstallsDefault(t *testing.T) {
 	topo := &model.Topology{
 		Nodes: []model.Node{
@@ -227,6 +267,14 @@ func ospfAreaNode(name, loopback string, ifaces map[string]string, areasByIface 
 			Areas:             areas,
 		},
 	}
+}
+
+func ospfBroadcastNode(name, loopback, shared string, cost int) model.Node {
+	node := ospfNode(name, loopback, map[string]string{"eth1": shared}, map[string]int{"eth1": cost})
+	iface := node.OSPF.Interfaces["eth1"]
+	iface.NetworkType = "broadcast"
+	node.OSPF.Interfaces["eth1"] = iface
+	return node
 }
 
 func denseOSPFTopology(n int) *model.Topology {

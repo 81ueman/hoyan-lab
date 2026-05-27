@@ -12,12 +12,13 @@ import (
 )
 
 type ospfInterfaceState struct {
-	Node    string
-	Name    string
-	Prefix  netip.Prefix
-	Area    string
-	Cost    int
-	Passive bool
+	Node        string
+	Name        string
+	Prefix      netip.Prefix
+	Area        string
+	Cost        int
+	Passive     bool
+	NetworkType string
 }
 
 type ospfAdvertisement struct {
@@ -228,6 +229,7 @@ func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) 
 			state.Cost = configured.Cost
 		}
 		state.Passive = configured.Passive
+		state.NetworkType = configured.NetworkType
 	}
 	if state.Area == "" {
 		for _, network := range node.OSPF.Networks {
@@ -760,7 +762,28 @@ func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Lin
 	if !ok {
 		return 0, "", false
 	}
+	if !ospfNetworkTypesCompatible(fromState.NetworkType, toState.NetworkType) {
+		return 0, "", false
+	}
 	return fromState.Cost, area, true
+}
+
+func ospfNetworkTypesCompatible(a, b string) bool {
+	a = normalizeOSPFNetworkType(a)
+	b = normalizeOSPFNetworkType(b)
+	if a == "" || b == "" {
+		return true
+	}
+	return a == b
+}
+
+func normalizeOSPFNetworkType(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "p2p":
+		return "point-to-point"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }
 
 func pathCondition(path ospfPath) []failure.Cond {

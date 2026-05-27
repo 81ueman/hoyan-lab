@@ -131,11 +131,12 @@ type OSPFNetwork struct {
 }
 
 type OSPFInterface struct {
-	Name    string       `yaml:"name" json:"name"`
-	Area    string       `yaml:"area,omitempty" json:"area,omitempty"`
-	Cost    int          `yaml:"cost,omitempty" json:"cost,omitempty"`
-	Passive bool         `yaml:"passive,omitempty" json:"passive,omitempty"`
-	Source  ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
+	Name        string       `yaml:"name" json:"name"`
+	Area        string       `yaml:"area,omitempty" json:"area,omitempty"`
+	Cost        int          `yaml:"cost,omitempty" json:"cost,omitempty"`
+	Passive     bool         `yaml:"passive,omitempty" json:"passive,omitempty"`
+	NetworkType string       `yaml:"network_type,omitempty" json:"network_type,omitempty"`
+	Source      ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
 type OSPFAreaKind string

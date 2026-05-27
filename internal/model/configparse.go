@@ -364,7 +364,11 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			cfg.OSPF.Interfaces[currentInterface] = *oi
 			cfg.OSPF.Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && fields[3] == "point-to-point":
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && isSupportedOSPFNetworkType(fields[3]):
+			oi := ospfInterface(&cfg, currentInterface)
+			oi.NetworkType = normalizeOSPFNetworkType(fields[3])
+			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			cfg.OSPF.Interfaces[currentInterface] = *oi
 			cfg.OSPF.Enabled = true
 		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
 			cfg.OSPF.Enabled = true
@@ -814,6 +818,13 @@ func parseSRLinuxOSPF(cfg *ParsedConfig, path string, lineNo int, raw string, fi
 			}
 			oi.Cost = cost
 		}
+		if containsAnyField(fields, "interface-type") {
+			networkType := normalizeOSPFNetworkType(fields[len(fields)-1])
+			if !isSupportedOSPFNetworkType(networkType) {
+				return fmt.Errorf("unsupported SR Linux OSPF interface type")
+			}
+			oi.NetworkType = networkType
+		}
 		if containsAnyField(fields, "passive") && parseConfigBool(fields[len(fields)-1]) {
 			oi.Passive = true
 			cfg.OSPF.PassiveInterfaces = appendUnique(cfg.OSPF.PassiveInterfaces, iface)
@@ -825,6 +836,26 @@ func parseSRLinuxOSPF(cfg *ParsedConfig, path string, lineNo int, raw string, fi
 		return nil
 	}
 	return fmt.Errorf("unsupported SR Linux OSPF statement")
+}
+
+func isSupportedOSPFNetworkType(raw string) bool {
+	switch normalizeOSPFNetworkType(raw) {
+	case "", "broadcast", "point-to-point":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeOSPFNetworkType(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "point-to-point", "p2p":
+		return "point-to-point"
+	case "broadcast":
+		return "broadcast"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
 }
 
 func normalizeOSPFAreaID(area string) string {

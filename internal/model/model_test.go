@@ -246,8 +246,26 @@ router ospf
 	if got := cfg.OSPF.Interfaces["eth1"]; got.Area != "0" || got.Cost != 10 {
 		t.Fatalf("eth1 OSPF = %#v, want area 0 cost 10", got)
 	}
+	if got := cfg.OSPF.Interfaces["eth1"]; got.NetworkType != "" {
+		t.Fatalf("eth1 OSPF network type = %q, want empty", got.NetworkType)
+	}
 	if got := cfg.OSPF.Interfaces["lo"]; !got.Passive {
 		t.Fatalf("lo OSPF = %#v, want passive", got)
+	}
+}
+
+func TestParseFRROSPFNetworkType(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+interface eth1
+ ip address 198.51.100.1/29
+ ip ospf area 0
+ ip ospf network broadcast
+router ospf
+ network 198.51.100.0/29 area 0
+`)
+	got := cfg.OSPF.Interfaces["eth1"]
+	if got.NetworkType != "broadcast" {
+		t.Fatalf("eth1 OSPF network type = %q, want broadcast", got.NetworkType)
 	}
 }
 
@@ -277,6 +295,71 @@ router ospf 1
 	}
 	if got := cfg.OSPF.Interfaces["Loopback0"]; !got.Passive {
 		t.Fatalf("Loopback0 OSPF = %#v, want passive", got)
+	}
+}
+
+func TestLoadLabTopologyExpandsL2TransitNode(t *testing.T) {
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "configs", "r1"))
+	mkdirAll(t, filepath.Join(dir, "configs", "r2"))
+	mkdirAll(t, filepath.Join(dir, "configs", "r3"))
+	writeFile(t, filepath.Join(dir, "configs", "r1", "frr.conf"), `hostname r1
+interface lo
+ ip address 10.255.1.1/32
+interface eth1
+ ip address 198.51.100.1/29
+ ip ospf area 0
+ ip ospf network broadcast
+router ospf
+ network 10.255.1.1/32 area 0
+ network 198.51.100.0/29 area 0
+`)
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r1", "frr.conf")), "r1", "r2"))
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r2", "frr.conf")), "10.255.1.1", "10.255.2.2"))
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r2", "frr.conf")), "198.51.100.1", "198.51.100.2"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r1", "frr.conf")), "r1", "r3"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r3", "frr.conf")), "10.255.1.1", "10.255.3.3"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r3", "frr.conf")), "198.51.100.1", "198.51.100.3"))
+	topologyPath := filepath.Join(dir, "lab.clab.yml")
+	writeFile(t, topologyPath, `name: shared
+topology:
+  nodes:
+    r1:
+      kind: linux
+      group: router
+      binds: ["configs/r1:/etc/frr:ro"]
+    r2:
+      kind: linux
+      group: router
+      binds: ["configs/r2:/etc/frr:ro"]
+    r3:
+      kind: linux
+      group: router
+      binds: ["configs/r3:/etc/frr:ro"]
+    sw1:
+      kind: linux
+      group: switch
+  links:
+    - endpoints: ["r1:eth1", "sw1:eth1"]
+    - endpoints: ["r2:eth1", "sw1:eth2"]
+    - endpoints: ["r3:eth1", "sw1:eth3"]
+`)
+	topo, err := LoadLabTopology(topologyPath)
+	if err != nil {
+		t.Fatalf("LoadLabTopology() error = %v", err)
+	}
+	if len(topo.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want 3 routers and no transit node", len(topo.Nodes))
+	}
+	if len(topo.Links) != 3 {
+		t.Fatalf("links = %#v, want complete graph across shared segment", topo.Links)
+	}
+	idx, err := BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	if _, ok := idx.LinkBetween("r1", "r3"); !ok {
+		t.Fatalf("r1-r3 shared segment link missing: %#v", topo.Links)
 	}
 }
 
@@ -1521,4 +1604,27 @@ func parseCEOSConfigTextResult(t *testing.T, config string) (ParsedConfig, error
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	return ParseConfig("ceos", path)
+}
+
+func mkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+}
+
+func writeFile(t *testing.T, path, text string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func mustReadFileString(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	return string(data)
 }
