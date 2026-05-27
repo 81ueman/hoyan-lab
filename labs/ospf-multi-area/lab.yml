@@ -1,0 +1,17 @@
+name: ospf-multi-area
+description: Four-router FRR multi-area OSPF lab with two ABRs and inter-area routes.
+nos:
+  - frr
+checks:
+  - verify
+  - live-check
+  - rib-compare
+  - fib-compare
+features:
+  - ospf
+  - multi-area-ospf
+  - inter-area-routes
+  - route-reachability
+  - packet-reachability
+  - failure-checks
+  - rib-fib-compare

@@ -696,7 +696,7 @@ func routeKey(r RIBEntry) string {
 	if r.Invalid {
 		valid = "invalid"
 	}
-	return r.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.Origin + "|" + r.NextHop + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Nodes, ">") + "|" + valid
+	return r.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Origin + "|" + r.NextHop + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Nodes, ">") + "|" + valid
 }
 
 func containsString(xs []string, x string) bool {

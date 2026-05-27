@@ -24,6 +24,7 @@ type ospfAdvertisement struct {
 	Node         string
 	Prefix       model.Prefix
 	Cost         int
+	Area         string
 	External     bool
 	ExternalArea string
 	DefaultArea  string
@@ -63,17 +64,33 @@ type ospfSPFQueueItem struct {
 
 type ospfSPFQueue []ospfSPFQueueItem
 
+type ospfAdjacencyFilter func(ospfInterfaceState, ospfInterfaceState) (string, bool)
+
+const ospfMaxPathsPerDestination = 8
+
+const (
+	ospfRouteTypeIntraArea = "intra-area"
+	ospfRouteTypeInterArea = "inter-area"
+	ospfBackboneArea       = "0"
+)
+
 func (e *Engine) installOSPFRoutes() {
 	states := e.ospfInterfaceStates()
 	advertisements := e.ospfAdvertisements(states)
 	if len(advertisements) == 0 {
 		return
 	}
+	areas := ospfNodeAreas(states)
+	abrs := ospfABRs(areas)
 	for _, src := range e.idx.Topology.Nodes {
 		if !src.OSPF.Enabled {
 			continue
 		}
-		paths := e.ospfCandidatePaths(src.Name, states)
+		anyPaths := e.ospfCandidatePathsAnyArea(src.Name, states)
+		areaPaths := map[string]map[string][]ospfPath{}
+		for area := range areas[src.Name] {
+			areaPaths[area] = e.ospfCandidatePaths(src.Name, area, states)
+		}
 		for _, adv := range advertisements {
 			if adv.Node == src.Name {
 				if adv.External || adv.DefaultArea != "" {
@@ -82,46 +99,64 @@ func (e *Engine) installOSPFRoutes() {
 				e.installLocalOSPFRoute(src, adv, states[src.Name])
 				continue
 			}
-			for _, path := range paths[adv.Node] {
-				if len(path.Nodes) < 2 {
-					continue
+			if adv.External || adv.DefaultArea != "" {
+				for _, path := range anyPaths[adv.Node] {
+					if !ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+						continue
+					}
+					e.installRemoteOSPFRoute(src.Name, adv, path, "")
 				}
-				if !ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
-					continue
+				continue
+			}
+			for _, path := range areaPaths[adv.Area][adv.Node] {
+				if ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeIntraArea)
 				}
-				metric := path.Cost + adv.Cost
-				nextHop := path.Nodes[1]
-				nextHopAddr := ""
-				if addr, ok := e.idx.PeerAddress(src.Name, nextHop); ok {
-					nextHopAddr = addr.String()
+			}
+			for _, path := range e.ospfInterAreaPaths(src.Name, adv, states, areas, abrs) {
+				if ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeInterArea)
 				}
-				cond := path.Cond
-				if cond == nil {
-					cond = failure.And(pathCondition(path)...)
-				}
-				route := model.ConfiguredRoute{
-					Node:            src.Name,
-					NetworkInstance: model.NetworkInstanceDefault,
-					AFI:             model.AFIIPv4,
-					Prefix:          adv.Prefix,
-					Kind:            model.RouteSourceOSPF,
-					AdminDistance:   110,
-					Metric:          metric,
-				}
-				entry := RIBEntry{
-					NLRI:              RouteNLRI{Prefix: adv.Prefix},
-					Attrs:             BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-					Provenance:        RouteProvenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
-					ForwardingNextHop: RouteNextHop{Node: nextHop, Addr: nextHopAddr},
-					SourceKind:        model.RouteSourceOSPF,
-					RouteSource:       route,
-					BaseCond:          cond,
-					Condition:         cond,
-				}.Normalize()
-				e.addRIB(src.Name, adv.Prefix, entry)
 			}
 		}
 	}
+}
+
+func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path ospfPath, routeType string) {
+	if len(path.Nodes) < 2 {
+		return
+	}
+	metric := path.Cost + adv.Cost
+	nextHop := path.Nodes[1]
+	nextHopAddr := ""
+	if addr, ok := e.idx.PeerAddress(src, nextHop); ok {
+		nextHopAddr = addr.String()
+	}
+	cond := path.Cond
+	if cond == nil {
+		cond = failure.And(pathCondition(path)...)
+	}
+	route := model.ConfiguredRoute{
+		Node:            src,
+		NetworkInstance: model.NetworkInstanceDefault,
+		AFI:             model.AFIIPv4,
+		Prefix:          adv.Prefix,
+		Kind:            model.RouteSourceOSPF,
+		AdminDistance:   110,
+		Metric:          metric,
+		OSPFRouteType:   routeType,
+	}
+	entry := RIBEntry{
+		NLRI:              RouteNLRI{Prefix: adv.Prefix},
+		Attrs:             BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
+		Provenance:        RouteProvenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
+		ForwardingNextHop: RouteNextHop{Node: nextHop, Addr: nextHopAddr},
+		SourceKind:        model.RouteSourceOSPF,
+		RouteSource:       route,
+		BaseCond:          cond,
+		Condition:         cond,
+	}.Normalize()
+	e.addRIB(src, adv.Prefix, entry)
 }
 
 func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, states map[string]ospfInterfaceState) {
@@ -133,6 +168,7 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, s
 		Kind:            model.RouteSourceOSPF,
 		AdminDistance:   110,
 		Metric:          adv.Cost,
+		OSPFRouteType:   ospfRouteTypeIntraArea,
 		Interface:       ospfInterfaceForPrefix(states, adv.Prefix),
 	}
 	cond := failure.NodeVar(node.Name)
@@ -182,13 +218,12 @@ func (e *Engine) ospfInterfaceStates() map[string]map[string]ospfInterfaceState 
 }
 
 func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) (ospfInterfaceState, bool) {
-	var state ospfInterfaceState
-	state = ospfInterfaceState{Node: node.Name, Name: iface.Name, Prefix: pfx.Masked(), Cost: 1}
+	state := ospfInterfaceState{Node: node.Name, Name: iface.Name, Prefix: pfx.Masked(), Cost: 1}
 	for _, configured := range node.OSPF.Interfaces {
 		if !model.EquivalentInterfaceName(node.Kind, configured.Name, iface.Name) {
 			continue
 		}
-		state.Area = configured.Area
+		state.Area = normalizeOSPFArea(configured.Area)
 		if configured.Cost > 0 {
 			state.Cost = configured.Cost
 		}
@@ -197,7 +232,7 @@ func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) 
 	if state.Area == "" {
 		for _, network := range node.OSPF.Networks {
 			if network.Prefix.Contains(pfx.Addr()) {
-				state.Area = network.Area
+				state.Area = normalizeOSPFArea(network.Area)
 				break
 			}
 		}
@@ -216,6 +251,14 @@ func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) 
 	return state, true
 }
 
+func normalizeOSPFArea(area string) string {
+	area = strings.TrimSpace(area)
+	if area == "0.0.0.0" {
+		return ospfBackboneArea
+	}
+	return area
+}
+
 func isOSPFLoopbackInterface(name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	return name == "lo" || strings.HasPrefix(name, "lo") || strings.HasPrefix(name, "loopback")
@@ -232,7 +275,7 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 				continue
 			}
 			seen[key] = true
-			out = append(out, ospfAdvertisement{Node: node, Prefix: prefix, Cost: state.Cost})
+			out = append(out, ospfAdvertisement{Node: node, Prefix: prefix, Cost: state.Cost, Area: state.Area})
 		}
 	}
 	for _, node := range e.idx.Topology.Nodes {
@@ -383,10 +426,54 @@ func ospfAreaForPathArea(topo *model.Topology, path ospfPath, areaID string) mod
 	return model.OSPFArea{ID: areaID, Kind: model.OSPFAreaNormal}
 }
 
-func (e *Engine) ospfCandidatePaths(src string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
+func ospfNodeAreas(states map[string]map[string]ospfInterfaceState) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for node, byIface := range states {
+		for _, state := range byIface {
+			if state.Area == "" {
+				continue
+			}
+			if out[node] == nil {
+				out[node] = map[string]bool{}
+			}
+			out[node][state.Area] = true
+		}
+	}
+	return out
+}
+
+func ospfABRs(areas map[string]map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for node, nodeAreas := range areas {
+		if len(nodeAreas) > 1 && nodeAreas[ospfBackboneArea] {
+			out[node] = true
+		}
+	}
+	return out
+}
+
+func (e *Engine) ospfCandidatePaths(src, area string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != area || toState.Area != area {
+			return "", false
+		}
+		return area, true
+	})
+}
+
+func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != toState.Area {
+			return "", false
+		}
+		return fromState.Area, true
+	})
+}
+
+func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string][]ospfPath {
 	out := map[string][]ospfPath{}
-	for _, firstHop := range e.ospfAdjacencies(src, states) {
-		spf := e.ospfShortestPathTree(firstHop.To, src, states)
+	for _, firstHop := range e.ospfAdjacencies(src, states, allowed) {
+		spf := e.ospfShortestPathTree(firstHop.To, src, states, allowed)
 		condMemo := map[string]failure.Cond{}
 		for dst, state := range spf {
 			if dst == firstHop.To {
@@ -418,38 +505,133 @@ func (e *Engine) ospfCandidatePaths(src string, states map[string]map[string]osp
 		}
 	}
 	for node, paths := range out {
-		sort.Slice(paths, func(i, j int) bool {
-			if paths[i].Cost != paths[j].Cost {
-				return paths[i].Cost < paths[j].Cost
-			}
-			return strings.Join(paths[i].Nodes, ",") < strings.Join(paths[j].Nodes, ",")
-		})
+		sortOSPFPaths(paths)
 		out[node] = paths
 	}
 	return out
 }
 
-func ospfAdjacencyArea(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState) string {
-	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
-	if !ok {
-		return ""
+func (e *Engine) ospfInterAreaPaths(src string, adv ospfAdvertisement, states map[string]map[string]ospfInterfaceState, areas map[string]map[string]bool, abrs map[string]bool) []ospfPath {
+	if areas[src][adv.Area] {
+		return nil
 	}
-	toRef, ok := idx.InterfaceOnLink(to, link.Name)
-	if !ok {
-		return ""
+	srcAreas := sortedAreaKeys(areas[src])
+	var out []ospfPath
+	for _, srcArea := range srcAreas {
+		srcPaths := e.ospfCandidatePaths(src, srcArea, states)
+		backbonePathsBySrcABR := map[string]map[string][]ospfPath{}
+		for _, srcABR := range ospfAreaBoundaries(src, srcArea, areas, abrs) {
+			toSrcABR := ospfZeroPath(src, srcABR, srcPaths)
+			if len(toSrcABR.Nodes) == 0 {
+				continue
+			}
+			if _, ok := backbonePathsBySrcABR[srcABR]; !ok {
+				backbonePathsBySrcABR[srcABR] = e.ospfCandidatePaths(srcABR, ospfBackboneArea, states)
+			}
+			for _, dstABR := range ospfAreaBoundaries(adv.Node, adv.Area, areas, abrs) {
+				toDstABR := ospfZeroPath(srcABR, dstABR, backbonePathsBySrcABR[srcABR])
+				if len(toDstABR.Nodes) == 0 {
+					continue
+				}
+				dstPaths := e.ospfCandidatePaths(dstABR, adv.Area, states)
+				toAdv := ospfZeroPath(dstABR, adv.Node, dstPaths)
+				if len(toAdv.Nodes) == 0 {
+					continue
+				}
+				combined, ok := concatOSPFPaths(toSrcABR, toDstABR, toAdv)
+				if ok {
+					out = append(out, combined)
+				}
+			}
+		}
 	}
-	fromState, ok := states[from][fromRef.ConfigName]
-	if !ok {
-		return ""
+	sortOSPFPaths(out)
+	if len(out) > ospfMaxPathsPerDestination {
+		out = out[:ospfMaxPathsPerDestination]
 	}
-	toState, ok := states[to][toRef.ConfigName]
-	if !ok || fromState.Area != toState.Area {
-		return ""
-	}
-	return fromState.Area
+	return out
 }
 
-func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState) map[string]ospfSPFNode {
+func ospfAreaBoundaries(node, area string, areas map[string]map[string]bool, abrs map[string]bool) []string {
+	if area == ospfBackboneArea {
+		if areas[node][ospfBackboneArea] {
+			return []string{node}
+		}
+	}
+	var out []string
+	for n := range abrs {
+		if areas[n][area] {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func ospfZeroPath(src, dst string, paths map[string][]ospfPath) ospfPath {
+	if src == dst {
+		return ospfPath{Nodes: []string{src}}
+	}
+	if len(paths[dst]) == 0 {
+		return ospfPath{}
+	}
+	return paths[dst][0]
+}
+
+func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
+	var out ospfPath
+	seen := map[string]bool{}
+	var conds []failure.Cond
+	for i, part := range parts {
+		if len(part.Nodes) == 0 {
+			return ospfPath{}, false
+		}
+		out.Cost += part.Cost
+		if part.Cond != nil {
+			conds = append(conds, part.Cond)
+		}
+		if i == 0 {
+			out.Nodes = append(out.Nodes, part.Nodes...)
+		} else {
+			if out.Nodes[len(out.Nodes)-1] != part.Nodes[0] {
+				return ospfPath{}, false
+			}
+			out.Nodes = append(out.Nodes, part.Nodes[1:]...)
+		}
+		out.Links = append(out.Links, part.Links...)
+		out.Areas = append(out.Areas, part.Areas...)
+	}
+	for _, node := range out.Nodes {
+		if seen[node] {
+			return ospfPath{}, false
+		}
+		seen[node] = true
+	}
+	if len(conds) > 0 {
+		out.Cond = failure.And(conds...)
+	}
+	return out, true
+}
+
+func sortedAreaKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for area := range m {
+		out = append(out, area)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortOSPFPaths(paths []ospfPath) {
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].Cost != paths[j].Cost {
+			return paths[i].Cost < paths[j].Cost
+		}
+		return strings.Join(paths[i].Nodes, ",") < strings.Join(paths[j].Nodes, ",")
+	})
+}
+
+func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string]ospfSPFNode {
 	dist := map[string]ospfSPFNode{}
 	for _, node := range e.idx.Topology.Nodes {
 		if !node.OSPF.Enabled || node.Name == excluded {
@@ -469,7 +651,7 @@ func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]ma
 		if item.Cost != current.Cost {
 			continue
 		}
-		for _, adj := range e.ospfAdjacencies(item.Node, states) {
+		for _, adj := range e.ospfAdjacencies(item.Node, states, allowed) {
 			if adj.To == excluded {
 				continue
 			}
@@ -500,15 +682,15 @@ func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]ma
 	return dist
 }
 
-func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfInterfaceState) []ospfAdjacency {
+func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) []ospfAdjacency {
 	var out []ospfAdjacency
 	for _, edge := range e.idx.Adj[model.NodeID(from)] {
 		to := string(edge.To)
-		cost, ok := ospfAdjacencyCost(e.idx, from, to, edge.Link, states)
+		cost, area, ok := ospfAdjacencyCost(e.idx, from, to, edge.Link, states, allowed)
 		if !ok {
 			continue
 		}
-		out = append(out, ospfAdjacency{From: from, To: to, Link: edge.Link.Name, Area: ospfAdjacencyArea(e.idx, from, to, edge.Link, states), Cost: cost})
+		out = append(out, ospfAdjacency{From: from, To: to, Link: edge.Link.Name, Area: area, Cost: cost})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].To == out[j].To {
@@ -557,27 +739,28 @@ func ospfSPFCondition(src, dst string, spf map[string]ospfSPFNode, memo map[stri
 	return cond
 }
 
-func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState) (int, bool) {
+func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) (int, string, bool) {
 	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
 	if !ok {
-		return 0, false
+		return 0, "", false
 	}
 	toRef, ok := idx.InterfaceOnLink(to, link.Name)
 	if !ok {
-		return 0, false
+		return 0, "", false
 	}
 	fromState, ok := states[from][fromRef.ConfigName]
 	if !ok || fromState.Passive {
-		return 0, false
+		return 0, "", false
 	}
 	toState, ok := states[to][toRef.ConfigName]
 	if !ok || toState.Passive {
-		return 0, false
+		return 0, "", false
 	}
-	if fromState.Area != toState.Area {
-		return 0, false
+	area, ok := allowed(fromState, toState)
+	if !ok {
+		return 0, "", false
 	}
-	return fromState.Cost, true
+	return fromState.Cost, area, true
 }
 
 func pathCondition(path ospfPath) []failure.Cond {
