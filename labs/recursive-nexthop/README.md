@@ -10,6 +10,6 @@ Examples:
 ```bash
 go run ./cmd/hoyan model rib --lab labs/recursive-nexthop --node core-bj
 go run ./cmd/hoyan model fib --lab labs/recursive-nexthop --node core-bj
-go run ./cmd/hoyan fib-compare --lab labs/recursive-nexthop
-go run ./cmd/hoyan live-check --lab labs/recursive-nexthop --snapshot labs/recursive-nexthop/snapshots/latest.json --offline
+go run ./cmd/hoyan compare fib --lab labs/recursive-nexthop
+go run ./cmd/hoyan live check --lab labs/recursive-nexthop --snapshot labs/recursive-nexthop/snapshots/latest.json --offline
 ```

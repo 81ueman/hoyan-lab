@@ -64,16 +64,16 @@ Without `--lab`, commands use `labs/base-wan`.
 ```bash
 go run ./cmd/hoyan labs list
 go run ./cmd/hoyan labs describe base-wan
-go run ./cmd/hoyan labs live-check
-go run ./cmd/hoyan labs live-check base-wan recursive-nexthop
+go run ./cmd/hoyan labs check
+go run ./cmd/hoyan labs check base-wan recursive-nexthop
 go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
-go run ./cmd/hoyan live-check --lab labs/base-wan
-go run ./cmd/hoyan rib-compare --lab labs/recursive-nexthop
-go run ./cmd/hoyan fib-compare --lab labs/recursive-nexthop
+go run ./cmd/hoyan live check --lab labs/base-wan
+go run ./cmd/hoyan compare rib --lab labs/recursive-nexthop
+go run ./cmd/hoyan compare fib --lab labs/recursive-nexthop
 go run ./cmd/hoyan model packet-classes --lab labs/acl-semantics --prefix 10.4.0.0/16
 ```
 
-## Verify
+## Intent Verify
 
 ```bash
 go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
@@ -84,8 +84,8 @@ the verification source of truth and unsupported parser syntax should fail the
 run instead of being reported as warnings:
 
 ```bash
-go run ./cmd/hoyan live-check --strict-config
-go run ./cmd/hoyan rib-compare --strict-config
+go run ./cmd/hoyan live check --strict-config
+go run ./cmd/hoyan compare rib --strict-config
 go run ./cmd/hoyan model rib --strict-config
 ```
 
@@ -106,7 +106,7 @@ failure scenario breaks an expected reachable flow.
 
 Data-plane policies are parsed from the device startup configs.
 Linux/FRR data-plane ACLs are stored as nftables rulesets under
-`configs/frr/<node>/nftables.conf`; `hoyan-live-check` builds the local
+`configs/frr/<node>/nftables.conf`; `hoyan live check` builds the local
 `hoyan-frr-nftables:10.6.1` image and applies those rulesets after deploy.
 The parser normalizes device ACLs into `model.ACL` plus `ACLBinding` records
 before data-plane simulation. ACL rules are evaluated in sequence order with
@@ -209,15 +209,15 @@ parser regression fixtures.
 Compare commands can reuse the saved state without connecting to devices:
 
 ```bash
-go run ./cmd/hoyan rib-compare --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
-go run ./cmd/hoyan fib-compare --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
-go run ./cmd/hoyan live-check --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json --offline
+go run ./cmd/hoyan compare rib --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
+go run ./cmd/hoyan compare fib --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
+go run ./cmd/hoyan live check --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json --offline
 ```
 
 By default, snapshot compare warns when the current topology or referenced
 configs no longer match the hashes saved in the snapshot. Use
 `--snapshot-hash-policy fail` to make a mismatch fail, or `ignore` to skip the
-check. `live-check --snapshot` skips RIB/FIB collection; without `--offline` it
+check. `hoyan live check --snapshot` skips RIB/FIB collection; without `--offline` it
 still deploys the lab and runs live packet probes.
 
 ## Inspect Modeled RIB, FIB, and Symbolic Paths
@@ -319,7 +319,7 @@ the selected lab directory. Keep the generated topology in the lab directory
 when you want relative config paths to stay readable:
 
 ```bash
-go run ./cmd/hoyan render-topology --lab base-wan --suffix issue-21 --output labs/base-wan/hoyan.issue-21.clab.yml
+go run ./cmd/hoyan topology render --lab base-wan --suffix issue-21 --output labs/base-wan/hoyan.issue-21.clab.yml
 ```
 
 For `-suffix issue-21`, containers use containerlab's default names such as
@@ -327,8 +327,8 @@ For `-suffix issue-21`, containers use containerlab's default names such as
 commands:
 
 ```bash
-go run ./cmd/hoyan live-check --topology labs/base-wan/hoyan.issue-21.clab.yml
-go run ./cmd/hoyan rib-compare --topology labs/base-wan/hoyan.issue-21.clab.yml
+go run ./cmd/hoyan live check --topology labs/base-wan/hoyan.issue-21.clab.yml
+go run ./cmd/hoyan compare rib --topology labs/base-wan/hoyan.issue-21.clab.yml
 ```
 
 To run the full live integration check, including deploy, BGP convergence wait,
@@ -336,7 +336,7 @@ modeled-vs-live RIB comparison for BGP, connected, and static route sources,
 and cleanup:
 
 ```bash
-go run ./cmd/hoyan live-check
+go run ./cmd/hoyan live check
 ```
 
 By default, the command polls live BGP RIB state up to five times with a 25s
@@ -346,10 +346,10 @@ or attributes do not match, it prints modeled-vs-live diffs instead of waiting
 for the full timeout:
 
 ```bash
-go run ./cmd/hoyan live-check --max-polls 5 --poll-interval 25s
+go run ./cmd/hoyan live check --max-polls 5 --poll-interval 25s
 ```
 
-After BGP converges, `live-check` collects the first-class RIB route-table
+After BGP converges, `hoyan live check` collects the first-class RIB route-table
 view for non-BGP sources and compares modeled BGP, connected, and static routes.
 The output includes a source summary such as `bgp=10, connected=4, static=2`.
 BGP RIB comparison is exact on prefixes, paths, best flag, valid flag,
@@ -358,30 +358,30 @@ next-hop, AS path, origin, local-pref, and MED.
 For debugging, keep the lab running if the comparison fails:
 
 ```bash
-go run ./cmd/hoyan live-check --keep-on-failure
+go run ./cmd/hoyan live check --keep-on-failure
 ```
 
 To keep the lab running even on success:
 
 ```bash
-go run ./cmd/hoyan live-check --skip-destroy
+go run ./cmd/hoyan live check --skip-destroy
 ```
 
 If the lab is already deployed, compare the modeled RIB with live nodes
 directly. This compares BGP, connected, and static route sources:
 
 ```bash
-go run ./cmd/hoyan rib-compare
+go run ./cmd/hoyan compare rib
 ```
 
 To compare the no-failure modeled FIB with live installed Linux kernel routes,
 run:
 
 ```bash
-go run ./cmd/hoyan fib-compare
+go run ./cmd/hoyan compare fib
 ```
 
-`fib-compare` normalizes modeled BGP, next-hop static, Null0/blackhole, and
+`hoyan compare fib` normalizes modeled BGP, next-hop static, Null0/blackhole, and
 comparable connected FIB entries with live installed FIB entries by node, VRF,
 AFI, source protocol, prefix, and next-hop set. FRR `Null0`, cEOS
 `Null0`/discard, and SR Linux blackhole/discard routes are canonicalized as
@@ -404,7 +404,7 @@ mapped to a topology link, the route is reported as
 `topology_interface_missing`. By default these unresolved live routes are
 warnings and are excluded from the strict set comparison, because they are live
 installed routes whose forwarding cannot be verified against the topology. Use
-`go run ./cmd/hoyan fib-compare --unresolved-policy fail` to make them fail the
+`go run ./cmd/hoyan compare fib --unresolved-policy fail` to make them fail the
 run, or `--unresolved-policy ignore` to keep the exclusion silent. It reports
 missing routes, unexpected routes, missing next-hops, and unexpected next-hops,
 including ECMP group differences. Live collectors currently use:
@@ -416,14 +416,14 @@ docker exec -i <srlinux-node> sr_cli --output-format json --pagination off -- sh
 docker exec -i <srlinux-node> sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast prefix <prefix> detail
 ```
 
-`live-check` runs the same comparison after BGP RIB convergence by default:
+`hoyan live check` runs the same comparison after BGP RIB convergence by default:
 
 ```bash
-go run ./cmd/hoyan live-check
+go run ./cmd/hoyan live check
 ```
 
 Use `--no-check-fib` to skip the installed FIB comparison for a quick
-control-plane/dataplane-only run. `live-check` uses the same unresolved-route
+control-plane/dataplane-only run. `hoyan live check` uses the same unresolved-route
 policy with `--fib-unresolved-policy warn|fail|ignore`; the default is `warn`.
 
 Limitations: the modeled side uses the no-failure installed FIB only, Linux

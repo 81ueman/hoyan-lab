@@ -6,9 +6,9 @@ nos:
   - srlinux
 checks:
   - verify
-  - live-check
-  - rib-compare
-  - fib-compare
+  - live check
+  - compare rib
+  - compare fib
 features:
   - ospf
   - route-reachability
