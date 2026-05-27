@@ -26,8 +26,10 @@ type ospfAdvertisement struct {
 	Cost         int
 	Area         string
 	External     bool
+	MetricType   int
 	ExternalArea string
 	DefaultArea  string
+	Source       RIBEntry
 }
 
 type ospfPath struct {
@@ -71,6 +73,8 @@ const ospfMaxPathsPerDestination = 8
 const (
 	ospfRouteTypeIntraArea = "intra-area"
 	ospfRouteTypeInterArea = "inter-area"
+	ospfRouteTypeExternal1 = "external-type-1"
+	ospfRouteTypeExternal2 = "external-type-2"
 	ospfBackboneArea       = "0"
 )
 
@@ -127,6 +131,14 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 		return
 	}
 	metric := path.Cost + adv.Cost
+	if adv.External {
+		routeType = ospfRouteTypeExternal2
+		if adv.MetricType == 1 {
+			routeType = ospfRouteTypeExternal1
+		} else {
+			metric = adv.Cost
+		}
+	}
 	nextHop := path.Nodes[1]
 	nextHopAddr := ""
 	if addr, ok := e.idx.PeerAddress(src, nextHop); ok {
@@ -135,6 +147,9 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 	cond := path.Cond
 	if cond == nil {
 		cond = failure.And(pathCondition(path)...)
+	}
+	if adv.Source.Condition != nil {
+		cond = failure.And(cond, adv.Source.Condition)
 	}
 	route := model.ConfiguredRoute{
 		Node:            src,
@@ -282,9 +297,17 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 		if !node.OSPF.Enabled {
 			continue
 		}
-		for _, route := range ospfRedistributedRoutes(node, e.connectedRoutes(node)) {
+		for _, route := range e.ospfRedistributedRoutes(node) {
 			area := ospfExternalArea(node, states[node.Name])
-			out = append(out, ospfAdvertisement{Node: node.Name, Prefix: route.Prefix, Cost: route.Metric, External: true, ExternalArea: area})
+			out = append(out, ospfAdvertisement{
+				Node:         node.Name,
+				Prefix:       route.RouteSource.Prefix,
+				Cost:         route.RouteSource.Metric,
+				External:     true,
+				MetricType:   route.RouteSource.MetricType,
+				ExternalArea: area,
+				Source:       route,
+			})
 		}
 		for _, area := range node.OSPF.Areas {
 			if area.Kind == model.OSPFAreaStub && !ospfNodeAttachedToOtherArea(states[node.Name], area.ID) {
@@ -308,36 +331,96 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 	return out
 }
 
-func ospfRedistributedRoutes(node model.Node, connected []model.ConfiguredRoute) []model.ConfiguredRoute {
-	enabled := map[model.RouteSourceKind]bool{}
+func (e *Engine) ospfRedistributedRoutes(node model.Node) []RIBEntry {
+	var out []RIBEntry
 	for _, redist := range node.OSPF.Redistribute {
-		enabled[redist.Kind] = true
-	}
-	if len(enabled) == 0 {
-		return nil
-	}
-	var out []model.ConfiguredRoute
-	if enabled[model.RouteSourceConnected] {
-		for _, route := range connected {
-			if route.ConnectedClass == model.ConnectedRouteClassLink {
+		for _, route := range e.ospfRedistributionCandidates(node, redist.Kind) {
+			route = route.Normalize()
+			if route.SourceKind == model.RouteSourceConnected && route.RouteSource.ConnectedClass == model.ConnectedRouteClassLink {
 				continue
 			}
-			route.Metric = 20
-			out = append(out, route)
-		}
-	}
-	if enabled[model.RouteSourceStatic] {
-		for _, route := range node.Routes {
-			if route.Kind != model.RouteSourceStatic && route.Kind != model.RouteSourceBlackhole {
-				continue
+			if redist.RouteMap != "" {
+				decision := applyRoutePolicy(e.idx, node, "", redist.RouteMap, route)
+				if !decision.Accept {
+					continue
+				}
+				route = decision.Route.Normalize()
 			}
-			if route.Metric == 0 {
-				route.Metric = 20
-			}
-			out = append(out, route)
+			sourceRoute := route.RouteSource
+			sourceRoute.Node = node.Name
+			sourceRoute.Kind = model.RouteSourceOSPF
+			sourceRoute.AdminDistance = 110
+			sourceRoute.MetricType = ospfExternalMetricType(redist.MetricType)
+			sourceRoute.OSPFRouteType = ospfExternalRouteType(sourceRoute.MetricType)
+			sourceRoute.Metric = ospfExternalMetric(redist, route)
+			route.SourceKind = model.RouteSourceOSPF
+			route.RouteSource = sourceRoute
+			out = append(out, route.Normalize())
 		}
 	}
 	return out
+}
+
+func (e *Engine) ospfRedistributionCandidates(node model.Node, kind model.RouteSourceKind) []RIBEntry {
+	var out []RIBEntry
+	switch kind {
+	case model.RouteSourceConnected, model.RouteSourceStatic:
+		for _, route := range e.redistributionCandidates(node, kind) {
+			if route.NetworkInstance != "" && route.NetworkInstance != model.NetworkInstanceDefault {
+				continue
+			}
+			entry := e.bgpRouteFromConfiguredRoute(node, route).Normalize()
+			entry.SourceKind = route.Kind
+			entry.RouteSource = route
+			out = append(out, entry.Normalize())
+		}
+	case model.RouteSourceBGP:
+		byPrefix := e.rib[node.Name][string(model.NetworkInstanceDefault)]
+		for _, routes := range byPrefix {
+			for _, route := range routes {
+				route = route.Normalize()
+				if route.SourceKind != model.RouteSourceBGP && route.SourceKind != model.RouteSourceAggregate {
+					continue
+				}
+				if route.Provenance.OriginNode == node.Name && len(route.Provenance.PathNodes) == 1 {
+					continue
+				}
+				if route.SelectedCond != nil {
+					route.Condition = route.SelectedCond
+				}
+				out = append(out, route)
+			}
+		}
+	}
+	return out
+}
+
+func ospfExternalMetric(redist model.OSPFRedistribution, route RIBEntry) int {
+	route = route.Normalize()
+	if redist.Metric > 0 {
+		return redist.Metric
+	}
+	if route.MED > 0 {
+		return route.MED
+	}
+	if route.RouteSource.Metric > 0 {
+		return route.RouteSource.Metric
+	}
+	return 20
+}
+
+func ospfExternalRouteType(metricType int) string {
+	if ospfExternalMetricType(metricType) == 1 {
+		return ospfRouteTypeExternal1
+	}
+	return ospfRouteTypeExternal2
+}
+
+func ospfExternalMetricType(metricType int) int {
+	if metricType == 1 {
+		return 1
+	}
+	return 2
 }
 
 func ospfExternalArea(node model.Node, states map[string]ospfInterfaceState) string {

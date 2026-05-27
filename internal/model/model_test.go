@@ -286,7 +286,8 @@ func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
  area 1 stub
  area 2 nssa default-information-originate
  redistribute connected
- redistribute static
+ redistribute static metric 44 metric-type 1 route-map STATIC-TO-OSPF
+ redistribute bgp metric-type 2 metric 12
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -300,8 +301,16 @@ func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 	if area := cfg.OSPF.Areas["2"]; area.Kind != OSPFAreaNSSA || !area.DefaultInformationOriginate {
 		t.Fatalf("area 2 = %#v, want NSSA default-information-originate", area)
 	}
-	if len(cfg.OSPF.Redistribute) != 2 || cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected || cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic {
-		t.Fatalf("redistribute = %#v, want connected and static", cfg.OSPF.Redistribute)
+	if len(cfg.OSPF.Redistribute) != 3 ||
+		cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected ||
+		cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic ||
+		cfg.OSPF.Redistribute[1].Metric != 44 ||
+		cfg.OSPF.Redistribute[1].MetricType != 1 ||
+		cfg.OSPF.Redistribute[1].RouteMap != "STATIC-TO-OSPF" ||
+		cfg.OSPF.Redistribute[2].Kind != RouteSourceBGP ||
+		cfg.OSPF.Redistribute[2].Metric != 12 ||
+		cfg.OSPF.Redistribute[2].MetricType != 2 {
+		t.Fatalf("redistribute = %#v, want connected, static options, and bgp", cfg.OSPF.Redistribute)
 	}
 }
 

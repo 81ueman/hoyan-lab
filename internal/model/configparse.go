@@ -776,17 +776,51 @@ func parseFRRLikeOSPFArea(kind DeviceKind, path string, lineNo int, raw string, 
 }
 
 func parseFRRLikeOSPFRedistribution(kind DeviceKind, path string, lineNo int, raw string, fields []string) (OSPFRedistribution, error) {
-	if len(fields) != 2 {
+	if len(fields) < 2 {
 		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
 	}
-	redist := OSPFRedistribution{Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
+	redist := OSPFRedistribution{MetricType: 2, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[1] {
 	case "connected":
 		redist.Kind = RouteSourceConnected
 	case "static":
 		redist.Kind = RouteSourceStatic
+	case "bgp":
+		redist.Kind = RouteSourceBGP
 	default:
 		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute source %q", routeMapVendorName(kind), fields[1])
+	}
+	for i := 2; i < len(fields); {
+		switch fields[i] {
+		case "route-map":
+			if i+1 >= len(fields) {
+				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
+			}
+			redist.RouteMap = fields[i+1]
+			i += 2
+		case "metric":
+			if i+1 >= len(fields) {
+				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
+			}
+			metric, err := strconv.Atoi(fields[i+1])
+			if err != nil || metric < 0 {
+				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
+			}
+			redist.Metric = metric
+			i += 2
+		case "metric-type":
+			if i+1 >= len(fields) {
+				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
+			}
+			metricType, err := strconv.Atoi(fields[i+1])
+			if err != nil || (metricType != 1 && metricType != 2) {
+				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
+			}
+			redist.MetricType = metricType
+			i += 2
+		default:
+			return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute option %q", routeMapVendorName(kind), fields[i])
+		}
 	}
 	return redist, nil
 }

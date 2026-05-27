@@ -127,6 +127,103 @@ func TestOSPFNSSAAllowsLocalExternalAndBlocksNormalExternal(t *testing.T) {
 	}
 }
 
+func TestOSPFRedistributesConnectedWithRouteMapAndType1Metric(t *testing.T) {
+	r1 := ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil)
+	r1.Interfaces = append(r1.Interfaces, model.Interface{Name: "svc0", Address: "198.18.1.1/24"})
+	r1.OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceConnected, RouteMap: "CONN-TO-OSPF", MetricType: 1}}
+	r1.PrefixLists = []model.PrefixList{{
+		Name: "ONLY-SVC",
+		Rules: []model.PrefixListRule{{
+			Seq: 10, Action: "permit", Prefix: "198.18.1.0/24", Match: model.ExactPrefixSet{Prefix: model.MustPrefix("198.18.1.0/24")},
+		}},
+	}}
+	r1.RoutePolicies = []model.RoutePolicy{{
+		Name: "CONN-TO-OSPF",
+		Rules: []model.RoutePolicyRule{{
+			Seq: 10, Action: "permit", MatchPrefixList: "ONLY-SVC", SetMED: testIntPtr(7),
+		}},
+	}}
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			r1,
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "198.18.1.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal1 || route.RouteSource.Metric != 8 || route.NextHop != "r1" {
+		t.Fatalf("redistributed connected route = %#v, want E1 metric 8 via r1", route)
+	}
+	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != ospfRouteTypeIntraArea {
+		t.Fatalf("r1 loopback route = %#v, want normal intra-area route unaffected by route-map", routes)
+	}
+}
+
+func TestOSPFRedistributesStaticType2MetricWithoutPathCost(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
+	}
+	topo.Nodes[0].Routes = []model.ConfiguredRoute{{Prefix: model.MustPrefix("203.0.113.0/24"), Kind: model.RouteSourceStatic, NextHop: "192.0.2.254"}}
+	topo.Nodes[0].OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceStatic, Metric: 33, MetricType: 2}}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "203.0.113.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal2 || route.RouteSource.Metric != 33 {
+		t.Fatalf("redistributed static route = %#v, want E2 metric 33", route)
+	}
+}
+
+func TestOSPFRedistributesLearnedBGPRoute(t *testing.T) {
+	r1 := ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth2": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth2": "0"}, nil)
+	r1.ASN = 65001
+	r1.Interfaces = append(r1.Interfaces, model.Interface{Name: "eth1", Address: "192.0.2.1/31"})
+	r1.Neighbors = []model.BGPNeighbor{{Address: "192.0.2.0", RemoteAS: 65000, Activated: true, PeerNode: "r0"}}
+	r1.OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceBGP, Metric: 12, MetricType: 2}}
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			{
+				Name:       "r0",
+				Kind:       model.KindFRR,
+				ASN:        65000,
+				Prefixes:   model.MustPrefixes("172.16.0.0/24"),
+				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.0/31"}},
+				Neighbors:  []model.BGPNeighbor{{Address: "192.0.2.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+			r1,
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{
+			{Name: "r0-r1", A: "r0", AIntf: "eth1", B: "r1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"},
+			{Name: "r1-r2", A: "r1", AIntf: "eth2", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+		},
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "172.16.0.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal2 || route.RouteSource.Metric != 12 || route.Provenance.OriginNode != "r1" {
+		t.Fatalf("redistributed BGP route = %#v, want OSPF E2 from r1 metric 12", route)
+	}
+}
+
+func bestOSPFTestRoute(t *testing.T, rib map[string]map[string][]RIBEntry, node, prefix string) RIBEntry {
+	t.Helper()
+	routes := rib[node][prefix]
+	if len(routes) == 0 {
+		t.Fatalf("%s route to %s missing", node, prefix)
+	}
+	return routes[0].Normalize()
+}
+
+func testIntPtr(v int) *int {
+	return &v
+}
+
 func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[string][]RIBEntry {
 	t.Helper()
 	idx, err := model.BuildTopologyIndex(topo)
