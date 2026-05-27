@@ -32,19 +32,23 @@ func TestRIBEntryNormalizeSeparatesRouteModelFields(t *testing.T) {
 
 func TestInterfaceMatchesAliases(t *testing.T) {
 	for _, tt := range []struct {
+		kind   model.DeviceKind
 		policy string
 		packet string
 	}{
-		{policy: "eth5", packet: "Ethernet5"},
-		{policy: "Ethernet5", packet: "eth5"},
-		{policy: "ethernet-1/4.0", packet: "e1-4"},
-		{policy: "e1-4", packet: "ethernet-1/4.0"},
+		{kind: model.KindCEOS, policy: "eth5", packet: "Ethernet5"},
+		{kind: model.KindCEOS, policy: "Ethernet5", packet: "eth5"},
+		{kind: model.KindSRLinux, policy: "ethernet-1/4.0", packet: "e1-4"},
+		{kind: model.KindSRLinux, policy: "e1-4", packet: "ethernet-1/4.0"},
 	} {
-		if !interfaceMatches(tt.policy, tt.packet) {
-			t.Fatalf("interfaceMatches(%q, %q) = false, want true", tt.policy, tt.packet)
+		if !interfaceMatches(tt.kind, tt.policy, tt.packet) {
+			t.Fatalf("interfaceMatches(%s, %q, %q) = false, want true", tt.kind, tt.policy, tt.packet)
 		}
 	}
-	if interfaceMatches("eth1", "eth2") {
+	if interfaceMatches(model.KindFRR, "eth1", "Ethernet1") {
+		t.Fatalf("interfaceMatches(FRR, eth1, Ethernet1) = true, want false")
+	}
+	if interfaceMatches(model.KindFRR, "eth1", "eth2") {
 		t.Fatalf("interfaceMatches(eth1, eth2) = true, want false")
 	}
 }

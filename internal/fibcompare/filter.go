@@ -1,10 +1,6 @@
 package fibcompare
 
-import (
-	"strings"
-
-	"github.com/81ueman/hoyan-lab/internal/model"
-)
+import "github.com/81ueman/hoyan-lab/internal/model"
 
 func ComparableRoutes(topo *model.Topology, routes []NormalizedFIBRoute, opts Options) []NormalizedFIBRoute {
 	return AnalyzeComparableRoutes(topo, routes, opts).Routes
@@ -85,14 +81,7 @@ func normalizeRouteNextHops(idx *model.TopologyIndex, route NormalizedFIBRoute) 
 	}
 	out := make([]NormalizedFIBNextHop, 0, len(route.NextHops))
 	for _, hop := range route.NextHops {
-		for _, alias := range model.InterfaceAliases(node.Kind, hop.Interface) {
-			if strings.HasSuffix(alias, ".0") {
-				hop.Interface = strings.TrimSuffix(alias, ".0")
-				break
-			}
-			hop.Interface = alias
-			break
-		}
+		hop.Interface = model.ProfileFor(node.Kind).InterfaceProfile().CanonicalInterfaceName(hop.Interface)
 		if canonicalProtocol(route.Protocol) == "connected" {
 			hop.Address = ""
 		}
@@ -196,7 +185,7 @@ func peerForNextHopInterface(idx *model.TopologyIndex, node, iface string) (stri
 		if link.B == node {
 			localIface = link.BIntf
 		}
-		if model.EquivalentInterfaceName(n.Kind, localIface, iface) {
+		if model.ProfileFor(n.Kind).InterfaceProfile().EquivalentInterfaceName(localIface, iface) {
 			return string(edge.To), true
 		}
 	}

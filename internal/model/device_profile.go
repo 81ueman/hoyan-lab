@@ -17,6 +17,7 @@ type DeviceProfile interface {
 
 type InterfaceProfile interface {
 	InterfaceAliases(name string) []string
+	CanonicalInterfaceName(name string) string
 	EquivalentInterfaceName(a, b string) bool
 	IsManagementInterface(interfaces []Interface, name string) bool
 	IsLoopbackInterface(name string) bool
@@ -124,6 +125,26 @@ func (p interfaceProfile) EquivalentInterfaceName(a, b string) bool {
 		}
 	}
 	return false
+}
+
+func (p interfaceProfile) CanonicalInterfaceName(name string) string {
+	if base, ok := strings.CutSuffix(name, ".0"); ok {
+		name = base
+	}
+	switch p.kind {
+	case KindCEOS:
+		if strings.HasPrefix(name, "eth") {
+			return "Ethernet" + strings.TrimPrefix(name, "eth")
+		}
+	case KindSRLinux:
+		switch {
+		case strings.HasPrefix(name, "e1-"):
+			return "ethernet-1/" + strings.TrimPrefix(name, "e1-")
+		default:
+			return name
+		}
+	}
+	return name
 }
 
 func (p interfaceProfile) IsManagementInterface(interfaces []Interface, name string) bool {
@@ -314,15 +335,6 @@ func RegisteredDeviceKinds() []DeviceKind {
 		return out[i] < out[j]
 	})
 	return out
-}
-
-func AnyEquivalentInterfaceName(a, b string) bool {
-	for _, kind := range RegisteredDeviceKinds() {
-		if ProfileFor(kind).InterfaceProfile().EquivalentInterfaceName(a, b) {
-			return true
-		}
-	}
-	return false
 }
 
 func isKnownManagementInterface(name string) bool {

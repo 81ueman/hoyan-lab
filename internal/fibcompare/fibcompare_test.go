@@ -56,6 +56,25 @@ func TestParseLinuxIPRouteCanonicalizesConnectedProtocol(t *testing.T) {
 	}
 }
 
+func TestComparableRoutesCanonicalizesNextHopInterfaceByDeviceProfile(t *testing.T) {
+	topo := &model.Topology{Nodes: []model.Node{{Name: "srl1", Kind: model.KindSRLinux}}}
+	routes := ComparableRoutes(topo, []NormalizedFIBRoute{{
+		Node:      "srl1",
+		VRF:       "default",
+		AFI:       "ipv4",
+		Prefix:    "203.0.113.0/24",
+		Protocol:  "static",
+		NextHops:  []NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "e1-4"}},
+		Installed: true,
+	}}, Options{})
+	if len(routes) != 1 || len(routes[0].NextHops) != 1 {
+		t.Fatalf("routes = %#v", routes)
+	}
+	if got := routes[0].NextHops[0].Interface; got != "ethernet-1/4" {
+		t.Fatalf("canonical next-hop interface = %q, want ethernet-1/4", got)
+	}
+}
+
 func TestParseCEOSRoutes(t *testing.T) {
 	data := []byte(`{
 	  "vrfs": {"default": {"routes": {
