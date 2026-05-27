@@ -20,8 +20,7 @@ func (srlinuxDecisionProcess) Equivalent(receiver model.Node, a, b RIBEntry) boo
 
 func (b srlinuxBehavior) ImportRoute(to model.Node, from model.Node, session model.BGPNeighbor, route RIBEntry) BGPRouteDecision {
 	route = route.Normalize()
-	if containsASN(route.ASPath, to.ASN) {
-		route.Invalid = true
+	if containsASN(route.Attrs.ASPath, to.ASN) {
 		route.Attrs.Invalid = true
 		return BGPRouteDecision{Route: route, Accept: true, Reason: "as loop"}
 	}

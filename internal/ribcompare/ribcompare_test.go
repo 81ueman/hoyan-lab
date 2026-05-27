@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/controlplane"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 )
@@ -709,9 +710,7 @@ func TestExpectedPathUsesModeledAttributes(t *testing.T) {
 	node := model.Node{Name: "r1", Kind: "frr"}
 	ctx := sim.FailureContext{}
 	path := expectedPath(idx, node, sim.RIBEntry{
-		ASPath:       []uint32{65001},
-		LocalPref:    175,
-		MED:          42,
+		Attrs:        controlplane.BGPAttributes{ASPath: []uint32{65001}, LocalPref: 175, MED: 42},
 		Condition:    sim.True(),
 		SelectedCond: sim.True(),
 	}, ctx)
@@ -727,10 +726,10 @@ func TestExpectedPathUsesDeviceBehaviorValidity(t *testing.T) {
 	}
 	node := model.Node{Name: "ceos", Kind: model.KindCEOS}
 	path := expectedPath(idx, node, sim.RIBEntry{
-		From:         "peer",
-		NextHop:      "remote",
-		Condition:    sim.True(),
-		SelectedCond: sim.False(),
+		Provenance:        controlplane.RouteProvenance{FromNode: "peer"},
+		ForwardingNextHop: controlplane.RouteNextHop{Node: "remote"},
+		Condition:         sim.True(),
+		SelectedCond:      sim.False(),
 	}, sim.FailureContext{})
 	if path.Valid {
 		t.Fatalf("cEOS unresolved next-hop expected path should be invalid: %#v", path)
@@ -756,7 +755,7 @@ func TestRouteNextHopAddressUsesPeerInterfaceAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	got := routeNextHopAddress(idx, "local", sim.RIBEntry{NextHop: "peer"})
+	got := routeNextHopAddress(idx, "local", sim.RIBEntry{ForwardingNextHop: controlplane.RouteNextHop{Node: "peer"}})
 	if got != "192.0.2.20" {
 		t.Fatalf("routeNextHopAddress() = %q, want peer interface address 192.0.2.20", got)
 	}
@@ -778,8 +777,8 @@ func TestRouteNextHopAddressUsesRecursiveHopInterfaceAddress(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	got := routeNextHopAddress(idx, "local", sim.RIBEntry{
-		NextHop: "hop",
-		Nodes:   []string{"origin", "hop", "local"},
+		ForwardingNextHop: controlplane.RouteNextHop{Node: "hop"},
+		Provenance:        controlplane.RouteProvenance{PathNodes: []string{"origin", "hop", "local"}},
 	})
 	if got != "203.0.113.50" {
 		t.Fatalf("routeNextHopAddress() = %q, want recursive hop interface address 203.0.113.50", got)

@@ -355,7 +355,7 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst mo
 	}
 	spec = spec.WithNormalizedPorts()
 	spec.DstSet = dst
-	packet := controlplane.PacketMessage{Node: from, Prefix: packetPrefix, Spec: spec}
+	packet := controlplane.PacketMessage{Node: from, Spec: spec}
 	var reasons []SymbolicUnreachableReason
 	addUnreachableReason(&reasons, SymbolicUnreachableReason{
 		Kind:    UnreachableNodeFailed,
@@ -401,11 +401,11 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst mo
 
 func routePath(idx *model.TopologyIndex, route controlplane.RIBEntry) Path {
 	route = route.Normalize()
-	nodes := append([]string(nil), route.Nodes...)
-	links := append([]string(nil), route.Links...)
+	nodes := append([]string(nil), route.Provenance.PathNodes...)
+	links := append([]string(nil), route.Provenance.PathLinks...)
 	reverse(nodes)
 	reverse(links)
-	return Path{Nodes: nodes, Links: links, Cost: idx.PathCost(route.Links)}
+	return Path{Nodes: nodes, Links: links, Cost: idx.PathCost(route.Provenance.PathLinks)}
 }
 
 func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst model.PrefixSet, packetPrefix netip.Prefix, maxHops int, visited map[string]bool, states []SymbolicPacketState, paths *[]SymbolicPacketPath, blocked *[]SymbolicPacketBlockedPath, reasons *[]SymbolicUnreachableReason) {
@@ -437,15 +437,15 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 	}
 	packet := state.Packet
 	packet.Node = state.Node
-	packet.IngressInterface = state.IngressInterface
+	packet.Spec.IngressInterface = state.IngressInterface
 	ingressDecision := e.dataACLDecision(currentNode, packet, "ingress")
 	if ingressDecision.Denied {
 		denyCond := failure.And(state.Cond, ingressDecision.Cond)
-		e.appendBlockedPolicyPath(blocked, state.Path, denyCond, ingressDecision, state.Node, packet.IngressInterface, "ingress")
+		e.appendBlockedPolicyPath(blocked, state.Path, denyCond, ingressDecision, state.Node, packet.Spec.IngressInterface, "ingress")
 		addUnreachableReason(reasons, SymbolicUnreachableReason{
 			Kind:          UnreachableIngressPolicy,
 			Node:          state.Node,
-			Interface:     packet.IngressInterface,
+			Interface:     packet.Spec.IngressInterface,
 			PolicyName:    ingressDecision.PolicyName,
 			ACLName:       ingressDecision.ACLName,
 			RuleSeq:       ingressDecision.RuleSeq,
@@ -534,7 +534,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 			})
 			continue
 		}
-		packet.EgressInterface = ingressInterface(link, state.Node)
+		packet.Spec.EgressInterface = ingressInterface(link, state.Node)
 		addUnreachableReason(reasons, SymbolicUnreachableReason{
 			Kind:    UnreachableLinkFailed,
 			Node:    state.Node,
@@ -551,11 +551,11 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 		egressDecision := e.dataACLDecision(currentNode, packet, "egress")
 		if egressDecision.Denied {
 			denyCond := failure.And(state.Cond, candidate.Cond, egressDecision.Cond)
-			e.appendBlockedPolicyPath(blocked, nextPath, denyCond, egressDecision, state.Node, packet.EgressInterface, "egress")
+			e.appendBlockedPolicyPath(blocked, nextPath, denyCond, egressDecision, state.Node, packet.Spec.EgressInterface, "egress")
 			addUnreachableReason(reasons, SymbolicUnreachableReason{
 				Kind:          UnreachableEgressPolicy,
 				Node:          state.Node,
-				Interface:     packet.EgressInterface,
+				Interface:     packet.Spec.EgressInterface,
 				PolicyName:    egressDecision.PolicyName,
 				ACLName:       egressDecision.ACLName,
 				RuleSeq:       egressDecision.RuleSeq,
@@ -622,14 +622,6 @@ func addUnreachableReason(reasons *[]SymbolicUnreachableReason, reason SymbolicU
 	*reasons = append(*reasons, reason)
 }
 
-func policyMessage(name, raw string) string {
-	msg := "denied by policy " + name
-	if raw != "" {
-		msg += ": " + raw
-	}
-	return msg
-}
-
 func matchingFIBEntries(entries []FIBEntry, ip netip.Addr) []FIBEntry {
 	var out []FIBEntry
 	for _, entry := range entries {
@@ -681,10 +673,6 @@ func representativePrefixForSet(set model.PrefixSet) (model.Prefix, bool) {
 	default:
 		return model.Prefix{}, false
 	}
-}
-
-func (e *Engine) originNodesForPrefixSet(dst model.PrefixSet) []string {
-	return e.originNodesForPrefixSetVRF(string(model.NetworkInstanceDefault), dst)
 }
 
 func (e *Engine) originNodesForPrefixSetVRF(vrf string, dst model.PrefixSet) []string {

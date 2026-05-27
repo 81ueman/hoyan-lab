@@ -20,21 +20,22 @@ func routeNextHopAddress(idx *model.TopologyIndex, node string, route sim.RIBEnt
 	if route.ForwardingNextHop.Addr != "" {
 		return route.ForwardingNextHop.Addr
 	}
-	if route.NextHop == "" {
+	nextHop := route.ForwardingNextHop.Node
+	if nextHop == "" {
 		return ""
 	}
-	if direct := peerAddress(idx, node, route.NextHop); direct != route.NextHop {
+	if direct := peerAddress(idx, node, nextHop); direct != nextHop {
 		return direct
 	}
-	for i := 0; i+1 < len(route.Nodes); i++ {
-		if route.Nodes[i] != route.NextHop {
+	for i := 0; i+1 < len(route.Provenance.PathNodes); i++ {
+		if route.Provenance.PathNodes[i] != nextHop {
 			continue
 		}
-		if addr := peerAddress(idx, route.Nodes[i+1], route.NextHop); addr != route.NextHop {
+		if addr := peerAddress(idx, route.Provenance.PathNodes[i+1], nextHop); addr != nextHop {
 			return addr
 		}
 	}
-	return route.NextHop
+	return nextHop
 }
 
 func expectedRouteValid(node model.Node, route sim.RIBEntry) bool {

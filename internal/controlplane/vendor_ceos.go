@@ -38,5 +38,5 @@ func (b ceosBehavior) RouteValidForRIB(device model.Node, route RIBEntry) bool {
 	if route.SourceKind != model.RouteSourceBGP {
 		return true
 	}
-	return route.NextHop == "" || route.NextHop == route.From
+	return route.ForwardingNextHop.Node == "" || route.ForwardingNextHop.Node == route.Provenance.FromNode
 }

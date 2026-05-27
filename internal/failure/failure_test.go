@@ -78,9 +78,6 @@ func TestConditionEvaluation(t *testing.T) {
 	if NodeVar("a").Eval(ctx) || !NodeVar("b").Eval(ctx) {
 		t.Fatalf("NodeVar returned unexpected values")
 	}
-	if Var("a-b").Eval(ctx) {
-		t.Fatalf("Var should remain a backward-compatible link condition")
-	}
 }
 
 func TestExpandLinkVarsEmbedsEndpointNodeConditions(t *testing.T) {

@@ -109,7 +109,7 @@ func (e *Engine) packetReachableFrom(state packetReachableState) (Path, bool, st
 	packetSpec := state.spec.WithNormalizedPorts()
 	packetSpec.DstSet = model.ExactPrefixSet{Prefix: model.PrefixFromNetIP(state.dstPrefix)}
 	packetSpec.IngressInterface = state.ingressInterface
-	packet := controlplane.PacketMessage{Node: state.current, Prefix: state.dstPrefix, Spec: packetSpec}
+	packet := controlplane.PacketMessage{Node: state.current, Spec: packetSpec}
 	if decision := e.dataACLDecision(currentNode, packet, "ingress"); decision.Denied {
 		return state.full, false, decision.Reason
 	}
@@ -202,10 +202,6 @@ func (e *Engine) FailureContext(failures failure.Set) failure.Context {
 	return failure.Context{Failures: failures, LinksByName: e.idx.LinksByName}
 }
 
-func (e *Engine) originates(node string, prefix netip.Prefix) bool {
-	return e.originatesVRF(node, string(model.NetworkInstanceDefault), prefix)
-}
-
 func (e *Engine) originatesVRF(node, vrf string, prefix netip.Prefix) bool {
 	n, ok := e.idx.Node(node)
 	if !ok {
@@ -219,10 +215,6 @@ func (e *Engine) originatesVRF(node, vrf string, prefix netip.Prefix) bool {
 	return false
 }
 
-func (e *Engine) originatesPrefixSet(node string, dst model.PrefixSet) bool {
-	return e.originatesPrefixSetVRF(node, string(model.NetworkInstanceDefault), dst)
-}
-
 func (e *Engine) originatesPrefixSetVRF(node, vrf string, dst model.PrefixSet) bool {
 	n, ok := e.idx.Node(node)
 	if !ok || dst == nil {
@@ -234,10 +226,6 @@ func (e *Engine) originatesPrefixSetVRF(node, vrf string, dst model.PrefixSet) b
 		}
 	}
 	return false
-}
-
-func (e *Engine) hasOriginForPrefixSet(dst model.PrefixSet) bool {
-	return e.hasOriginForPrefixSetVRF(string(model.NetworkInstanceDefault), dst)
 }
 
 func (e *Engine) hasOriginForPrefixSetVRF(vrf string, dst model.PrefixSet) bool {

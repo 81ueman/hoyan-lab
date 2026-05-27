@@ -92,7 +92,7 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 					VRF:       string(route.RouteSource.NetworkInstance),
 					Prefix:    route.NLRI.Prefix.String(),
 					Protocol:  string(route.SourceKind),
-					NextHop:   firstNonEmpty(route.ForwardingNextHop.Node, route.ForwardingNextHop.Addr, route.NextHop),
+					NextHop:   firstNonEmpty(route.ForwardingNextHop.Node, route.ForwardingNextHop.Addr),
 					LocalPref: route.Attrs.LocalPref,
 					MED:       route.Attrs.MED,
 					Selected:  route.SelectedCond != nil,

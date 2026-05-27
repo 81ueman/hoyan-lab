@@ -470,8 +470,8 @@ func ospfExternalMetric(redist model.OSPFRedistribution, route RIBEntry) int {
 	if redist.Metric > 0 {
 		return redist.Metric
 	}
-	if route.MED > 0 {
-		return route.MED
+	if route.Attrs.MED > 0 {
+		return route.Attrs.MED
 	}
 	if route.RouteSource.Metric > 0 {
 		return route.RouteSource.Metric
@@ -913,13 +913,13 @@ func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Lin
 	if !ok {
 		return 0, "", false
 	}
-	if !ospfNetworkTypesCompatible(fromState.NetworkType, toState.NetworkType) {
+	if !ospfNetworkTypesMatchForAdjacency(fromState.NetworkType, toState.NetworkType) {
 		return 0, "", false
 	}
 	return fromState.Cost, area, true
 }
 
-func ospfNetworkTypesCompatible(a, b string) bool {
+func ospfNetworkTypesMatchForAdjacency(a, b string) bool {
 	a = normalizeOSPFNetworkType(a)
 	b = normalizeOSPFNetworkType(b)
 	if a == "" || b == "" {

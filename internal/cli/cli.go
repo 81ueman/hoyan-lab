@@ -36,7 +36,7 @@ func (e ExitError) Error() string {
 }
 
 func Execute(cmd *cobra.Command) int {
-	cmd.SetArgs(normalizeLegacyLongFlags(os.Args[1:]))
+	cmd.SetArgs(os.Args[1:])
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(cmd.ErrOrStderr(), err)
 		var exitErr ExitError
@@ -46,21 +46,6 @@ func Execute(cmd *cobra.Command) int {
 		return 2
 	}
 	return 0
-}
-
-func normalizeLegacyLongFlags(args []string) []string {
-	out := make([]string, len(args))
-	for i, arg := range args {
-		out[i] = arg
-		if len(arg) < 3 || arg[0] != '-' || arg[1] == '-' {
-			continue
-		}
-		if arg[1] < 'A' || (arg[1] > 'Z' && arg[1] < 'a') || arg[1] > 'z' {
-			continue
-		}
-		out[i] = "-" + arg
-	}
-	return out
 }
 
 func asExitError(err error, target *ExitError) bool {
@@ -193,9 +178,8 @@ func NewVerifyCommand() *cobra.Command {
 	addTopologyFlag(cmd, &opts.topologyPath, "containerlab topology YAML")
 	addQueriesFlag(cmd, &opts.queriesPath, "query YAML")
 	cmd.Flags().BoolVar(&opts.strictConfig, "strict-config", false, "fail on unsupported config parser statements")
-	cmd.Flags().BoolVar(&opts.prefixClasses, "prefix-classes", false, "expand verification by PrefixUniverse prefix classes")
 	cmd.Flags().IntVar(&opts.maxPrefixClasses, "max-prefix-classes", 10000, "maximum PrefixUniverse classes before failing; 0 disables the guard")
-	cmd.Flags().BoolVar(&opts.showPrefixUniverseStats, "show-prefix-universe-stats", false, "show PrefixUniverse build statistics with --prefix-classes")
+	cmd.Flags().BoolVar(&opts.showPrefixUniverseStats, "show-prefix-universe-stats", false, "show PrefixUniverse build statistics")
 	cmd.Flags().BoolVar(&opts.noCollapse, "no-collapse", false, "show raw prefix-class results instead of collapsed equivalent groups")
 	cmd.Flags().StringVar(&opts.format, "format", "table", "output format: table or json")
 	return cmd
@@ -249,7 +233,6 @@ type verifyOptions struct {
 	topologyPath            string
 	queriesPath             string
 	strictConfig            bool
-	prefixClasses           bool
 	maxPrefixClasses        int
 	showPrefixUniverseStats bool
 	noCollapse              bool
@@ -272,8 +255,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 		return err
 	}
 	verifyOpts := verify.VerifyOptions{
-		UsePrefixUniverse:         opts.prefixClasses,
-		CollapseEquivalentResults: opts.prefixClasses && !opts.noCollapse,
+		CollapseEquivalentResults: !opts.noCollapse,
 		MaxPrefixClasses:          opts.maxPrefixClasses,
 	}
 	report := verify.RunWithOptions(topo, queries, verifyOpts)
@@ -296,7 +278,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 	if opts.format != "" && opts.format != "table" {
 		return fmt.Errorf("unsupported --format %q", opts.format)
 	}
-	if opts.showPrefixUniverseStats && opts.prefixClasses && report.Stats != nil {
+	if opts.showPrefixUniverseStats && report.Stats != nil {
 		writePrefixUniverseStats(out, *report.Stats)
 	}
 	for _, result := range report.Results {

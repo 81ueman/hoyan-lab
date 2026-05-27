@@ -18,36 +18,9 @@ type RIBEntry struct {
 	SourceKind            model.RouteSourceKind
 	RouteSource           model.ConfiguredRoute
 	AggregateContributors []string
-
-	// Deprecated: use NLRI.Prefix. This compatibility field will be removed after callers migrate.
-	Prefix model.Prefix
-	// Deprecated: use Provenance.OriginNode. This is an origin node, not a BGP origin-code.
-	Origin string
-	// Deprecated: use Provenance.FromNode.
-	From string
-	// Deprecated: use ForwardingNextHop.Node for simulated routes. Live comparison resolves ForwardingNextHop.Addr separately.
-	NextHop string
-	// Deprecated: use Provenance.PathNodes.
-	Nodes []string
-	// Deprecated: use Provenance.PathLinks.
-	Links []string
-	// Deprecated: use Attrs.ASPath.
-	ASPath []uint32
-	// Deprecated: use Attrs.Communities.
-	Communities []string
-	// Deprecated: use Attrs.OriginCode.
-	OriginCode string
-	// Deprecated: use Attrs.LocalPref.
-	LocalPref int
-	// Deprecated: use Attrs.MED.
-	MED int
-	// Deprecated: use Attrs.LearnedIBGP.
-	LearnedIBGP bool
-	// Deprecated: use Attrs.Invalid.
-	Invalid      bool
-	BaseCond     failure.Cond
-	Condition    failure.Cond
-	SelectedCond failure.Cond
+	BaseCond              failure.Cond
+	Condition             failure.Cond
+	SelectedCond          failure.Cond
 }
 
 type RouteNLRI struct {
@@ -91,83 +64,9 @@ func (h RouteNextHop) Valid() bool {
 }
 
 func (r RIBEntry) Normalize() RIBEntry {
-	if r.NLRI.Prefix.IsZero() {
-		r.NLRI.Prefix = r.Prefix
-	}
-	if r.Prefix.IsZero() {
-		r.Prefix = r.NLRI.Prefix
-	}
-	if r.Provenance.OriginNode == "" {
-		r.Provenance.OriginNode = r.Origin
-	}
-	if r.Origin == "" {
-		r.Origin = r.Provenance.OriginNode
-	}
-	if r.Provenance.FromNode == "" {
-		r.Provenance.FromNode = r.From
-	}
-	if r.From == "" {
-		r.From = r.Provenance.FromNode
-	}
-	if len(r.Provenance.PathNodes) == 0 {
-		r.Provenance.PathNodes = append([]string(nil), r.Nodes...)
-	}
-	if len(r.Nodes) == 0 {
-		r.Nodes = append([]string(nil), r.Provenance.PathNodes...)
-	}
-	if len(r.Provenance.PathLinks) == 0 {
-		r.Provenance.PathLinks = append([]string(nil), r.Links...)
-	}
-	if len(r.Links) == 0 {
-		r.Links = append([]string(nil), r.Provenance.PathLinks...)
-	}
-	if r.ForwardingNextHop.Node == "" && r.ForwardingNextHop.Addr == "" {
-		r.ForwardingNextHop.Node = r.NextHop
-	}
-	if r.NextHop == "" {
-		if r.ForwardingNextHop.Node != "" {
-			r.NextHop = r.ForwardingNextHop.Node
-		} else {
-			r.NextHop = r.ForwardingNextHop.Addr
-		}
-	}
-	if r.Attrs.ASPath == nil {
-		r.Attrs.ASPath = append([]uint32(nil), r.ASPath...)
-	}
-	if r.ASPath == nil {
-		r.ASPath = append([]uint32(nil), r.Attrs.ASPath...)
-	}
-	if r.Attrs.Communities == nil {
-		r.Attrs.Communities = append([]string(nil), r.Communities...)
-	}
-	if r.Communities == nil {
-		r.Communities = append([]string(nil), r.Attrs.Communities...)
-	}
-	if r.Attrs.OriginCode == "" {
-		r.Attrs.OriginCode = BGPOriginCode(r.OriginCode)
-	}
 	if r.Attrs.OriginCode == "" {
 		r.Attrs.OriginCode = BGPOriginIGP
 	}
-	if r.OriginCode == "" {
-		r.OriginCode = string(r.Attrs.OriginCode)
-	}
-	if r.Attrs.LocalPref == 0 {
-		r.Attrs.LocalPref = r.LocalPref
-	}
-	if r.LocalPref == 0 {
-		r.LocalPref = r.Attrs.LocalPref
-	}
-	if r.Attrs.MED == 0 {
-		r.Attrs.MED = r.MED
-	}
-	if r.MED == 0 {
-		r.MED = r.Attrs.MED
-	}
-	r.Attrs.LearnedIBGP = r.Attrs.LearnedIBGP || r.LearnedIBGP
-	r.LearnedIBGP = r.Attrs.LearnedIBGP
-	r.Attrs.Invalid = r.Attrs.Invalid || r.Invalid
-	r.Invalid = r.Attrs.Invalid
 	if r.SourceKind == "" {
 		r.SourceKind = model.RouteSourceBGP
 	}
@@ -178,41 +77,21 @@ func (r RIBEntry) Normalize() RIBEntry {
 		r.RouteSource.NetworkInstance = model.NetworkInstanceDefault
 	}
 	if r.RouteSource.Prefix.IsZero() {
-		r.RouteSource.Prefix = r.Prefix
+		r.RouteSource.Prefix = r.NLRI.Prefix
 	}
 	return r
 }
 
 type Engine struct {
-	idx       *model.TopologyIndex
-	rib       map[string]map[string]map[string][]RIBEntry
-	legacyRIB map[string]map[string][]RIBEntry
+	idx *model.TopologyIndex
+	rib map[string]map[string]map[string][]RIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib any) *Engine {
-	e := &Engine{idx: idx, rib: normalizeRIBMap(rib)}
-	if legacy, ok := rib.(map[string]map[string][]RIBEntry); ok {
-		e.legacyRIB = legacy
+func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]RIBEntry) *Engine {
+	if rib == nil {
+		rib = map[string]map[string]map[string][]RIBEntry{}
 	}
-	return e
-}
-
-func normalizeRIBMap(raw any) map[string]map[string]map[string][]RIBEntry {
-	switch rib := raw.(type) {
-	case map[string]map[string]map[string][]RIBEntry:
-		if rib == nil {
-			return map[string]map[string]map[string][]RIBEntry{}
-		}
-		return rib
-	case map[string]map[string][]RIBEntry:
-		out := map[string]map[string]map[string][]RIBEntry{}
-		for node, byPrefix := range rib {
-			out[node] = map[string]map[string][]RIBEntry{string(model.NetworkInstanceDefault): byPrefix}
-		}
-		return out
-	default:
-		return map[string]map[string]map[string][]RIBEntry{}
-	}
+	return &Engine{idx: idx, rib: rib}
 }
 
 func (e *Engine) Simulate() {
@@ -275,7 +154,7 @@ func (e *Engine) Simulate() {
 	e.ConvergeAdvertisementConditions()
 	for _, origin := range e.idx.Topology.Nodes {
 		for _, route := range e.aggregateRoutes(origin) {
-			e.addRIB(origin.Name, route.Prefix, route)
+			e.addRIB(origin.Name, route.NLRI.Prefix, route)
 			e.walkBGP(route)
 		}
 	}
@@ -354,7 +233,7 @@ func (e *Engine) redistributedRoutes(node model.Node) []RIBEntry {
 				}
 				entry = decision.Route
 			}
-			e.addRIB(node.Name, entry.Prefix, entry)
+			e.addRIB(node.Name, entry.NLRI.Prefix, entry)
 			out = append(out, entry)
 		}
 	}
@@ -568,10 +447,10 @@ func (e *Engine) ApplyAdvertisementConditions() bool {
 						routes[i].Condition = nextCond
 						continue
 					}
-					if len(routes[i].Nodes) > 1 {
+					if len(routes[i].Provenance.PathNodes) > 1 {
 						if parent, ok := e.ParentRoute(routes[i]); ok {
 							parentSelected := parent.SelectedCond
-							if len(parent.Normalize().Nodes) == 1 && (parent.SourceKind == model.RouteSourceBGP || parent.SourceKind == model.RouteSourceAggregate) {
+							if len(parent.Normalize().Provenance.PathNodes) == 1 && (parent.SourceKind == model.RouteSourceBGP || parent.SourceKind == model.RouteSourceAggregate) {
 								parentSelected = parent.Condition
 							}
 							if parentSelected == nil {
@@ -614,8 +493,8 @@ func (e *Engine) MaxRouteDepth() int {
 		for _, byPrefix := range byVRF {
 			for _, routes := range byPrefix {
 				for _, route := range routes {
-					if len(route.Nodes) > maxDepth {
-						maxDepth = len(route.Nodes)
+					if len(route.Provenance.PathNodes) > maxDepth {
+						maxDepth = len(route.Provenance.PathNodes)
 					}
 				}
 			}
@@ -626,16 +505,16 @@ func (e *Engine) MaxRouteDepth() int {
 
 func (e *Engine) ParentRoute(route RIBEntry) (RIBEntry, bool) {
 	route = route.Normalize()
-	if route.From == "" || len(route.Nodes) < 2 {
+	if route.Provenance.FromNode == "" || len(route.Provenance.PathNodes) < 2 {
 		return RIBEntry{}, false
 	}
-	parentNodes := strings.Join(route.Nodes[:len(route.Nodes)-1], ">")
-	for _, candidate := range e.rib[route.From][string(route.RouteSource.NetworkInstance)][route.Prefix.String()] {
+	parentNodes := strings.Join(route.Provenance.PathNodes[:len(route.Provenance.PathNodes)-1], ">")
+	for _, candidate := range e.rib[route.Provenance.FromNode][string(route.RouteSource.NetworkInstance)][route.NLRI.Prefix.String()] {
 		candidate = candidate.Normalize()
 		if candidate.SourceKind != route.SourceKind {
 			continue
 		}
-		if strings.Join(candidate.Nodes, ">") == parentNodes {
+		if strings.Join(candidate.Provenance.PathNodes, ">") == parentNodes {
 			return candidate, true
 		}
 	}
@@ -644,7 +523,7 @@ func (e *Engine) ParentRoute(route RIBEntry) (RIBEntry, bool) {
 
 func (e *Engine) walkBGP(route RIBEntry) {
 	route = route.Normalize()
-	current := route.Nodes[len(route.Nodes)-1]
+	current := route.Provenance.PathNodes[len(route.Provenance.PathNodes)-1]
 	curNode, _ := e.idx.Node(current)
 	curBehavior := BehaviorFor(curNode.Kind)
 	for _, adj := range e.idx.Adj[model.NodeID(current)] {
@@ -655,7 +534,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		}
 		nextNode, _ := e.idx.Node(next)
 		nextBehavior := BehaviorFor(nextNode.Kind)
-		exportMsg := ControlMessage{From: current, To: next, Prefix: route.Prefix.String(), Route: route}
+		exportMsg := ControlMessage{From: current, To: next, Prefix: route.NLRI.Prefix.String(), Route: route}
 		if !curBehavior.CheckControlEgress(curNode, exportMsg) {
 			continue
 		}
@@ -669,7 +548,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 			continue
 		}
 		exported.Route = exportPolicy.Route
-		importMsg := ControlMessage{From: current, To: next, Prefix: exported.Route.Prefix.String(), Route: exported.Route}
+		importMsg := ControlMessage{From: current, To: next, Prefix: exported.Route.NLRI.Prefix.String(), Route: exported.Route}
 		if !nextBehavior.CheckControlIngress(nextNode, importMsg) {
 			continue
 		}
@@ -683,28 +562,24 @@ func (e *Engine) walkBGP(route RIBEntry) {
 			continue
 		}
 		imported.Route = importPolicy.Route
-		revisitsNode := containsString(route.Nodes, next)
-		if revisitsNode && !imported.Route.Invalid {
+		revisitsNode := containsString(route.Provenance.PathNodes, next)
+		if revisitsNode && !imported.Route.Attrs.Invalid {
 			continue
 		}
-		nextLinks := append(append([]string(nil), imported.Route.Links...), adj.Link.Name)
-		nextNodes := append(append([]string(nil), imported.Route.Nodes...), next)
+		nextLinks := append(append([]string(nil), imported.Route.Provenance.PathLinks...), adj.Link.Name)
+		nextNodes := append(append([]string(nil), imported.Route.Provenance.PathNodes...), next)
 		nextCond := failure.And(imported.Route.Condition, failure.LinkVar(adj.Link.Name), failure.NodeVar(next))
 
 		entry := imported.Route
-		entry.From = current
-		entry.Nodes = nextNodes
-		entry.Links = nextLinks
 		entry.Provenance.FromNode = current
 		entry.Provenance.PathNodes = append([]string(nil), nextNodes...)
 		entry.Provenance.PathLinks = append([]string(nil), nextLinks...)
 		entry.BaseCond = nextCond
 		entry.Condition = nextCond
-		entry.LocalPref = defaultLocalPref(entry.LocalPref)
-		entry.Attrs.LocalPref = entry.LocalPref
+		entry.Attrs.LocalPref = defaultLocalPref(entry.Attrs.LocalPref)
 		entry = entry.Normalize()
 
-		e.addRIB(next, entry.Prefix, entry)
+		e.addRIB(next, entry.NLRI.Prefix, entry)
 		if !nextBehavior.RouteEligibleForAdvertisement(nextNode, entry) {
 			continue
 		}
@@ -718,7 +593,7 @@ func (e *Engine) applyAggregateSuppression(node model.Node, route RIBEntry) RIBE
 		if aggregate.Kind != model.RouteSourceAggregate || !aggregate.SummaryOnly {
 			continue
 		}
-		if !isMoreSpecificWithin(route.Prefix, aggregate.Prefix) {
+		if !isMoreSpecificWithin(route.NLRI.Prefix, aggregate.Prefix) {
 			continue
 		}
 		cond, _, ok := e.aggregateContributorCond(node.Name, aggregate.Prefix)
@@ -751,7 +626,7 @@ func (e *Engine) bgpSession(a, b string, vrf model.NetworkInstanceID) (model.BGP
 func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
 	entry = entry.Normalize()
 	if prefix.IsZero() {
-		prefix = entry.Prefix
+		prefix = entry.NLRI.Prefix
 	}
 	vrf := model.NormalizeNetworkInstance(string(entry.RouteSource.NetworkInstance))
 	entry.RouteSource.NetworkInstance = vrf
@@ -768,12 +643,6 @@ func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
 		}
 	}
 	e.rib[node][string(vrf)][key] = append(e.rib[node][string(vrf)][key], entry)
-	if e.legacyRIB != nil && vrf == model.NetworkInstanceDefault {
-		if e.legacyRIB[node] == nil {
-			e.legacyRIB[node] = map[string][]RIBEntry{}
-		}
-		e.legacyRIB[node][key] = append(e.legacyRIB[node][key], entry)
-	}
 }
 
 func EquivalentInstalledRoute(decision BGPDecisionProcess, node model.Node, installed []RIBEntry, route RIBEntry) bool {
@@ -788,10 +657,10 @@ func EquivalentInstalledRoute(decision BGPDecisionProcess, node model.Node, inst
 func routeKey(r RIBEntry) string {
 	r = r.Normalize()
 	valid := "valid"
-	if r.Invalid {
+	if r.Attrs.Invalid {
 		valid = "invalid"
 	}
-	return string(r.RouteSource.NetworkInstance) + "|" + r.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Origin + "|" + r.NextHop + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Nodes, ">") + "|" + valid
+	return string(r.RouteSource.NetworkInstance) + "|" + r.NLRI.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Provenance.OriginNode + "|" + r.ForwardingNextHop.Node + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Provenance.PathNodes, ">") + "|" + valid
 }
 
 func containsString(xs []string, x string) bool {

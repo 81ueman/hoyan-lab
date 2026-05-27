@@ -179,10 +179,10 @@ func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry,
 		Best:      route.SelectedCond != nil && route.SelectedCond.Eval(ctx),
 		Valid:     expectedRouteValid(node, route),
 		NextHop:   routeNextHopAddress(idx, node.Name, route),
-		ASPath:    append([]uint32(nil), route.ASPath...),
+		ASPath:    append([]uint32(nil), route.Attrs.ASPath...),
 		Origin:    expectedRouteOrigin(route),
-		LocalPref: defaultLocalPref(route.LocalPref),
-		MED:       route.MED,
+		LocalPref: defaultLocalPref(route.Attrs.LocalPref),
+		MED:       route.Attrs.MED,
 	}
 }
 

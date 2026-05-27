@@ -18,16 +18,6 @@ func (e FailureElement) String() string {
 	return string(e.Kind) + ":" + e.Name
 }
 
-type FailureProblem struct {
-	// Forbidden is an enumerated list of already-known bad failure combos.
-	// A combo satisfies this problem when it contains every element in at least
-	// one forbidden clause. This legacy problem shape does not encode packet or
-	// route reachability itself.
-	Elements    []FailureElement
-	MaxFailures int
-	Forbidden   [][]FailureElement
-}
-
 type SymbolicFailureProblem struct {
 	Elements    []FailureElement
 	MaxFailures int
@@ -49,30 +39,10 @@ func (a Answer) FailureStrings() []string {
 }
 
 type Backend interface {
-	Solve(problem FailureProblem) (Answer, error)
-}
-
-type SymbolicBackend interface {
 	SolveSymbolic(problem SymbolicFailureProblem) (Answer, error)
 }
 
 type EnumeratingBackend struct{}
-
-func (EnumeratingBackend) Solve(problem FailureProblem) (Answer, error) {
-	for k := 0; k <= problem.MaxFailures; k++ {
-		var out []FailureElement
-		if findCombo(problem.Elements, k, 0, nil, func(combo []FailureElement) bool {
-			if satisfiesForbidden(combo, problem.Forbidden) {
-				out = append([]FailureElement(nil), combo...)
-				return true
-			}
-			return false
-		}) {
-			return Answer{Sat: true, Failures: out, Backend: "enumerating"}, nil
-		}
-	}
-	return Answer{Sat: false, Backend: "enumerating"}, nil
-}
 
 func (EnumeratingBackend) SolveSymbolic(problem SymbolicFailureProblem) (Answer, error) {
 	for k := 0; k <= problem.MaxFailures; k++ {
@@ -88,26 +58,6 @@ func (EnumeratingBackend) SolveSymbolic(problem SymbolicFailureProblem) (Answer,
 		}
 	}
 	return Answer{Sat: false, Backend: "enumerating-symbolic"}, nil
-}
-
-func satisfiesForbidden(combo []FailureElement, forbidden [][]FailureElement) bool {
-	set := map[string]bool{}
-	for _, element := range combo {
-		set[element.String()] = true
-	}
-	for _, clause := range forbidden {
-		ok := true
-		for _, element := range clause {
-			if !set[element.String()] {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return true
-		}
-	}
-	return false
 }
 
 func findCombo(elements []FailureElement, want, start int, cur []FailureElement, fn func([]FailureElement) bool) bool {

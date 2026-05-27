@@ -38,7 +38,7 @@ func TestBGPBuildsRankedExtendedRIB(t *testing.T) {
 		t.Fatalf("best route should exist and be selected with no failures")
 	}
 	var fallback bool
-	for _, link := range rib[0].Links {
+	for _, link := range rib[0].Provenance.PathLinks {
 		failed := g.FailureContext(LinkFailures(model.LinkID(link)))
 		if rib[0].SelectedCond.Eval(failed) {
 			continue
@@ -71,7 +71,7 @@ func TestRIBEntryKeepsOriginNodeAndBGPOriginCodeSeparate(t *testing.T) {
 
 	var propagated RIBEntry
 	for _, r := range g.RIB("bj-edge1", "10.4.0.0/16") {
-		if r.Provenance.OriginNode == "hz-edge1" && r.From != "" {
+		if r.Provenance.OriginNode == "hz-edge1" && r.Provenance.FromNode != "" {
 			propagated = r
 			break
 		}
@@ -127,7 +127,7 @@ func TestRedistributeStaticPropagatesBGPRoute(t *testing.T) {
 	var learned bool
 	for _, route := range g.RIB("r2", prefix.String()) {
 		route = route.Normalize()
-		if route.SourceKind == model.RouteSourceBGP && route.Provenance.OriginNode == "r1" && route.From == "r1" {
+		if route.SourceKind == model.RouteSourceBGP && route.Provenance.OriginNode == "r1" && route.Provenance.FromNode == "r1" {
 			learned = true
 		}
 	}
@@ -158,7 +158,7 @@ func TestRedistributeConnectedUsesRouteMapFilter(t *testing.T) {
 	g := NewGraph(topo)
 	for _, route := range g.RIB("r2", blocked.String()) {
 		route = route.Normalize()
-		if route.SourceKind == model.RouteSourceBGP && route.From == "r1" {
+		if route.SourceKind == model.RouteSourceBGP && route.Provenance.FromNode == "r1" {
 			t.Fatalf("route-map filtered connected route was advertised: %#v", route)
 		}
 	}
@@ -230,7 +230,7 @@ func TestAggregateAddressOriginatesOnlyWithContributor(t *testing.T) {
 	if aggregateRoute.SourceKind == "" {
 		t.Fatalf("aggregate route missing from r1 RIB: %#v", g.RIB("r1", aggregate.String()))
 	}
-	if aggregateRoute.Attrs.OriginCode != "igp" || aggregateRoute.LocalPref != 100 {
+	if aggregateRoute.Attrs.OriginCode != "igp" || aggregateRoute.Attrs.LocalPref != 100 {
 		t.Fatalf("aggregate BGP attributes = %#v, want BGP aggregate origin/local-pref", aggregateRoute)
 	}
 	if got, want := strings.Join(aggregateRoute.AggregateContributors, ","), contributor.String(); got != want {
@@ -246,7 +246,7 @@ func TestAggregateAddressOriginatesOnlyWithContributor(t *testing.T) {
 	var learnedAggregate bool
 	for _, route := range g.RIB("r3", aggregate.String()) {
 		route = route.Normalize()
-		if route.SourceKind == model.RouteSourceAggregate && route.Provenance.OriginNode == "r1" && route.From == "r1" && route.Condition.Eval(FailureContext{}) {
+		if route.SourceKind == model.RouteSourceAggregate && route.Provenance.OriginNode == "r1" && route.Provenance.FromNode == "r1" && route.Condition.Eval(FailureContext{}) {
 			learnedAggregate = true
 		}
 	}
@@ -275,14 +275,14 @@ func TestAggregateSummaryOnlySuppressesMoreSpecificAdvertisement(t *testing.T) {
 
 	for _, route := range g.RIB("r3", contributor.String()) {
 		route = route.Normalize()
-		if route.Provenance.OriginNode == "r2" && route.From == "r1" && route.Condition.Eval(FailureContext{}) {
+		if route.Provenance.OriginNode == "r2" && route.Provenance.FromNode == "r1" && route.Condition.Eval(FailureContext{}) {
 			t.Fatalf("summary-only aggregate should suppress active more-specific advertisement via r1: %#v", route)
 		}
 	}
 	var learnedAggregate bool
 	for _, route := range g.RIB("r3", aggregate.String()) {
 		route = route.Normalize()
-		if route.SourceKind == model.RouteSourceAggregate && route.From == "r1" && route.Condition.Eval(FailureContext{}) {
+		if route.SourceKind == model.RouteSourceAggregate && route.Provenance.FromNode == "r1" && route.Condition.Eval(FailureContext{}) {
 			learnedAggregate = true
 		}
 	}
@@ -370,10 +370,10 @@ func threeNodeAggregateTopology(aggregate, contributor model.Prefix, summaryOnly
 func TestBGPRejectsASLoops(t *testing.T) {
 	g := loadGraph(t)
 	for _, r := range g.RIB("gz-edge1", "10.3.1.10/32") {
-		if len(r.ASPath) == 0 {
+		if len(r.Attrs.ASPath) == 0 {
 			continue
 		}
-		for _, asn := range r.ASPath {
+		for _, asn := range r.Attrs.ASPath {
 			if asn == 65003 {
 				t.Fatalf("AS loop route installed: %#v", r)
 			}
@@ -384,7 +384,7 @@ func TestBGPRejectsASLoops(t *testing.T) {
 func TestIBGPSplitHorizon(t *testing.T) {
 	g := loadGraph(t)
 	for _, r := range g.RIB("core-hz", "10.1.0.0/16") {
-		if r.From == "core-gz" {
+		if r.Provenance.FromNode == "core-gz" {
 			t.Fatalf("iBGP learned route was re-advertised to another iBGP peer: %#v", r)
 		}
 	}
@@ -393,11 +393,11 @@ func TestIBGPSplitHorizon(t *testing.T) {
 func TestSRLinuxExportPolicySetsMED(t *testing.T) {
 	g := loadGraph(t)
 	for _, r := range g.RIB("transit-south", "10.3.0.0/16") {
-		if r.From != "core-gz" {
+		if r.Provenance.FromNode != "core-gz" {
 			continue
 		}
-		if r.MED != 55 {
-			t.Fatalf("core-gz route MED = %d, want 55: %#v", r.MED, r)
+		if r.Attrs.MED != 55 {
+			t.Fatalf("core-gz route MED = %d, want 55: %#v", r.Attrs.MED, r)
 		}
 		return
 	}

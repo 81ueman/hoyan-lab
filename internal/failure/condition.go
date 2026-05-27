@@ -31,9 +31,8 @@ type andCond []Cond
 type orCond []Cond
 type notCond struct{ c Cond }
 
-func True() Cond           { return trueCond{} }
-func False() Cond          { return falseCond{} }
-func Var(name string) Cond { return LinkVar(name) }
+func True() Cond  { return trueCond{} }
+func False() Cond { return falseCond{} }
 func LinkVar(name string) Cond {
 	return varCond{kind: condVarLink, name: name}
 }

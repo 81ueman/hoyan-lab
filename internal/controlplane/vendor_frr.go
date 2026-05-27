@@ -24,35 +24,35 @@ func (d frrDecisionProcess) Less(receiver model.Node, a, b RIBEntry) bool {
 		if a.RouteSource.Metric != b.RouteSource.Metric {
 			return a.RouteSource.Metric < b.RouteSource.Metric
 		}
-		if len(a.Links) != len(b.Links) {
-			return len(a.Links) < len(b.Links)
+		if len(a.Provenance.PathLinks) != len(b.Provenance.PathLinks) {
+			return len(a.Provenance.PathLinks) < len(b.Provenance.PathLinks)
 		}
-		return strings.Join(a.Nodes, ",") > strings.Join(b.Nodes, ",")
+		return strings.Join(a.Provenance.PathNodes, ",") > strings.Join(b.Provenance.PathNodes, ",")
 	}
-	if a.LocalPref != b.LocalPref {
-		return a.LocalPref > b.LocalPref
+	if a.Attrs.LocalPref != b.Attrs.LocalPref {
+		return a.Attrs.LocalPref > b.Attrs.LocalPref
 	}
-	if a.Origin == receiver.Name || b.Origin == receiver.Name {
-		return a.Origin == receiver.Name
+	if a.Provenance.OriginNode == receiver.Name || b.Provenance.OriginNode == receiver.Name {
+		return a.Provenance.OriginNode == receiver.Name
 	}
-	if len(a.ASPath) != len(b.ASPath) {
-		return len(a.ASPath) < len(b.ASPath)
+	if len(a.Attrs.ASPath) != len(b.Attrs.ASPath) {
+		return len(a.Attrs.ASPath) < len(b.Attrs.ASPath)
 	}
 	if originCodeRank(a.Attrs.OriginCode) != originCodeRank(b.Attrs.OriginCode) {
 		return originCodeRank(a.Attrs.OriginCode) < originCodeRank(b.Attrs.OriginCode)
 	}
-	if d.shouldCompareMED(a, b) && a.MED != b.MED {
-		return a.MED < b.MED
+	if d.shouldCompareMED(a, b) && a.Attrs.MED != b.Attrs.MED {
+		return a.Attrs.MED < b.Attrs.MED
 	}
-	aExternal := !a.LearnedIBGP
-	bExternal := !b.LearnedIBGP
+	aExternal := !a.Attrs.LearnedIBGP
+	bExternal := !b.Attrs.LearnedIBGP
 	if aExternal != bExternal {
 		return aExternal
 	}
-	if len(a.Links) != len(b.Links) {
-		return len(a.Links) < len(b.Links)
+	if len(a.Provenance.PathLinks) != len(b.Provenance.PathLinks) {
+		return len(a.Provenance.PathLinks) < len(b.Provenance.PathLinks)
 	}
-	return strings.Join(a.Nodes, ",") > strings.Join(b.Nodes, ",")
+	return strings.Join(a.Provenance.PathNodes, ",") > strings.Join(b.Provenance.PathNodes, ",")
 }
 
 func (d frrDecisionProcess) Equivalent(receiver model.Node, a, b RIBEntry) bool {

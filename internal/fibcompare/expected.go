@@ -38,17 +38,17 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 					if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate && entry.SourceKind != model.RouteSourceOSPF {
 						continue
 					}
-					if suppressedBGP[entry.Prefix.String()] {
+					if suppressedBGP[entry.NLRI.Prefix.String()] {
 						continue
 					}
 					if entry.SelectedCond == nil || !entry.SelectedCond.Eval(ctx) || !behavior.RouteValidForRIB(n, entry) {
 						continue
 					}
-					metric := idx.PathCost(entry.Links)
+					metric := idx.PathCost(entry.Provenance.PathLinks)
 					if entry.SourceKind == model.RouteSourceOSPF {
 						metric = entry.RouteSource.Metric
 					}
-					addExpectedRoute(byRoute, idx, fib, ctx, n.Name, vrf, entry.Prefix.String(), entry.NextHop, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
+					addExpectedRoute(byRoute, idx, fib, ctx, n.Name, vrf, entry.NLRI.Prefix.String(), entry.ForwardingNextHop.Node, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
 				}
 			}
 		}
