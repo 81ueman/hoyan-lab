@@ -1,6 +1,6 @@
 ---
 name: hoyan-worktree-lab
-description: Start hoyan repository tasks in an isolated git worktree before editing files, deploying containerlab, or changing lab state. Use for implementation, troubleshooting that may mutate state, live lab operations, or verification inside a hoyan folder; for read-only investigation, explanation, code inspection, or command help, work directly in the current checkout without creating a worktree.
+description: Start hoyan repository tasks in an isolated git worktree under the repository's top-level `.worktree/` directory before editing files, deploying containerlab, or changing lab state. Use for implementation, troubleshooting that may mutate state, live lab operations, or verification inside this repository; for read-only investigation, explanation, code inspection, or command help, work directly in the current checkout without creating a worktree.
 ---
 
 # Hoyan Worktree Lab
@@ -42,18 +42,19 @@ Base new work on the latest `main` by default. Fetch and fast-forward `main` bef
    git branch --show-current
    ```
 
-   Use a short task slug from the user's request. Prefer:
+   Use a short task slug from the user's request. Put all task worktrees under the repository root's `.worktree/` directory. Prefer:
 
    - Branch: `codex/<task-slug>`
-   - Worktree path: sibling directory such as `../hoyan-<task-slug>`
+   - Worktree path: `.worktree/<task-slug>`
 
    If the branch or directory exists, append a short numeric suffix.
 
 4. Create and enter the worktree from the updated base:
 
    ```bash
-   git worktree add -b codex/<task-slug> ../hoyan-<task-slug> main
-   cd ../hoyan-<task-slug>
+   mkdir -p .worktree
+   git worktree add -b codex/<task-slug> .worktree/<task-slug> main
+   cd .worktree/<task-slug>
    ```
 
    If the user specified a base branch or commit, update and use that base instead of `main` when appropriate.
@@ -113,5 +114,5 @@ When the task is complete, report the branch, worktree path, generated topology 
 ```bash
 containerlab destroy -t <generated>.clab.yml
 cd <main-checkout>
-git worktree remove ../hoyan-<task-slug>
+git worktree remove .worktree/<task-slug>
 ```
