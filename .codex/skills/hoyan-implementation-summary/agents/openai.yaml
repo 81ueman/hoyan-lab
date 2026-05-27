@@ -1,4 +1,4 @@
 interface:
   display_name: "Hoyan Implementation Summary"
-  short_description: "Explain completed hoyan changes concretely"
-  default_prompt: "Use $hoyan-implementation-summary after finishing a hoyan implementation to explain the concrete behavior and examples."
+  short_description: "Explain hoyan changes with detailed network examples"
+  default_prompt: "Use $hoyan-implementation-summary after finishing a hoyan implementation to explain the concrete topology, attributes, behavior, lab, and verification."
