@@ -32,6 +32,7 @@ type Node struct {
 	Neighbors      []BGPNeighbor       `yaml:"neighbors"`
 	Redistribute   []BGPRedistribution `yaml:"redistribute,omitempty"`
 	OSPF           OSPFProcess         `yaml:"ospf,omitempty"`
+	OSPFProcesses  []OSPFProcess       `yaml:"ospf_processes,omitempty" json:"ospf_processes,omitempty"`
 	PrefixLists    []PrefixList        `yaml:"prefix_lists"`
 	ASPathLists    []ASPathList        `yaml:"as_path_lists"`
 	CommunityLists []CommunityList     `yaml:"community_lists"`
@@ -119,6 +120,7 @@ type BGPNeighbor struct {
 
 type OSPFProcess struct {
 	Enabled           bool                     `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	NetworkInstance   NetworkInstanceID        `yaml:"network_instance,omitempty" json:"network_instance,omitempty"`
 	RouterID          string                   `yaml:"router_id,omitempty" json:"router_id,omitempty"`
 	Networks          []OSPFNetwork            `yaml:"networks,omitempty" json:"networks,omitempty"`
 	PassiveInterfaces []string                 `yaml:"passive_interfaces,omitempty" json:"passive_interfaces,omitempty"`

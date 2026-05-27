@@ -269,6 +269,42 @@ router ospf
 	}
 }
 
+func TestParseFRRVRFScopedOSPFConfig(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+hostname r1
+interface eth1 vrf tenant-a
+ ip address 192.0.2.1/30
+ ip ospf area 0
+ ip ospf cost 10
+interface a-svc vrf tenant-a
+ ip address 10.10.0.1/32
+router ospf vrf tenant-a
+ ospf router-id 10.255.1.1
+ passive-interface a-svc
+ network 192.0.2.0/30 area 0
+ network 10.10.0.1/32 area 0
+`)
+	if cfg.OSPF.Enabled {
+		t.Fatalf("default OSPF = %#v, want disabled", cfg.OSPF)
+	}
+	if len(cfg.OSPFProcesses) != 1 {
+		t.Fatalf("OSPFProcesses = %#v, want one VRF process", cfg.OSPFProcesses)
+	}
+	ospf := cfg.OSPFProcesses[0]
+	if ospf.NetworkInstance != "tenant-a" || !ospf.Enabled || ospf.RouterID != "10.255.1.1" {
+		t.Fatalf("VRF OSPF = %#v, want tenant-a enabled router-id", ospf)
+	}
+	if len(ospf.Networks) != 2 {
+		t.Fatalf("VRF OSPF networks = %#v, want two", ospf.Networks)
+	}
+	if got := ospf.Interfaces["eth1"]; got.Area != "0" || got.Cost != 10 {
+		t.Fatalf("eth1 VRF OSPF = %#v, want area 0 cost 10", got)
+	}
+	if got := ospf.Interfaces["a-svc"]; !got.Passive {
+		t.Fatalf("a-svc VRF OSPF = %#v, want passive", got)
+	}
+}
+
 func TestParseCEOSOSPFConfig(t *testing.T) {
 	cfg := parseCEOSConfigText(t, `
 hostname ceos1
@@ -802,6 +838,32 @@ func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
 	}
 	if kinds["r2"] != KindCEOS || kinds["r3"] != KindSRLinux {
 		t.Fatalf("node kinds = %#v, want r2 cEOS and r3 SR Linux", kinds)
+	}
+}
+
+func TestLoadOSPFVRFLabIncludesScopedProcesses(t *testing.T) {
+	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "ospf-vrf", "hoyan.clab.yml"))
+	if err != nil {
+		t.Fatalf("LoadLabTopology() error = %v", err)
+	}
+	r1, ok := topo.Node("r1")
+	if !ok {
+		t.Fatalf("r1 not found")
+	}
+	vrfs := map[NetworkInstanceID]bool{}
+	for _, process := range r1.OSPFProcesses {
+		vrfs[process.NetworkInstance] = process.Enabled
+	}
+	if !vrfs["tenant-a"] || !vrfs["tenant-b"] {
+		t.Fatalf("r1 OSPFProcesses = %#v, want tenant-a and tenant-b", r1.OSPFProcesses)
+	}
+	for _, iface := range r1.Interfaces {
+		if iface.Name == "eth1" && iface.VRF != "tenant-a" {
+			t.Fatalf("r1 eth1 VRF = %q, want tenant-a", iface.VRF)
+		}
+		if iface.Name == "eth2" && iface.VRF != "tenant-b" {
+			t.Fatalf("r1 eth2 VRF = %q, want tenant-b", iface.VRF)
+		}
 	}
 }
 

@@ -381,6 +381,26 @@ func TestParseFRRRouteTableOSPF(t *testing.T) {
 	}
 }
 
+func TestParseFRRRouteTableNormalizesLocalOSPFNextHop(t *testing.T) {
+	data := []byte(`{
+  "10.10.0.1/32": [
+    {
+      "prefix": "10.10.0.1/32",
+      "protocol": "ospf",
+      "selected": true,
+      "nexthops": [{"ip": "0.0.0.0", "interfaceName": "a-svc"}]
+    }
+  ]
+}`)
+	routes, err := ParseFRRRouteTable("r2", data)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTable() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].Protocol != "ospf" || routes[0].Paths[0].NextHop != "" {
+		t.Fatalf("routes = %#v, want local OSPF route with empty next-hop", routes)
+	}
+}
+
 func TestParseCEOSRouteTableStaticAndConnected(t *testing.T) {
 	data := []byte(`{
 	  "vrfs":{"default":{"routes":{
