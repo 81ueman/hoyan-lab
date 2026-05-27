@@ -216,6 +216,57 @@ func TestParseFRRConfig(t *testing.T) {
 	}
 }
 
+func TestParseFRROSPFConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frr.conf")
+	if err := os.WriteFile(path, []byte(`hostname r1
+interface lo
+ ip address 10.255.1.1/32
+interface eth1
+ ip address 198.51.100.0/31
+ ip ospf area 0
+ ip ospf cost 10
+router ospf
+ ospf router-id 10.255.1.1
+ passive-interface lo
+ network 10.255.1.1/32 area 0
+ network 198.51.100.0/31 area 0
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cfg, err := ParseConfig(KindFRR, path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if !cfg.OSPF.Enabled || cfg.OSPF.RouterID != "10.255.1.1" {
+		t.Fatalf("OSPF = %#v, want enabled router-id", cfg.OSPF)
+	}
+	if len(cfg.OSPF.Networks) != 2 {
+		t.Fatalf("OSPF networks = %#v, want two", cfg.OSPF.Networks)
+	}
+	if got := cfg.OSPF.Interfaces["eth1"]; got.Area != "0" || got.Cost != 10 {
+		t.Fatalf("eth1 OSPF = %#v, want area 0 cost 10", got)
+	}
+	if got := cfg.OSPF.Interfaces["lo"]; !got.Passive {
+		t.Fatalf("lo OSPF = %#v, want passive", got)
+	}
+}
+
+func TestParseFRROSPFRedistributeWarns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frr.conf")
+	if err := os.WriteFile(path, []byte(`router ospf
+ redistribute connected
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	result, err := ParseConfigWithWarnings(KindFRR, path)
+	if err != nil {
+		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0].Reason, "redistribute") {
+		t.Fatalf("warnings = %#v, want OSPF redistribute warning", result.Warnings)
+	}
+}
+
 func TestParseNftablesConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nftables.conf")
 	if err := os.WriteFile(path, []byte(`table inet BLOCK_HTTP_TO_HZ {

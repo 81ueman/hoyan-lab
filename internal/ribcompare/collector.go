@@ -106,6 +106,9 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 		containerName := n.RuntimeName()
 		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip bgp json")
 		if err != nil {
+			if strings.Contains(string(data), "bgpd is not running") {
+				continue
+			}
 			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip bgp json", err)
 		}
 		routes, err := ParseFRR(n.Name, data)

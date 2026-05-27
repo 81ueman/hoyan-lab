@@ -6,6 +6,8 @@ func canonicalProtocol(protocol string) string {
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
 	case "ebgp", "ibgp", "bgp":
 		return "bgp"
+	case "ospf", "188":
+		return "ospf"
 	case "kernel", "connected", "direct", "local", "host":
 		return "connected"
 	case "static", "196":

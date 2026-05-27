@@ -1,0 +1,15 @@
+name: ospf-basic
+description: Four-router FRR OSPF lab with asymmetric interface costs.
+nos:
+  - frr
+checks:
+  - verify
+  - live-check
+  - rib-compare
+  - fib-compare
+features:
+  - ospf
+  - route-reachability
+  - packet-reachability
+  - failure-checks
+  - rib-fib-compare

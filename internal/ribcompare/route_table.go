@@ -191,6 +191,8 @@ func normalizedRouteTableProtocol(protocol string) string {
 		return "connected"
 	case "static":
 		return "static"
+	case "ospf":
+		return "ospf"
 	case "blackhole", "discard", "drop", "null0", "null":
 		return "blackhole"
 	default:

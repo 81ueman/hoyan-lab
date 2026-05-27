@@ -200,24 +200,27 @@ func (e *Engine) Simulate() {
 			}
 			e.installConfiguredRoute(origin, route)
 		}
-		for _, prefix := range origin.Prefixes {
-			originCond := failure.NodeVar(origin.Name)
-			route := RIBEntry{
-				NLRI:        RouteNLRI{Prefix: prefix},
-				Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-				Provenance:  RouteProvenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
-				SourceKind:  model.RouteSourceBGP,
-				RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200},
-				BaseCond:    originCond,
-				Condition:   originCond,
+		if bgpEnabled(origin) {
+			for _, prefix := range origin.Prefixes {
+				originCond := failure.NodeVar(origin.Name)
+				route := RIBEntry{
+					NLRI:        RouteNLRI{Prefix: prefix},
+					Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
+					Provenance:  RouteProvenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
+					SourceKind:  model.RouteSourceBGP,
+					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200},
+					BaseCond:    originCond,
+					Condition:   originCond,
+				}
+				e.addRIB(origin.Name, prefix, route)
+				e.walkBGP(route)
 			}
-			e.addRIB(origin.Name, prefix, route)
-			e.walkBGP(route)
 		}
 		for _, route := range e.redistributedRoutes(origin) {
 			e.walkBGP(route)
 		}
 	}
+	e.installOSPFRoutes()
 	e.SelectRoutes()
 	e.ConvergeAdvertisementConditions()
 	for _, origin := range e.idx.Topology.Nodes {
@@ -228,6 +231,10 @@ func (e *Engine) Simulate() {
 	}
 	e.SelectRoutes()
 	e.ConvergeAdvertisementConditions()
+}
+
+func bgpEnabled(node model.Node) bool {
+	return node.ASN != 0 || len(node.Neighbors) > 0 || len(node.Redistribute) > 0
 }
 
 func (e *Engine) connectedRoutes(node model.Node) []model.ConfiguredRoute {
@@ -464,6 +471,9 @@ func routeSelectionFamily(route RIBEntry) model.RouteSourceKind {
 	if route.SourceKind == model.RouteSourceBGP || route.SourceKind == model.RouteSourceAggregate {
 		return model.RouteSourceBGP
 	}
+	if route.SourceKind == model.RouteSourceOSPF {
+		return model.RouteSourceOSPF
+	}
 	return ""
 }
 
@@ -477,6 +487,10 @@ func (e *Engine) ApplyAdvertisementConditions() bool {
 					base = routes[i].Condition
 				}
 				nextCond := base
+				if routes[i].Normalize().SourceKind == model.RouteSourceOSPF {
+					routes[i].Condition = nextCond
+					continue
+				}
 				if len(routes[i].Nodes) > 1 {
 					if parent, ok := e.ParentRoute(routes[i]); ok {
 						parentSelected := parent.SelectedCond

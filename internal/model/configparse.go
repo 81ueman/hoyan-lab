@@ -26,6 +26,7 @@ type ParsedConfig struct {
 	RoutePolicies  []RoutePolicy
 	ACLs           []ACL
 	ACLBindings    []ACLBinding
+	OSPF           OSPFProcess
 }
 
 type ParseResult struct {
@@ -137,6 +138,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 	var currentRouteRule *RoutePolicyRule
 	inBGP := false
 	inAF := false
+	inOSPF := false
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNo := 0
 	for scanner.Scan() {
@@ -146,6 +148,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 		if !strings.HasPrefix(raw, " ") && !strings.HasPrefix(line, "route-map ") {
 			currentRoutePolicy = nil
 			currentRouteRule = nil
+			inOSPF = false
 			if !strings.HasPrefix(line, "ip access-list ") {
 				currentACL = ""
 			}
@@ -320,6 +323,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			currentACL = ""
 			inBGP = false
 			inAF = false
+			inOSPF = false
 		case currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "address":
 			addr := fields[2]
 			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, Address: addr})
@@ -331,6 +335,35 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if ok {
 				aclBindings = append(aclBindings, aclBinding{Name: fields[2], Interface: currentInterface, Stage: stage, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
 			}
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
+			oi := ospfInterface(&cfg, currentInterface)
+			oi.Area = fields[3]
+			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			cfg.OSPF.Interfaces[currentInterface] = *oi
+			cfg.OSPF.Enabled = true
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
+			cost, err := strconv.Atoi(fields[3])
+			if err != nil || cost <= 0 {
+				if !collectWarnings {
+					return ParseResult{}, fmt.Errorf("unsupported FRR OSPF interface cost %q", line)
+				}
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF interface cost"))
+				continue
+			}
+			oi := ospfInterface(&cfg, currentInterface)
+			oi.Cost = cost
+			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			cfg.OSPF.Interfaces[currentInterface] = *oi
+			cfg.OSPF.Enabled = true
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && fields[3] == "point-to-point":
+			cfg.OSPF.Enabled = true
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
+			cfg.OSPF.Enabled = true
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf":
+			if !collectWarnings {
+				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF interface statement %q", line)
+			}
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF interface statement"))
 		case len(fields) >= 4 && fields[0] == "ip" && fields[1] == "route":
 			route, err := parseFRRLikeStaticRoute(kind, path, lineNo, line, fields)
 			if err != nil {
@@ -349,7 +382,47 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			cfg.ASN = uint32(asn)
 			inBGP = true
 			inAF = false
+			inOSPF = false
 			currentInterface = ""
+		case kind == KindFRR && len(fields) >= 2 && fields[0] == "router" && fields[1] == "ospf":
+			cfg.OSPF.Enabled = true
+			if cfg.OSPF.Interfaces == nil {
+				cfg.OSPF.Interfaces = map[string]OSPFInterface{}
+			}
+			inOSPF = true
+			inBGP = false
+			inAF = false
+			currentInterface = ""
+		case kind == KindFRR && inOSPF && len(fields) >= 3 && fields[0] == "ospf" && fields[1] == "router-id":
+			cfg.OSPF.RouterID = fields[2]
+		case kind == KindFRR && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
+			cfg.OSPF.RouterID = fields[1]
+		case kind == KindFRR && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
+			prefix, err := ParsePrefix(fields[1])
+			if err != nil {
+				if !collectWarnings {
+					return ParseResult{}, fmt.Errorf("unsupported FRR OSPF network %q", line)
+				}
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF network"))
+				continue
+			}
+			cfg.OSPF.Networks = append(cfg.OSPF.Networks, OSPFNetwork{Prefix: prefix, Area: fields[3], Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
+		case kind == KindFRR && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
+			cfg.OSPF.PassiveInterfaces = appendUnique(cfg.OSPF.PassiveInterfaces, fields[1])
+			oi := ospfInterface(&cfg, fields[1])
+			oi.Passive = true
+			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			cfg.OSPF.Interfaces[fields[1]] = *oi
+		case kind == KindFRR && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
+			if !collectWarnings {
+				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF redistribute statement %q", line)
+			}
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF redistribute statement"))
+		case kind == KindFRR && inOSPF:
+			if !collectWarnings {
+				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF statement %q", line)
+			}
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF statement"))
 		case inBGP && len(fields) >= 3 && (fields[0] == "bgp" || fields[0] == "router-id") && fields[len(fields)-2] == "router-id":
 			cfg.RouterID = fields[len(fields)-1]
 		case inBGP && len(fields) >= 2 && fields[0] == "router-id":
@@ -611,6 +684,18 @@ func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw strin
 	}
 	route.Interface = target
 	return route, nil
+}
+
+func ospfInterface(cfg *ParsedConfig, name string) *OSPFInterface {
+	if cfg.OSPF.Interfaces == nil {
+		cfg.OSPF.Interfaces = map[string]OSPFInterface{}
+	}
+	oi := cfg.OSPF.Interfaces[name]
+	if oi.Name == "" {
+		oi.Name = name
+	}
+	cfg.OSPF.Interfaces[name] = oi
+	return &oi
 }
 
 func parseAggregateRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {

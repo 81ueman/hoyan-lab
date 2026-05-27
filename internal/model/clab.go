@@ -87,6 +87,13 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
+		if parsed.OSPF.Enabled && parsed.Loopback != "" {
+			loopbackPrefix, err := ParsePrefix(parsed.Loopback)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s loopback: %w", name, err)
+			}
+			prefixes = appendUniquePrefix(prefixes, loopbackPrefix)
+		}
 		node := Node{
 			Name:           name,
 			ContainerName:  containerlabContainerName(raw.Prefix, raw.Name, name),
@@ -101,6 +108,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 			Interfaces:     parsed.Interfaces,
 			Neighbors:      parsed.Neighbors,
 			Redistribute:   parsed.Redistribute,
+			OSPF:           parsed.OSPF,
 			PrefixLists:    parsed.PrefixLists,
 			ASPathLists:    parsed.ASPathLists,
 			CommunityLists: parsed.CommunityLists,
@@ -182,6 +190,18 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 	return topo, warnings, nil
 }
 
+func appendUniquePrefix(prefixes []Prefix, prefix Prefix) []Prefix {
+	if prefix.IsZero() {
+		return prefixes
+	}
+	for _, existing := range prefixes {
+		if existing.Equal(prefix) {
+			return prefixes
+		}
+	}
+	return append(prefixes, prefix)
+}
+
 func containerlabContainerName(prefix *string, labName, nodeName string) string {
 	if prefix != nil && *prefix == "" {
 		return nodeName
@@ -226,6 +246,9 @@ func resolveConfigPath(n clabNode) string {
 		parts := strings.Split(bind, ":")
 		if len(parts) >= 2 && parts[1] == "/etc/frr/frr.conf" {
 			return parts[0]
+		}
+		if len(parts) >= 2 && parts[1] == "/etc/frr" {
+			return filepath.Join(parts[0], "frr.conf")
 		}
 	}
 	return ""

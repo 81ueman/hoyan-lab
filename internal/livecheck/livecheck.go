@@ -129,10 +129,10 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 		return err
 	}
 	if snap == nil {
-		fmt.Fprintf(opts.Out, "waiting for BGP RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expectedBGP)))
-		actualBGP, result, err := WaitForMatchingRIBs(deadlineCtx, runner, nodes, expectedBGP, opts.PollInterval, opts.MaxPolls, compareOptions)
+		fmt.Fprintf(opts.Out, "waiting for live RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
+		actual, result, err := WaitForMatchingRIBs(deadlineCtx, runner, nodes, expected, opts.PollInterval, opts.MaxPolls, compareOptions)
 		if err != nil {
-			if len(actualBGP) > 0 {
+			if len(actual) > 0 {
 				for _, line := range ribcompare.FormatDiffs(result) {
 					fmt.Fprintln(opts.Out, line)
 				}
@@ -145,20 +145,7 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 		if !result.OK {
 			return fmt.Errorf("live RIB comparison found diff(s)")
 		}
-		fmt.Fprintln(opts.Out, "live BGP RIBs converged")
-		fmt.Fprintf(opts.Out, "comparing live RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
-		actual, err := ribcompare.CollectWithRunner(deadlineCtx, runner, nodes)
-		if err != nil {
-			return err
-		}
-		result = ribcompare.CompareBgpRib(expected, actual, compareOptions)
-		for _, line := range ribcompare.FormatDiffs(result) {
-			fmt.Fprintln(opts.Out, line)
-		}
-		if !result.OK {
-			return fmt.Errorf("live RIB comparison found diff(s)")
-		}
-		fmt.Fprintln(opts.Out, "live RIBs match modeled paths")
+		fmt.Fprintln(opts.Out, "live RIBs converged to modeled paths")
 	}
 	if opts.CheckFIB && snap == nil {
 		fibNodes := topo.Nodes

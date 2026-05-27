@@ -33,7 +33,7 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 		for _, rib := range graph.RIBTable(n.Name) {
 			for _, entry := range rib {
 				entry = entry.Normalize()
-				if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate {
+				if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate && entry.SourceKind != model.RouteSourceOSPF {
 					continue
 				}
 				if suppressedBGP[entry.Prefix.String()] {
@@ -42,11 +42,15 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 				if entry.SelectedCond == nil || !entry.SelectedCond.Eval(ctx) || !behavior.RouteValidForRIB(n, entry) {
 					continue
 				}
-				addExpectedRoute(byRoute, idx, graph.FIB(n.Name), ctx, n.Name, entry.Prefix.String(), entry.NextHop, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, idx.PathCost(entry.Links))
+				metric := idx.PathCost(entry.Links)
+				if entry.SourceKind == model.RouteSourceOSPF {
+					metric = entry.RouteSource.Metric
+				}
+				addExpectedRoute(byRoute, idx, graph.FIB(n.Name), ctx, n.Name, entry.Prefix.String(), entry.NextHop, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
 			}
 		}
 		for _, entry := range graph.FIB(n.Name) {
-			if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate {
+			if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
 				continue
 			}
 			if entry.Condition == nil || !entry.Condition.Eval(ctx) {
@@ -67,7 +71,7 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 func bgpSuppressedByNonBGPFIB(entries []dataplane.FIBEntry, ctx sim.FailureContext) map[string]bool {
 	out := map[string]bool{}
 	for _, entry := range entries {
-		if entry.SourceKind == model.RouteSourceBGP {
+		if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
 			continue
 		}
 		if entry.Condition == nil || !entry.Condition.Eval(ctx) {
@@ -115,6 +119,8 @@ func expectedProtocol(source model.RouteSourceKind, nextHop string) string {
 		return "static"
 	case model.RouteSourceBlackhole:
 		return "blackhole"
+	case model.RouteSourceOSPF:
+		return "ospf"
 	}
 	return "bgp"
 }
