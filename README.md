@@ -39,7 +39,7 @@ Hoyan stores runnable inputs under `labs/<name>/`. A scenario lab contains:
 labs/<name>/
   hoyan.clab.yml
   configs/
-  intent/queries.yml
+  intent/hoyan.yml
   lab.yml
   README.md
 ```
@@ -55,9 +55,10 @@ Each scenario topology also uses a unique containerlab `name:` and management
 network, so parallel scenario deploys do not reuse the same `clab-...` container
 names or Docker network.
 
-Use `--lab` to select a scenario. When `--lab` is set, commands default to
-`<lab>/hoyan.clab.yml` and, for query-aware commands, `<lab>/intent/queries.yml`.
-Explicit `--topology` or `--queries` flags still override those defaults.
+Use `--lab` to select a scenario. When `--lab` is set, model and live commands
+default to `<lab>/hoyan.clab.yml`; `hoyan intent verify --lab ...` reads
+`<lab>/intent/hoyan.yml`. Explicit `--topology` flags override topology
+defaults for commands that use a containerlab file.
 Without `--lab`, commands use `labs/base-wan`.
 
 ```bash
@@ -65,7 +66,7 @@ go run ./cmd/hoyan labs list
 go run ./cmd/hoyan labs describe base-wan
 go run ./cmd/hoyan labs live-check
 go run ./cmd/hoyan labs live-check base-wan recursive-nexthop
-go run ./cmd/hoyan verify --lab labs/base-wan
+go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 go run ./cmd/hoyan live-check --lab labs/base-wan
 go run ./cmd/hoyan rib-compare --lab labs/recursive-nexthop
 go run ./cmd/hoyan fib-compare --lab labs/recursive-nexthop
@@ -75,7 +76,7 @@ go run ./cmd/hoyan model packet-classes --lab labs/acl-semantics --prefix 10.4.0
 ## Verify
 
 ```bash
-go run ./cmd/hoyan verify
+go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 ```
 
 Use strict config mode when the containerlab topology and startup configs are
@@ -83,7 +84,6 @@ the verification source of truth and unsupported parser syntax should fail the
 run instead of being reported as warnings:
 
 ```bash
-go run ./cmd/hoyan verify --strict-config
 go run ./cmd/hoyan live-check --strict-config
 go run ./cmd/hoyan rib-compare --strict-config
 go run ./cmd/hoyan model rib --strict-config
@@ -93,34 +93,16 @@ Strict config errors include the vendor, config file, line number, raw
 statement, and unsupported reason so CI logs point at the config syntax that
 needs parser support or an intentional non-strict run.
 
-Checks are defined in each lab's `intent/queries.yml`:
+Checks are defined in each lab's `intent/hoyan.yml`:
 
-- route reachability to advertised prefixes
-- packet reachability to host prefixes
-- failure-budget checks that print concrete link-failure counterexamples
+- RIB/FIB fact assertions over modeled rows
+- packet reachability assertions with `packet.from`, `packet.to`, protocol, and destination port
+- scenario failure constraints such as one failed core link
 
-To verify by prefix equivalence class, enable PrefixUniverse expansion:
-
-```bash
-go run ./cmd/hoyan verify --prefix-classes
-go run ./cmd/hoyan verify --prefix-classes --no-collapse
-go run ./cmd/hoyan verify --prefix-classes --show-prefix-universe-stats
-go run ./cmd/hoyan verify --prefix-classes --max-prefix-classes 10000
-go run ./cmd/hoyan verify --prefix-classes --format json
-```
-
-`--prefix-classes` builds prefix classes from advertised route prefixes,
-prefix-list and policy predicates, query destinations, and modeled RIB/FIB
-prefixes. Route, packet, and failure checks are expanded across matching
-classes. The default output collapses classes with identical reachability,
-expected result, counterexample, reason, and symbolic conditions; `--no-collapse`
-prints each class result separately.
-
-`--format json` emits a structured report object with `results`. Each result
-has common `name`, `type`, and `metadata` fields, then stores query-specific
-payload under `route`, `packet`, or `failure`. Prefix class information is kept
-separately under `prefix_class`, so route, packet, failure, and prefix-class
-semantics can evolve without overloading a single flat result object.
+`--format json` emits a structured `hoyan.intent.report/v1` report with
+`summary` and `results`. Packet results include `actual.reachable`, the modeled
+path when available, and machine-readable failure counterexamples when a
+failure scenario breaks an expected reachable flow.
 
 Data-plane policies are parsed from the device startup configs.
 Linux/FRR data-plane ACLs are stored as nftables rulesets under
@@ -135,23 +117,74 @@ implicit default deny unless an explicit permit rule matches. FRR/Linux
 nftables ACLs use the chain policy; the current lab's nftables chain has
 `policy accept`, so unmatched packets are permitted. `model.ACL` is the single
 data-plane policy IR for parsed configs, manually constructed topologies, and
-`hoyan verify` / `hoyan model symbolic-packet`; the earlier deny-only
-`model.Policy` compatibility path has been removed. Full vendor ACL grammar,
-stateful firewall/conntrack, NAT, PBR, and QoS are intentionally outside the
-current model.
+packet reachability inspection; the earlier deny-only `model.Policy`
+compatibility path has been removed. Full vendor ACL grammar, stateful
+firewall/conntrack, NAT, PBR, and QoS are intentionally outside the current
+model.
 
-Failure search in the normal verifier path is symbolic-only. Route, packet,
-prefix-set, and prefix-class targets must implement `sim.SymbolicTarget`, and
-the verifier builds a symbolic `NOT(reachable)` goal for the solver instead of
-falling back to pre-enumerated forbidden failure combinations. The legacy
-enumerated `FailureProblem` helper remains as a small test/parity oracle for
-solver regression coverage, not as the verify-time fallback. JSON verify output
-for results that run failure search includes a `solver` trace with backend,
-candidate element count, and maximum failure budget. With Z3:
+Failure search for packet scenarios is symbolic. The intent verifier builds a
+symbolic `NOT(reachable)` goal for the solver and reports the failing link or
+node set when a scenario such as `failures.max: 1` invalidates an expected
+reachable flow.
+
+## Intent DSL and Fact Tables
+
+`hoyan intent` provides the first `version: hoyan/v1` intent DSL for modeled
+RIB/FIB and packet checks. Intent files define snapshots, scenarios, variables,
+failure constraints, and assertions over deterministic fact rows or modeled
+packet reachability:
 
 ```bash
-go run -tags z3 ./cmd/hoyan verify
+go run ./cmd/hoyan intent validate --file testdata/intent/minimal.yml
+go run ./cmd/hoyan intent expand --file testdata/intent/forall.yml --format json
+go run ./cmd/hoyan intent verify --file testdata/intent/rib-fib-basic.yml --format json
+go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 ```
+
+The MVP supports scalar/list `vars`, `forall` expansion, `table: rib` and
+`table: fib`, simple `where` selectors such as `device`, `device_in`, `prefix`,
+`selected`, and `installed`, plus `exists` and `count` assertions. Packet
+intents use `table: packet`, a `packet` block, and `assert.reachable`:
+
+```yaml
+scenarios:
+  one-core-link-failure:
+    snapshot: current
+    failures:
+      max: 1
+      include_link_roles: [core]
+
+intents:
+  - name: customers-https-allowed
+    check:
+      table: packet
+      scenario: one-core-link-failure
+      packet:
+        from: cust-bj
+        to: 10.4.1.10
+        protocol: tcp
+        dst_port: 443
+      assert:
+        reachable: true
+```
+
+For example, `labs/base-wan/intent/hoyan.yml` checks that `10.4.0.0/16` is
+visible in the modeled RIB on edge routers, HTTP to `10.4.1.10` is denied from
+customers, and HTTPS is allowed. The JSON report uses
+`hoyan.intent.report/v1` with deterministic result ordering so CI can compare
+summary fields or individual result names.
+
+Use `hoyan facts` when you want the modeled RIB/FIB fact tables directly:
+
+```bash
+go run ./cmd/hoyan facts rib --lab labs/base-wan --format json
+go run ./cmd/hoyan facts fib --lab labs/base-wan --format json
+```
+
+These facts are built offline from the lab topology and startup configs via the
+same control-plane and data-plane model used by `hoyan model`. Live-device
+collection and additional RCL-style workflows are intentionally kept separate
+from offline intent verification.
 
 ## Compare Modeled BGP RIBs With Live Nodes
 
@@ -202,7 +235,6 @@ go run ./cmd/hoyan model fib --node bj-edge1 --prefix 10.4.0.0/16 --format json
 go run ./cmd/hoyan model prefix-classes --prefix 10.4.0.0/16
 go run ./cmd/hoyan model prefix-classes --prefix 10.4.0.0/16 --show-predicates
 go run ./cmd/hoyan model packet-classes --prefix 10.4.0.0/16 --show-predicates
-go run ./cmd/hoyan model packet-classes --queries labs/base-wan/intent/queries.yml --prefix 10.4.0.0/16 --show-predicates
 go run ./cmd/hoyan model symbolic-packet --from cust-bj --to 10.4.1.10 --protocol tcp
 go run ./cmd/hoyan model symbolic-route --from bj-edge1 --prefix 10.4.0.0/16 --format json
 go run ./cmd/hoyan model symbolic-route --from bj-edge1 --prefix 10.4.0.0/16 --show-conditions
@@ -227,19 +259,11 @@ source/destination port, and ingress/egress interface. This keeps packet
 predicate inspection tied to PrefixUniverse without creating unused cross
 products. Add `--show-predicates` to see the ACL or request predicates that
 matched each packet class.
-The view also reads `--queries` and includes `PacketCheck` and `FailureCheck`
-protocol, destination port, and destination predicates, so query-only packet
-classes are visible even when no device ACL distinguishes them.
-Packet and failure queries can specify either a single destination port with
-`dst_port: 80` or a set of ports with `dst_ports: [80, 443]`; multi-port
-queries are expanded into one result per port and therefore one packet class
-per port boundary.
 Add `--summary` to `model prefix-classes` to print PrefixUniverse build
 statistics, including predicate count, unique predicate count, class count,
 build duration, max CIDRs per class, and predicate source categories. Use
-`--max-prefix-classes` with either `verify --prefix-classes` or
-`model prefix-classes` to fail early when class expansion exceeds the requested
-guard.
+`--max-prefix-classes` with `model prefix-classes` to fail early when class
+expansion exceeds the requested guard.
 `model symbolic-route --prefix` uses the same request-aware PrefixUniverse and
 emits one symbolic route result per matching class, including `class_id`,
 `space`, and reachable/unreachable conditions. JSON output still includes

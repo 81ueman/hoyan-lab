@@ -125,10 +125,16 @@ func (d defaultBGPDecisionProcess) Equivalent(receiver model.Node, a, b RIBEntry
 
 func ospfRouteTypeRank(routeType string) int {
 	switch routeType {
+	case ospfRouteTypeIntraArea, "":
+		return 0
 	case ospfRouteTypeInterArea:
 		return 1
+	case ospfRouteTypeExternal1:
+		return 2
+	case ospfRouteTypeExternal2:
+		return 3
 	default:
-		return 0
+		return 4
 	}
 }
 

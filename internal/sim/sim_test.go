@@ -164,6 +164,55 @@ func TestRedistributeConnectedUsesRouteMapFilter(t *testing.T) {
 	}
 }
 
+func TestBGPVRFPropagationIsScoped(t *testing.T) {
+	prefix := model.MustPrefix("10.255.0.1/32")
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			{
+				Name: "r1", Kind: model.KindFRR, ASN: 65001,
+				Interfaces: []model.Interface{
+					{Name: "eth1", Address: "192.0.2.1/30", VRF: "tenant-a"},
+					{Name: "eth2", Address: "198.51.100.1/30", VRF: "tenant-b"},
+				},
+				Neighbors: []model.BGPNeighbor{
+					{NetworkInstance: "tenant-a", Address: "192.0.2.2", RemoteAS: 65002, Activated: true, PeerNode: "r2"},
+					{NetworkInstance: "tenant-b", Address: "198.51.100.2", RemoteAS: 65003, Activated: true, PeerNode: "r3"},
+				},
+			},
+			{
+				Name: "r2", Kind: model.KindFRR, ASN: 65002,
+				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30", VRF: "tenant-a"}},
+				Routes: []model.ConfiguredRoute{{
+					NetworkInstance: "tenant-a", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200,
+				}},
+				Neighbors: []model.BGPNeighbor{{NetworkInstance: "tenant-a", Address: "192.0.2.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+			{
+				Name: "r3", Kind: model.KindFRR, ASN: 65003,
+				Interfaces: []model.Interface{{Name: "eth1", Address: "198.51.100.2/30", VRF: "tenant-b"}},
+				Routes: []model.ConfiguredRoute{{
+					NetworkInstance: "tenant-b", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200,
+				}},
+				Neighbors: []model.BGPNeighbor{{NetworkInstance: "tenant-b", Address: "198.51.100.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/30"},
+			{Name: "r1-r3", A: "r1", B: "r3", AIntf: "eth2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/30"},
+		},
+	}
+	g := NewGraph(topo)
+	if got := len(g.RIBVRF("r1", "tenant-a", prefix.String())); got != 1 {
+		t.Fatalf("tenant-a RIB entries = %d, want 1: %#v", got, g.RIBVRF("r1", "tenant-a", prefix.String()))
+	}
+	if got := len(g.RIBVRF("r1", "tenant-b", prefix.String())); got != 1 {
+		t.Fatalf("tenant-b RIB entries = %d, want 1: %#v", got, g.RIBVRF("r1", "tenant-b", prefix.String()))
+	}
+	if got := len(g.RIB("r1", prefix.String())); got != 0 {
+		t.Fatalf("default RIB entries = %d, want 0: %#v", got, g.RIB("r1", prefix.String()))
+	}
+}
+
 func TestAggregateAddressOriginatesOnlyWithContributor(t *testing.T) {
 	aggregate := model.MustPrefix("10.0.0.0/16")
 	contributor := model.MustPrefix("10.0.1.0/24")

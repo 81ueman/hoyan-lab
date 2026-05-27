@@ -71,6 +71,46 @@ func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
 	}
 }
 
+func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfBroadcastNode("r1", "10.255.1.1/32", "198.51.100.1/29", 5),
+			ospfBroadcastNode("r2", "10.255.2.2/32", "198.51.100.2/29", 2),
+			ospfBroadcastNode("r3", "10.255.3.3/32", "198.51.100.3/29", 3),
+		},
+		Links: []model.Link{
+			{Name: "sw1-r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+			{Name: "sw1-r1-r3", A: "r1", AIntf: "eth1", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+			{Name: "sw1-r2-r3", A: "r2", AIntf: "eth1", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/29"},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	engine := NewEngine(idx, map[string]map[string][]RIBEntry{})
+	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
+	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != toState.Area {
+			return "", false
+		}
+		return fromState.Area, true
+	})
+	if len(adjs) != 2 {
+		t.Fatalf("r1 adjacencies = %#v, want r2 and r3 on shared segment", adjs)
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	routes := rib["r1"]["10.255.3.3/32"]
+	if len(routes) == 0 {
+		t.Fatalf("r1 did not learn r3 loopback")
+	}
+	best := routes[0].Normalize()
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 5 || best.NextHop != "r3" || best.RouteSource.OSPFRouteType != "intra-area" {
+		t.Fatalf("best route = %#v, want OSPF metric 5 via r3", best)
+	}
+}
+
 func TestOSPFStubSuppressesExternalAndInstallsDefault(t *testing.T) {
 	topo := &model.Topology{
 		Nodes: []model.Node{
@@ -124,6 +164,135 @@ func TestOSPFNSSAAllowsLocalExternalAndBlocksNormalExternal(t *testing.T) {
 	}
 	if routes := rib["r3"]["0.0.0.0/0"]; len(routes) == 0 {
 		t.Fatalf("r3 default route missing, want NSSA default-information-originate from ABR")
+	}
+}
+
+func TestOSPFRedistributesConnectedWithRouteMapAndType1Metric(t *testing.T) {
+	r1 := ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil)
+	r1.Interfaces = append(r1.Interfaces, model.Interface{Name: "svc0", Address: "198.18.1.1/24"})
+	r1.OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceConnected, RouteMap: "CONN-TO-OSPF", MetricType: 1}}
+	r1.PrefixLists = []model.PrefixList{{
+		Name: "ONLY-SVC",
+		Rules: []model.PrefixListRule{{
+			Seq: 10, Action: "permit", Prefix: "198.18.1.0/24", Match: model.ExactPrefixSet{Prefix: model.MustPrefix("198.18.1.0/24")},
+		}},
+	}}
+	r1.RoutePolicies = []model.RoutePolicy{{
+		Name: "CONN-TO-OSPF",
+		Rules: []model.RoutePolicyRule{{
+			Seq: 10, Action: "permit", MatchPrefixList: "ONLY-SVC", SetMED: testIntPtr(7),
+		}},
+	}}
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			r1,
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "198.18.1.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal1 || route.RouteSource.Metric != 8 || route.NextHop != "r1" {
+		t.Fatalf("redistributed connected route = %#v, want E1 metric 8 via r1", route)
+	}
+	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != ospfRouteTypeIntraArea {
+		t.Fatalf("r1 loopback route = %#v, want normal intra-area route unaffected by route-map", routes)
+	}
+}
+
+func TestOSPFRedistributesStaticType2MetricWithoutPathCost(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
+	}
+	topo.Nodes[0].Routes = []model.ConfiguredRoute{{Prefix: model.MustPrefix("203.0.113.0/24"), Kind: model.RouteSourceStatic, NextHop: "192.0.2.254"}}
+	topo.Nodes[0].OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceStatic, Metric: 33, MetricType: 2}}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "203.0.113.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal2 || route.RouteSource.Metric != 33 {
+		t.Fatalf("redistributed static route = %#v, want E2 metric 33", route)
+	}
+}
+
+func TestOSPFRedistributesLearnedBGPRoute(t *testing.T) {
+	r1 := ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth2": "198.51.100.0/31"}, map[string]string{"lo": "0", "eth2": "0"}, nil)
+	r1.ASN = 65001
+	r1.Interfaces = append(r1.Interfaces, model.Interface{Name: "eth1", Address: "192.0.2.1/31"})
+	r1.Neighbors = []model.BGPNeighbor{{Address: "192.0.2.0", RemoteAS: 65000, Activated: true, PeerNode: "r0"}}
+	r1.OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceBGP, Metric: 12, MetricType: 2}}
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			{
+				Name:       "r0",
+				Kind:       model.KindFRR,
+				ASN:        65000,
+				Prefixes:   model.MustPrefixes("172.16.0.0/24"),
+				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.0/31"}},
+				Neighbors:  []model.BGPNeighbor{{Address: "192.0.2.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+			r1,
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31"}, map[string]string{"lo": "0", "eth1": "0"}, nil),
+		},
+		Links: []model.Link{
+			{Name: "r0-r1", A: "r0", AIntf: "eth1", B: "r1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"},
+			{Name: "r1-r2", A: "r1", AIntf: "eth2", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+		},
+	}
+
+	rib := simulateOSPFTestRIB(t, topo)
+	route := bestOSPFTestRoute(t, rib, "r2", "172.16.0.0/24")
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal2 || route.RouteSource.Metric != 12 || route.Provenance.OriginNode != "r1" {
+		t.Fatalf("redistributed BGP route = %#v, want OSPF E2 from r1 metric 12", route)
+	}
+}
+
+func bestOSPFTestRoute(t *testing.T, rib map[string]map[string][]RIBEntry, node, prefix string) RIBEntry {
+	t.Helper()
+	routes := rib[node][prefix]
+	if len(routes) == 0 {
+		t.Fatalf("%s route to %s missing", node, prefix)
+	}
+	return routes[0].Normalize()
+}
+
+func testIntPtr(v int) *int {
+	return &v
+}
+
+func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfVRFNode("r1", map[string]model.NetworkInstanceID{"eth1": "tenant-a", "eth2": "tenant-b"}, map[string]string{"eth1": "192.0.2.1/30", "eth2": "198.51.100.1/30"}, nil),
+			ospfVRFNode("r2", map[string]model.NetworkInstanceID{"eth1": "tenant-a", "a-svc": "tenant-a"}, map[string]string{"eth1": "192.0.2.2/30", "a-svc": "10.10.0.1/32"}, map[string]bool{"a-svc": true}),
+			ospfVRFNode("r3", map[string]model.NetworkInstanceID{"eth1": "tenant-b", "b-svc": "tenant-b"}, map[string]string{"eth1": "198.51.100.2/30", "b-svc": "10.20.0.1/32"}, map[string]bool{"b-svc": true}),
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/30"},
+			{Name: "r1-r3", A: "r1", AIntf: "eth2", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/30"},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	rib := map[string]map[string]map[string][]RIBEntry{}
+	NewEngine(idx, rib).Simulate()
+	if routes := rib["r1"]["tenant-a"]["10.10.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+		t.Fatalf("r1 tenant-a route to 10.10.0.1/32 = %#v, want OSPF", routes)
+	}
+	if routes := rib["r1"]["tenant-a"]["10.20.0.1/32"]; len(routes) != 0 {
+		t.Fatalf("r1 tenant-a leaked tenant-b service route: %#v", routes)
+	}
+	if routes := rib["r1"]["tenant-b"]["10.20.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+		t.Fatalf("r1 tenant-b route to 10.20.0.1/32 = %#v, want OSPF", routes)
+	}
+	if routes := rib["r1"]["tenant-b"]["10.10.0.1/32"]; len(routes) != 0 {
+		t.Fatalf("r1 tenant-b leaked tenant-a service route: %#v", routes)
 	}
 }
 
@@ -226,6 +395,45 @@ func ospfAreaNode(name, loopback string, ifaces map[string]string, areasByIface 
 			Interfaces:        ospfIfaces,
 			Areas:             areas,
 		},
+	}
+}
+
+func ospfBroadcastNode(name, loopback, shared string, cost int) model.Node {
+	node := ospfNode(name, loopback, map[string]string{"eth1": shared}, map[string]int{"eth1": cost})
+	iface := node.OSPF.Interfaces["eth1"]
+	iface.NetworkType = "broadcast"
+	node.OSPF.Interfaces["eth1"] = iface
+	return node
+}
+
+func ospfVRFNode(name string, vrfs map[string]model.NetworkInstanceID, addrs map[string]string, passive map[string]bool) model.Node {
+	var interfaces []model.Interface
+	byVRF := map[model.NetworkInstanceID]model.OSPFProcess{}
+	for ifName, addr := range addrs {
+		vrf := model.NormalizeNetworkInstance(string(vrfs[ifName]))
+		interfaces = append(interfaces, model.Interface{Name: ifName, Address: addr, VRF: vrf})
+		process := byVRF[vrf]
+		process.Enabled = true
+		process.NetworkInstance = vrf
+		if process.Interfaces == nil {
+			process.Interfaces = map[string]model.OSPFInterface{}
+		}
+		process.Interfaces[ifName] = model.OSPFInterface{Name: ifName, Area: "0", Cost: 1, Passive: passive[ifName]}
+		process.Networks = append(process.Networks, model.OSPFNetwork{Prefix: model.MustPrefix(addr), Area: "0"})
+		if passive[ifName] {
+			process.PassiveInterfaces = append(process.PassiveInterfaces, ifName)
+		}
+		byVRF[vrf] = process
+	}
+	var processes []model.OSPFProcess
+	for _, process := range byVRF {
+		processes = append(processes, process)
+	}
+	return model.Node{
+		Name:          name,
+		Kind:          model.KindFRR,
+		Interfaces:    interfaces,
+		OSPFProcesses: processes,
 	}
 }
 

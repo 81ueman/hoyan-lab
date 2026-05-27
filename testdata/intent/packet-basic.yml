@@ -1,0 +1,42 @@
+version: hoyan/v1
+
+vars:
+  service_ip: 10.4.1.10
+  customers: [cust-bj, cust-sh, cust-gz]
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: customers-http-denied
+    forall:
+      src: ${customers}
+    check:
+      table: packet
+      scenario: normal
+      packet:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 80
+      assert:
+        reachable: false
+
+  - name: customers-https-allowed
+    forall:
+      src: ${customers}
+    check:
+      table: packet
+      scenario: normal
+      packet:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 443
+      assert:
+        reachable: true

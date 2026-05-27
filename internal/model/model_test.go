@@ -246,8 +246,62 @@ router ospf
 	if got := cfg.OSPF.Interfaces["eth1"]; got.Area != "0" || got.Cost != 10 {
 		t.Fatalf("eth1 OSPF = %#v, want area 0 cost 10", got)
 	}
+	if got := cfg.OSPF.Interfaces["eth1"]; got.NetworkType != "" {
+		t.Fatalf("eth1 OSPF network type = %q, want empty", got.NetworkType)
+	}
 	if got := cfg.OSPF.Interfaces["lo"]; !got.Passive {
 		t.Fatalf("lo OSPF = %#v, want passive", got)
+	}
+}
+
+func TestParseFRROSPFNetworkType(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+interface eth1
+ ip address 198.51.100.1/29
+ ip ospf area 0
+ ip ospf network broadcast
+router ospf
+ network 198.51.100.0/29 area 0
+`)
+	got := cfg.OSPF.Interfaces["eth1"]
+	if got.NetworkType != "broadcast" {
+		t.Fatalf("eth1 OSPF network type = %q, want broadcast", got.NetworkType)
+	}
+}
+
+func TestParseFRRVRFScopedOSPFConfig(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+hostname r1
+interface eth1 vrf tenant-a
+ ip address 192.0.2.1/30
+ ip ospf area 0
+ ip ospf cost 10
+interface a-svc vrf tenant-a
+ ip address 10.10.0.1/32
+router ospf vrf tenant-a
+ ospf router-id 10.255.1.1
+ passive-interface a-svc
+ network 192.0.2.0/30 area 0
+ network 10.10.0.1/32 area 0
+`)
+	if cfg.OSPF.Enabled {
+		t.Fatalf("default OSPF = %#v, want disabled", cfg.OSPF)
+	}
+	if len(cfg.OSPFProcesses) != 1 {
+		t.Fatalf("OSPFProcesses = %#v, want one VRF process", cfg.OSPFProcesses)
+	}
+	ospf := cfg.OSPFProcesses[0]
+	if ospf.NetworkInstance != "tenant-a" || !ospf.Enabled || ospf.RouterID != "10.255.1.1" {
+		t.Fatalf("VRF OSPF = %#v, want tenant-a enabled router-id", ospf)
+	}
+	if len(ospf.Networks) != 2 {
+		t.Fatalf("VRF OSPF networks = %#v, want two", ospf.Networks)
+	}
+	if got := ospf.Interfaces["eth1"]; got.Area != "0" || got.Cost != 10 {
+		t.Fatalf("eth1 VRF OSPF = %#v, want area 0 cost 10", got)
+	}
+	if got := ospf.Interfaces["a-svc"]; !got.Passive {
+		t.Fatalf("a-svc VRF OSPF = %#v, want passive", got)
 	}
 }
 
@@ -280,13 +334,79 @@ router ospf 1
 	}
 }
 
+func TestLoadLabTopologyExpandsL2TransitNode(t *testing.T) {
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, "configs", "r1"))
+	mkdirAll(t, filepath.Join(dir, "configs", "r2"))
+	mkdirAll(t, filepath.Join(dir, "configs", "r3"))
+	writeFile(t, filepath.Join(dir, "configs", "r1", "frr.conf"), `hostname r1
+interface lo
+ ip address 10.255.1.1/32
+interface eth1
+ ip address 198.51.100.1/29
+ ip ospf area 0
+ ip ospf network broadcast
+router ospf
+ network 10.255.1.1/32 area 0
+ network 198.51.100.0/29 area 0
+`)
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r1", "frr.conf")), "r1", "r2"))
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r2", "frr.conf")), "10.255.1.1", "10.255.2.2"))
+	writeFile(t, filepath.Join(dir, "configs", "r2", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r2", "frr.conf")), "198.51.100.1", "198.51.100.2"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r1", "frr.conf")), "r1", "r3"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r3", "frr.conf")), "10.255.1.1", "10.255.3.3"))
+	writeFile(t, filepath.Join(dir, "configs", "r3", "frr.conf"), strings.ReplaceAll(mustReadFileString(t, filepath.Join(dir, "configs", "r3", "frr.conf")), "198.51.100.1", "198.51.100.3"))
+	topologyPath := filepath.Join(dir, "lab.clab.yml")
+	writeFile(t, topologyPath, `name: shared
+topology:
+  nodes:
+    r1:
+      kind: linux
+      group: router
+      binds: ["configs/r1:/etc/frr:ro"]
+    r2:
+      kind: linux
+      group: router
+      binds: ["configs/r2:/etc/frr:ro"]
+    r3:
+      kind: linux
+      group: router
+      binds: ["configs/r3:/etc/frr:ro"]
+    sw1:
+      kind: linux
+      group: switch
+  links:
+    - endpoints: ["r1:eth1", "sw1:eth1"]
+    - endpoints: ["r2:eth1", "sw1:eth2"]
+    - endpoints: ["r3:eth1", "sw1:eth3"]
+`)
+	topo, err := LoadLabTopology(topologyPath)
+	if err != nil {
+		t.Fatalf("LoadLabTopology() error = %v", err)
+	}
+	if len(topo.Nodes) != 3 {
+		t.Fatalf("nodes = %d, want 3 routers and no transit node", len(topo.Nodes))
+	}
+	if len(topo.Links) != 3 {
+		t.Fatalf("links = %#v, want complete graph across shared segment", topo.Links)
+	}
+	idx, err := BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	if _, ok := idx.LinkBetween("r1", "r3"); !ok {
+		t.Fatalf("r1-r3 shared segment link missing: %#v", topo.Links)
+	}
+}
+
 func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frr.conf")
 	if err := os.WriteFile(path, []byte(`router ospf
  area 1 stub
  area 2 nssa default-information-originate
  redistribute connected
- redistribute static
+ redistribute static metric 44 metric-type 1 route-map STATIC-TO-OSPF
+ redistribute bgp metric-type 2 metric 12
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -300,8 +420,16 @@ func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 	if area := cfg.OSPF.Areas["2"]; area.Kind != OSPFAreaNSSA || !area.DefaultInformationOriginate {
 		t.Fatalf("area 2 = %#v, want NSSA default-information-originate", area)
 	}
-	if len(cfg.OSPF.Redistribute) != 2 || cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected || cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic {
-		t.Fatalf("redistribute = %#v, want connected and static", cfg.OSPF.Redistribute)
+	if len(cfg.OSPF.Redistribute) != 3 ||
+		cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected ||
+		cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic ||
+		cfg.OSPF.Redistribute[1].Metric != 44 ||
+		cfg.OSPF.Redistribute[1].MetricType != 1 ||
+		cfg.OSPF.Redistribute[1].RouteMap != "STATIC-TO-OSPF" ||
+		cfg.OSPF.Redistribute[2].Kind != RouteSourceBGP ||
+		cfg.OSPF.Redistribute[2].Metric != 12 ||
+		cfg.OSPF.Redistribute[2].MetricType != 2 {
+		t.Fatalf("redistribute = %#v, want connected, static options, and bgp", cfg.OSPF.Redistribute)
 	}
 }
 
@@ -710,6 +838,32 @@ func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
 	}
 	if kinds["r2"] != KindCEOS || kinds["r3"] != KindSRLinux {
 		t.Fatalf("node kinds = %#v, want r2 cEOS and r3 SR Linux", kinds)
+	}
+}
+
+func TestLoadOSPFVRFLabIncludesScopedProcesses(t *testing.T) {
+	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "ospf-vrf", "hoyan.clab.yml"))
+	if err != nil {
+		t.Fatalf("LoadLabTopology() error = %v", err)
+	}
+	r1, ok := topo.Node("r1")
+	if !ok {
+		t.Fatalf("r1 not found")
+	}
+	vrfs := map[NetworkInstanceID]bool{}
+	for _, process := range r1.OSPFProcesses {
+		vrfs[process.NetworkInstance] = process.Enabled
+	}
+	if !vrfs["tenant-a"] || !vrfs["tenant-b"] {
+		t.Fatalf("r1 OSPFProcesses = %#v, want tenant-a and tenant-b", r1.OSPFProcesses)
+	}
+	for _, iface := range r1.Interfaces {
+		if iface.Name == "eth1" && iface.VRF != "tenant-a" {
+			t.Fatalf("r1 eth1 VRF = %q, want tenant-a", iface.VRF)
+		}
+		if iface.Name == "eth2" && iface.VRF != "tenant-b" {
+			t.Fatalf("r1 eth2 VRF = %q, want tenant-b", iface.VRF)
+		}
 	}
 }
 
@@ -1407,6 +1561,38 @@ func vendorVRFInterfaceName(lab, vrf string) string {
 	return "ethernet-1/2"
 }
 
+func TestParseFRRBGPVRF(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+hostname r1
+interface eth1 vrf tenant-a
+ ip address 192.0.2.1/30
+!
+router bgp 65001 vrf tenant-a
+ neighbor 192.0.2.2 remote-as 65002
+ !
+ address-family ipv4 unicast
+  network 10.255.0.1/32
+  redistribute connected route-map CONNECTED-OUT
+  neighbor 192.0.2.2 activate
+  neighbor 192.0.2.2 route-map IMPORT-A in
+ exit-address-family
+exit
+!
+`)
+	if cfg.ASN != 65001 {
+		t.Fatalf("ASN = %d, want 65001", cfg.ASN)
+	}
+	if len(cfg.Neighbors) != 1 || cfg.Neighbors[0].NetworkInstance != "tenant-a" || cfg.Neighbors[0].Address != "192.0.2.2" || !cfg.Neighbors[0].Activated || cfg.Neighbors[0].ImportPolicy != "IMPORT-A" {
+		t.Fatalf("Neighbors = %#v, want tenant-a neighbor", cfg.Neighbors)
+	}
+	if len(cfg.Routes) != 1 || cfg.Routes[0].Kind != RouteSourceBGP || cfg.Routes[0].NetworkInstance != "tenant-a" || cfg.Routes[0].Prefix.String() != "10.255.0.1/32" {
+		t.Fatalf("Routes = %#v, want tenant-a BGP network", cfg.Routes)
+	}
+	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].NetworkInstance != "tenant-a" || cfg.Redistribute[0].Kind != RouteSourceConnected || cfg.Redistribute[0].RouteMap != "CONNECTED-OUT" {
+		t.Fatalf("Redistribute = %#v, want tenant-a connected route-map", cfg.Redistribute)
+	}
+}
+
 func interfaceByName(interfaces []Interface, name string) Interface {
 	for _, iface := range interfaces {
 		if iface.Name == name {
@@ -1604,4 +1790,27 @@ func parseCEOSConfigTextResult(t *testing.T, config string) (ParsedConfig, error
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	return ParseConfig("ceos", path)
+}
+
+func mkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+}
+
+func writeFile(t *testing.T, path, text string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func mustReadFileString(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	return string(data)
 }

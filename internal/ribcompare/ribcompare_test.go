@@ -284,6 +284,8 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 		switch cmd {
 		case "docker exec -i r1 vtysh -c show ip bgp json":
 			return []byte(`{}`), nil
+		case "docker exec -i r1 ip -j link show type vrf":
+			return []byte(`[]`), nil
 		case "docker exec -i r1 vtysh -c show ip route vrf all json":
 			return []byte(`{
 			  "192.0.2.0/30":[{"protocol":"connected","interfaceName":"eth1"}],
@@ -376,6 +378,26 @@ func TestParseFRRRouteTableOSPF(t *testing.T) {
 	}
 	if len(routes) != 1 || routes[0].Protocol != "ospf" || routes[0].Paths[0].NextHop != "198.51.100.6" {
 		t.Fatalf("routes = %#v, want OSPF route with next-hop", routes)
+	}
+}
+
+func TestParseFRRRouteTableNormalizesLocalOSPFNextHop(t *testing.T) {
+	data := []byte(`{
+  "10.10.0.1/32": [
+    {
+      "prefix": "10.10.0.1/32",
+      "protocol": "ospf",
+      "selected": true,
+      "nexthops": [{"ip": "0.0.0.0", "interfaceName": "a-svc"}]
+    }
+  ]
+}`)
+	routes, err := ParseFRRRouteTable("r2", data)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTable() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].Protocol != "ospf" || routes[0].Paths[0].NextHop != "" {
+		t.Fatalf("routes = %#v, want local OSPF route with empty next-hop", routes)
 	}
 }
 
@@ -507,6 +529,23 @@ func TestParseFRR(t *testing.T) {
 	}
 	if !foundRemote || !foundLocal {
 		t.Fatalf("routes = %#v", routes)
+	}
+}
+
+func TestParseFRRVRF(t *testing.T) {
+	data := []byte(`{
+	  "routes": {
+	    "10.255.0.1/32": [
+	      {"valid": true, "bestpath": true, "nexthops": [{"ip": "192.0.2.2"}], "path": "65002", "origin":"i"}
+	    ]
+	  }
+	}`)
+	routes, err := ParseFRRVRF("r1", "tenant-a", data)
+	if err != nil {
+		t.Fatalf("ParseFRRVRF() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].NetworkInstance != "tenant-a" || routes[0].Prefix != "10.255.0.1/32" {
+		t.Fatalf("routes = %#v, want tenant-a route", routes)
 	}
 }
 

@@ -1,0 +1,26 @@
+version: hoyan/v1
+
+vars:
+  sources: [cust-bj, cust-sh, cust-gz]
+  service_prefix: 10.4.0.0/16
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: customer-http-denied
+    forall:
+      src: ${sources}
+    check:
+      table: rib
+      scenario: normal
+      where:
+        device: ${src}
+        prefix: ${service_prefix}
+    assert:
+      exists: true

@@ -6,6 +6,10 @@ import (
 )
 
 func ParseFRR(node string, data []byte) ([]NormalizedBgpRoute, error) {
+	return ParseFRRVRF(node, "default", data)
+}
+
+func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedBgpRoute, error) {
 	type frrPath struct {
 		Valid            bool     `json:"valid"`
 		Best             bool     `json:"bestpath"`
@@ -31,6 +35,22 @@ func ParseFRR(node string, data []byte) ([]NormalizedBgpRoute, error) {
 			return nil, err
 		}
 	}
+	if vrfs, ok := raw["vrfs"]; ok {
+		var byVRF map[string]json.RawMessage
+		if err := json.Unmarshal(vrfs, &byVRF); err != nil {
+			return nil, err
+		}
+		var out []NormalizedBgpRoute
+		for name, payload := range byVRF {
+			routes, err := ParseFRRVRF(node, name, payload)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, routes...)
+		}
+		sortRoutes(out)
+		return out, nil
+	}
 	var out []NormalizedBgpRoute
 	for prefix, payload := range raw {
 		if !strings.Contains(prefix, "/") {
@@ -40,7 +60,7 @@ func ParseFRR(node string, data []byte) ([]NormalizedBgpRoute, error) {
 		if err := json.Unmarshal(payload, &paths); err != nil {
 			continue
 		}
-		route := NormalizedBgpRoute{Node: node, NetworkInstance: "default", AFI: "ipv4", Prefix: prefix}
+		route := NormalizedBgpRoute{Node: node, NetworkInstance: vrf, AFI: "ipv4", Prefix: prefix}
 		for _, p := range paths {
 			nextHop := ""
 			if len(p.Nexthops) > 0 {

@@ -365,7 +365,7 @@ func nonBGPPath(protocol string, hops []routeTableNextHop) NormalizedBgpPath {
 	if protocol == "connected" || protocol == "blackhole" || len(hops) == 0 {
 		return path
 	}
-	if hops[0].Address != "" {
+	if hops[0].Address != "" && hops[0].Address != "0.0.0.0" {
 		path.NextHop = hops[0].Address
 	}
 	return path
