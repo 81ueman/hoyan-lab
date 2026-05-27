@@ -1,6 +1,8 @@
 package controlplane
 
 import (
+	"container/heap"
+	"math"
 	"net/netip"
 	"sort"
 	"strings"
@@ -33,7 +35,36 @@ type ospfPath struct {
 	Nodes []string
 	Links []string
 	Areas []string
+	Cond  failure.Cond
 }
+
+type ospfAdjacency struct {
+	From string
+	To   string
+	Link string
+	Area string
+	Cost int
+}
+
+type ospfSPFNode struct {
+	Cost         int
+	Predecessors []ospfSPFPredecessor
+}
+
+type ospfSPFPredecessor struct {
+	Node string
+	Link string
+	Area string
+}
+
+type ospfSPFQueueItem struct {
+	Node string
+	Cost int
+}
+
+type ospfSPFQueue []ospfSPFQueueItem
+
+type ospfAdjacencyFilter func(ospfInterfaceState, ospfInterfaceState) (string, bool)
 
 const ospfMaxPathsPerDestination = 8
 
@@ -101,7 +132,10 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 	if addr, ok := e.idx.PeerAddress(src, nextHop); ok {
 		nextHopAddr = addr.String()
 	}
-	cond := failure.And(pathCondition(path)...)
+	cond := path.Cond
+	if cond == nil {
+		cond = failure.And(pathCondition(path)...)
+	}
 	route := model.ConfiguredRoute{
 		Node:            src,
 		NetworkInstance: model.NetworkInstanceDefault,
@@ -436,39 +470,42 @@ func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[str
 	})
 }
 
-func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]ospfInterfaceState, allowed func(ospfInterfaceState, ospfInterfaceState) (string, bool)) map[string][]ospfPath {
+func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string][]ospfPath {
 	out := map[string][]ospfPath{}
-	visited := map[string]bool{src: true}
-	var walk func(current string, path ospfPath)
-	walk = func(current string, path ospfPath) {
-		if current != src {
-			out[current] = append(out[current], path)
-		}
-		for _, edge := range e.idx.Adj[model.NodeID(current)] {
-			next := string(edge.To)
-			if visited[next] {
+	for _, firstHop := range e.ospfAdjacencies(src, states, allowed) {
+		spf := e.ospfShortestPathTree(firstHop.To, src, states, allowed)
+		condMemo := map[string]failure.Cond{}
+		for dst, state := range spf {
+			if dst == firstHop.To {
+				path := ospfPath{
+					Cost:  firstHop.Cost,
+					Nodes: []string{src, firstHop.To},
+					Links: []string{firstHop.Link},
+					Areas: []string{firstHop.Area},
+					Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), failure.NodeVar(firstHop.To)),
+				}
+				out[dst] = append(out[dst], path)
 				continue
 			}
-			cost, area, ok := ospfAdjacencyCost(e.idx, current, next, edge.Link, states, allowed)
+			if state.Cost == math.MaxInt {
+				continue
+			}
+			nodes, links, areas, ok := ospfRepresentativePath(firstHop.To, dst, spf)
 			if !ok {
 				continue
 			}
-			visited[next] = true
-			walk(next, ospfPath{
-				Cost:  path.Cost + cost,
-				Nodes: append(append([]string(nil), path.Nodes...), next),
-				Links: append(append([]string(nil), path.Links...), edge.Link.Name),
-				Areas: append(append([]string(nil), path.Areas...), area),
-			})
-			delete(visited, next)
+			path := ospfPath{
+				Cost:  firstHop.Cost + state.Cost,
+				Nodes: append([]string{src}, nodes...),
+				Links: append([]string{firstHop.Link}, links...),
+				Areas: append([]string{firstHop.Area}, areas...),
+				Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), ospfSPFCondition(firstHop.To, dst, spf, condMemo)),
+			}
+			out[dst] = append(out[dst], path)
 		}
 	}
-	walk(src, ospfPath{Nodes: []string{src}})
 	for node, paths := range out {
 		sortOSPFPaths(paths)
-		if len(paths) > ospfMaxPathsPerDestination {
-			paths = paths[:ospfMaxPathsPerDestination]
-		}
 		out[node] = paths
 	}
 	return out
@@ -544,11 +581,15 @@ func ospfZeroPath(src, dst string, paths map[string][]ospfPath) ospfPath {
 func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
 	var out ospfPath
 	seen := map[string]bool{}
+	var conds []failure.Cond
 	for i, part := range parts {
 		if len(part.Nodes) == 0 {
 			return ospfPath{}, false
 		}
 		out.Cost += part.Cost
+		if part.Cond != nil {
+			conds = append(conds, part.Cond)
+		}
 		if i == 0 {
 			out.Nodes = append(out.Nodes, part.Nodes...)
 		} else {
@@ -565,6 +606,9 @@ func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
 			return ospfPath{}, false
 		}
 		seen[node] = true
+	}
+	if len(conds) > 0 {
+		out.Cond = failure.And(conds...)
 	}
 	return out, true
 }
@@ -587,7 +631,115 @@ func sortOSPFPaths(paths []ospfPath) {
 	})
 }
 
-func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState, allowed func(ospfInterfaceState, ospfInterfaceState) (string, bool)) (int, string, bool) {
+func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string]ospfSPFNode {
+	dist := map[string]ospfSPFNode{}
+	for _, node := range e.idx.Topology.Nodes {
+		if !node.OSPF.Enabled || node.Name == excluded {
+			continue
+		}
+		dist[node.Name] = ospfSPFNode{Cost: math.MaxInt}
+	}
+	if _, ok := dist[src]; !ok {
+		return dist
+	}
+	dist[src] = ospfSPFNode{Cost: 0}
+	q := &ospfSPFQueue{{Node: src}}
+	heap.Init(q)
+	for q.Len() > 0 {
+		item := heap.Pop(q).(ospfSPFQueueItem)
+		current := dist[item.Node]
+		if item.Cost != current.Cost {
+			continue
+		}
+		for _, adj := range e.ospfAdjacencies(item.Node, states, allowed) {
+			if adj.To == excluded {
+				continue
+			}
+			next, ok := dist[adj.To]
+			if !ok {
+				continue
+			}
+			cost := item.Cost + adj.Cost
+			pred := ospfSPFPredecessor{Node: item.Node, Link: adj.Link, Area: adj.Area}
+			switch {
+			case cost < next.Cost:
+				next.Cost = cost
+				next.Predecessors = []ospfSPFPredecessor{pred}
+				dist[adj.To] = next
+				heap.Push(q, ospfSPFQueueItem{Node: adj.To, Cost: cost})
+			case cost == next.Cost:
+				next.Predecessors = append(next.Predecessors, pred)
+				sort.Slice(next.Predecessors, func(i, j int) bool {
+					if next.Predecessors[i].Node == next.Predecessors[j].Node {
+						return next.Predecessors[i].Link < next.Predecessors[j].Link
+					}
+					return next.Predecessors[i].Node < next.Predecessors[j].Node
+				})
+				dist[adj.To] = next
+			}
+		}
+	}
+	return dist
+}
+
+func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) []ospfAdjacency {
+	var out []ospfAdjacency
+	for _, edge := range e.idx.Adj[model.NodeID(from)] {
+		to := string(edge.To)
+		cost, area, ok := ospfAdjacencyCost(e.idx, from, to, edge.Link, states, allowed)
+		if !ok {
+			continue
+		}
+		out = append(out, ospfAdjacency{From: from, To: to, Link: edge.Link.Name, Area: area, Cost: cost})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].To == out[j].To {
+			return out[i].Link < out[j].Link
+		}
+		return out[i].To < out[j].To
+	})
+	return out
+}
+
+func ospfRepresentativePath(src, dst string, spf map[string]ospfSPFNode) ([]string, []string, []string, bool) {
+	if src == dst {
+		return []string{src}, nil, nil, true
+	}
+	state, ok := spf[dst]
+	if !ok || state.Cost == math.MaxInt || len(state.Predecessors) == 0 {
+		return nil, nil, nil, false
+	}
+	pred := state.Predecessors[0]
+	nodes, links, areas, ok := ospfRepresentativePath(src, pred.Node, spf)
+	if !ok {
+		return nil, nil, nil, false
+	}
+	return append(nodes, dst), append(links, pred.Link), append(areas, pred.Area), true
+}
+
+func ospfSPFCondition(src, dst string, spf map[string]ospfSPFNode, memo map[string]failure.Cond) failure.Cond {
+	if cond, ok := memo[dst]; ok {
+		return cond
+	}
+	if src == dst {
+		cond := failure.NodeVar(src)
+		memo[dst] = cond
+		return cond
+	}
+	state, ok := spf[dst]
+	if !ok || state.Cost == math.MaxInt || len(state.Predecessors) == 0 {
+		return failure.False()
+	}
+	branches := make([]failure.Cond, 0, len(state.Predecessors))
+	for _, pred := range state.Predecessors {
+		branches = append(branches, failure.And(ospfSPFCondition(src, pred.Node, spf, memo), failure.LinkVar(pred.Link), failure.NodeVar(dst)))
+	}
+	cond := failure.Or(branches...)
+	memo[dst] = cond
+	return cond
+}
+
+func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) (int, string, bool) {
 	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
 	if !ok {
 		return 0, "", false
@@ -620,4 +772,27 @@ func pathCondition(path ospfPath) []failure.Cond {
 		conds = append(conds, failure.LinkVar(link))
 	}
 	return conds
+}
+
+func (q ospfSPFQueue) Len() int { return len(q) }
+
+func (q ospfSPFQueue) Less(i, j int) bool {
+	if q[i].Cost == q[j].Cost {
+		return q[i].Node < q[j].Node
+	}
+	return q[i].Cost < q[j].Cost
+}
+
+func (q ospfSPFQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+
+func (q *ospfSPFQueue) Push(x any) {
+	*q = append(*q, x.(ospfSPFQueueItem))
+}
+
+func (q *ospfSPFQueue) Pop() any {
+	old := *q
+	n := len(old)
+	item := old[n-1]
+	*q = old[:n-1]
+	return item
 }

@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/model"
@@ -137,6 +138,30 @@ func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[stri
 	return rib
 }
 
+func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
+	topo := denseOSPFTopology(12)
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	rib := map[string]map[string][]RIBEntry{}
+	NewEngine(idx, rib).Simulate()
+	routes := rib["r1"]["10.255.12.12/32"]
+	if len(routes) != 11 {
+		t.Fatalf("r1 routes to r12 loopback = %d, want one candidate per first hop", len(routes))
+	}
+	best := routes[0].Normalize()
+	if best.NextHop != "r12" || best.RouteSource.Metric != 1 {
+		t.Fatalf("best route = %#v, want direct SPF route to r12", best)
+	}
+	for _, route := range routes {
+		route = route.Normalize()
+		if len(route.Nodes) > 3 {
+			t.Fatalf("route path = %#v, want SPF representative path without enumerated detours", route.Nodes)
+		}
+	}
+}
+
 func ospfNode(name, loopback string, ifaces map[string]string, costs map[string]int) model.Node {
 	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
 	ospfIfaces := map[string]model.OSPFInterface{
@@ -202,4 +227,44 @@ func ospfAreaNode(name, loopback string, ifaces map[string]string, areasByIface 
 			Areas:             areas,
 		},
 	}
+}
+
+func denseOSPFTopology(n int) *model.Topology {
+	ifaces := map[string]map[string]string{}
+	costs := map[string]map[string]int{}
+	var links []model.Link
+	linkID := 0
+	for i := 1; i <= n; i++ {
+		ifaces[fmt.Sprintf("r%d", i)] = map[string]string{}
+		costs[fmt.Sprintf("r%d", i)] = map[string]int{}
+	}
+	for i := 1; i <= n; i++ {
+		for j := i + 1; j <= n; j++ {
+			linkID++
+			a := fmt.Sprintf("r%d", i)
+			b := fmt.Sprintf("r%d", j)
+			aIface := fmt.Sprintf("eth%d", j)
+			bIface := fmt.Sprintf("eth%d", i)
+			subnet := fmt.Sprintf("198.%d.%d.0/31", linkID/255, linkID%255)
+			ifaces[a][aIface] = fmt.Sprintf("198.%d.%d.0/31", linkID/255, linkID%255)
+			ifaces[b][bIface] = fmt.Sprintf("198.%d.%d.1/31", linkID/255, linkID%255)
+			costs[a][aIface] = 1
+			costs[b][bIface] = 1
+			links = append(links, model.Link{
+				Name:   fmt.Sprintf("%s-%s", a, b),
+				A:      a,
+				AIntf:  aIface,
+				B:      b,
+				BIntf:  bIface,
+				Cost:   1,
+				Subnet: subnet,
+			})
+		}
+	}
+	nodes := make([]model.Node, 0, n)
+	for i := 1; i <= n; i++ {
+		name := fmt.Sprintf("r%d", i)
+		nodes = append(nodes, ospfNode(name, fmt.Sprintf("10.255.%d.%d/32", i, i), ifaces[name], costs[name]))
+	}
+	return &model.Topology{Nodes: nodes, Links: links}
 }
