@@ -5,9 +5,9 @@ nos:
 checks:
   - verify
   - snapshot
-  - rib-compare
-  - fib-compare
-  - live-check
+  - compare rib
+  - compare fib
+  - live check
 features:
   - ospf
   - ospf-broadcast

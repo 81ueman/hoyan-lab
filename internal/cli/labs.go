@@ -43,7 +43,7 @@ func NewLabsCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(NewLabsListCommand(), NewLabsDescribeCommand(), NewLabsLiveCheckCommand())
+	cmd.AddCommand(NewLabsListCommand(), NewLabsDescribeCommand(), NewLabsCheckCommand())
 	return cmd
 }
 
@@ -77,11 +77,11 @@ func NewLabsDescribeCommand() *cobra.Command {
 	return cmd
 }
 
-func NewLabsLiveCheckCommand() *cobra.Command {
+func NewLabsCheckCommand() *cobra.Command {
 	var opts labsLiveCheckOptions
 	cmd := &cobra.Command{
-		Use:           "live-check [name-or-path...]",
-		Short:         "Run live-check serially for scenario labs",
+		Use:           "check [name-or-path...]",
+		Short:         "Run live checks serially for scenario labs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -143,7 +143,7 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 	for _, lab := range labs {
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
 		queriesPath := filepath.Join(lab.Path, labQueriesPath)
-		fmt.Fprintf(out, "==> live-check %s (%s)\n", lab.Name, lab.Path)
+		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
 		err := livecheck.Run(ctx, livecheck.Options{
 			Topology:      topologyPath,
 			Queries:       queriesPath,
@@ -161,14 +161,14 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			failures = append(failures, fmt.Sprintf("%s: %v", lab.Name, err))
 			fmt.Fprintf(out, "[FAIL] %s: %v\n", lab.Name, err)
 			if !opts.continueOnError {
-				return fmt.Errorf("live-check failed for %s: %w", lab.Name, err)
+				return fmt.Errorf("live check failed for %s: %w", lab.Name, err)
 			}
 			continue
 		}
 		fmt.Fprintf(out, "[PASS] %s\n", lab.Name)
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("%d lab live-check(s) failed: %s", len(failures), strings.Join(failures, "; "))
+		return fmt.Errorf("%d lab live check(s) failed: %s", len(failures), strings.Join(failures, "; "))
 	}
 	return nil
 }

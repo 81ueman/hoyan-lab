@@ -20,9 +20,25 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	help := out.String()
-	for _, want := range []string{"verify", "live", "live-check", "rib-compare", "fib-compare", "render-topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"live", "compare", "topology", "labs", "model", "intent", "facts"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
+	cmd := NewRootCommand()
+	names := map[string]bool{}
+	for _, child := range cmd.Commands() {
+		if !child.IsAvailableCommand() {
+			continue
+		}
+		names[child.Name()] = true
+	}
+	for _, want := range []string{"live", "compare", "topology", "labs", "model", "intent", "facts"} {
+		if !names[want] {
+			t.Fatalf("root command missing %q; got %v", want, names)
 		}
 	}
 }
@@ -118,7 +134,7 @@ func TestModelHelpListsPacketClasses(t *testing.T) {
 	}
 }
 
-func TestLabsHelpListsLiveCheck(t *testing.T) {
+func TestLabsHelpListsCheck(t *testing.T) {
 	var out bytes.Buffer
 	cmd := NewLabsCommand()
 	cmd.SetOut(&out)
@@ -128,8 +144,41 @@ func TestLabsHelpListsLiveCheck(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "live-check") {
-		t.Fatalf("help output missing live-check:\n%s", out.String())
+	if !strings.Contains(out.String(), "check") {
+		t.Fatalf("help output missing check:\n%s", out.String())
+	}
+}
+
+func TestCompareHelpListsRIBAndFIB(t *testing.T) {
+	var out bytes.Buffer
+	cmd := NewCompareCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	help := out.String()
+	for _, want := range []string{"rib", "fib"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help output missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestTopologyHelpListsRender(t *testing.T) {
+	var out bytes.Buffer
+	cmd := NewTopologyCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "render") {
+		t.Fatalf("help output missing render:\n%s", out.String())
 	}
 }
 
@@ -270,8 +319,8 @@ func TestModelRIBStrictConfigRejectsUnsupportedStatements(t *testing.T) {
 }
 
 func TestNormalizeLegacyLongFlags(t *testing.T) {
-	got := normalizeLegacyLongFlags([]string{"render-topology", "-suffix", "issue-38", "-output=out.yml", "-h", "--topology", "x.yml", "-1s"})
-	want := []string{"render-topology", "--suffix", "issue-38", "--output=out.yml", "-h", "--topology", "x.yml", "-1s"}
+	got := normalizeLegacyLongFlags([]string{"topology", "render", "-suffix", "issue-38", "-output=out.yml", "-h", "--topology", "x.yml", "-1s"})
+	want := []string{"topology", "render", "--suffix", "issue-38", "--output=out.yml", "-h", "--topology", "x.yml", "-1s"}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("normalizeLegacyLongFlags() = %#v, want %#v", got, want)
 	}

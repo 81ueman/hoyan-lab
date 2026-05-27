@@ -75,12 +75,9 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(
-		NewVerifyCommand(),
 		NewLiveCommand(),
-		NewLiveCheckCommand(),
-		NewRIBCompareCommand(),
-		NewFIBCompareCommand(),
-		NewRenderTopologyCommand(),
+		NewCompareCommand(),
+		NewTopologyCommand(),
 		NewLabsCommand(),
 		NewModelCommand(),
 		NewIntentCommand(),
@@ -92,11 +89,11 @@ func NewRootCommand() *cobra.Command {
 func NewLiveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "live",
-		Short:         "Collect reusable live device state",
+		Short:         "Run live lab checks and collect live device state",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(NewLiveSnapshotCommand())
+	cmd.AddCommand(NewLiveCheckCommand(), NewLiveSnapshotCommand())
 	return cmd
 }
 
@@ -368,7 +365,7 @@ func formatClassIDs(ids []model.PrefixClassID) string {
 func NewLiveCheckCommand() *cobra.Command {
 	var opts liveCheckOptions
 	cmd := &cobra.Command{
-		Use:           "live-check",
+		Use:           "check",
 		Short:         "Deploy the lab and compare live device state with the model",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -464,10 +461,21 @@ func (o liveCheckOptions) validate() error {
 	return nil
 }
 
+func NewCompareCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "compare",
+		Short:         "Compare modeled state with live device state",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(NewRIBCompareCommand(), NewFIBCompareCommand())
+	return cmd
+}
+
 func NewRIBCompareCommand() *cobra.Command {
 	var opts ribCompareOptions
 	cmd := &cobra.Command{
-		Use:           "rib-compare",
+		Use:           "rib",
 		Short:         "Compare modeled RIBs with live device RIBs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -541,7 +549,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 func NewFIBCompareCommand() *cobra.Command {
 	var opts fibCompareOptions
 	cmd := &cobra.Command{
-		Use:           "fib-compare",
+		Use:           "fib",
 		Short:         "Compare modeled FIBs with live installed kernel FIBs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -661,10 +669,21 @@ func validateFIBUnresolvedPolicy(policy string) error {
 	return fmt.Errorf("FIB unresolved policy must be one of warn, fail, or ignore")
 }
 
+func NewTopologyCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "topology",
+		Short:         "Render and transform topology files",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.AddCommand(NewRenderTopologyCommand())
+	return cmd
+}
+
 func NewRenderTopologyCommand() *cobra.Command {
 	var opts renderTopologyOptions
 	cmd := &cobra.Command{
-		Use:           "render-topology",
+		Use:           "render",
 		Short:         "Render an isolated containerlab topology",
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -6,7 +6,7 @@ nos:
   - srlinux
 checks:
   - verify
-  - live-check
+  - live check
 features:
   - acl
   - packet-classes
