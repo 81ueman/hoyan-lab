@@ -119,6 +119,8 @@ type OSPFProcess struct {
 	Networks          []OSPFNetwork            `yaml:"networks,omitempty" json:"networks,omitempty"`
 	PassiveInterfaces []string                 `yaml:"passive_interfaces,omitempty" json:"passive_interfaces,omitempty"`
 	Interfaces        map[string]OSPFInterface `yaml:"interfaces,omitempty" json:"interfaces,omitempty"`
+	Areas             map[string]OSPFArea      `yaml:"areas,omitempty" json:"areas,omitempty"`
+	Redistribute      []OSPFRedistribution     `yaml:"redistribute,omitempty" json:"redistribute,omitempty"`
 }
 
 type OSPFNetwork struct {
@@ -133,6 +135,27 @@ type OSPFInterface struct {
 	Cost    int          `yaml:"cost,omitempty" json:"cost,omitempty"`
 	Passive bool         `yaml:"passive,omitempty" json:"passive,omitempty"`
 	Source  ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
+}
+
+type OSPFAreaKind string
+
+const (
+	OSPFAreaNormal OSPFAreaKind = "normal"
+	OSPFAreaStub   OSPFAreaKind = "stub"
+	OSPFAreaNSSA   OSPFAreaKind = "nssa"
+)
+
+type OSPFArea struct {
+	ID                          string       `yaml:"id" json:"id"`
+	Kind                        OSPFAreaKind `yaml:"kind,omitempty" json:"kind,omitempty"`
+	NoSummary                   bool         `yaml:"no_summary,omitempty" json:"no_summary,omitempty"`
+	DefaultInformationOriginate bool         `yaml:"default_information_originate,omitempty" json:"default_information_originate,omitempty"`
+	Source                      ConfigSource `yaml:"source,omitempty" json:"source,omitempty"`
+}
+
+type OSPFRedistribution struct {
+	Kind   RouteSourceKind `yaml:"kind" json:"kind"`
+	Source ConfigSource    `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
 type PrefixList struct {

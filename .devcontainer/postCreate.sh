@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+sudo apt-get update
+sudo apt-get install -y libz3-dev
+
 npm install -g @openai/codex
 codex --version
 
