@@ -317,7 +317,7 @@ func TestCollectSkipsBGPCommandsForNodesWithoutASN(t *testing.T) {
 			t.Fatalf("unexpected BGP collection command for OSPF-only node: %s", cmd)
 		}
 		switch cmd {
-		case "docker exec -i ceos1 Cli -p 15 -c show ip route vrf default | json":
+		case "docker exec -i ceos1 Cli -p 15 -c show ip route vrf all | json":
 			return []byte(`{"vrfs":{"default":{"routes":{"10.255.2.2/32":{"routeType":"ospfInternal","vias":[{"nexthopAddr":"198.51.100.2","interface":"Ethernet2"}]}}}}}`), nil
 		default:
 			t.Fatalf("unexpected command: %s", cmd)
@@ -432,6 +432,34 @@ func TestParseCEOSRouteTableStaticAndConnected(t *testing.T) {
 	ospf := routeByPrefixProtocol(routes, "10.255.2.2/32", "ospf")
 	if ospf == nil || len(ospf.Paths) != 1 || ospf.Paths[0].NextHop != "198.51.100.2" {
 		t.Fatalf("OSPF route = %#v", ospf)
+	}
+}
+
+func TestParseCEOSRouteTableMultipleVRFs(t *testing.T) {
+	data := []byte(`{"vrfs":{
+	  "tenant-a":{"routes":{"10.255.0.1/32":{"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}},
+	  "tenant-b":{"routes":{"10.255.0.1/32":{"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet2"}]}}}
+	}}`)
+	routes, err := ParseCEOSRouteTable("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOSRouteTable() error = %v", err)
+	}
+	for _, vrf := range []string{"tenant-a", "tenant-b"} {
+		route := routeByVRFPrefixProtocol(routes, vrf, "10.255.0.1/32", "static")
+		if route == nil {
+			t.Fatalf("%s static route missing: %#v", vrf, routes)
+		}
+	}
+}
+
+func TestParseSRLinuxRouteTableNetworkInstance(t *testing.T) {
+	data := []byte(`{"instance":[{"ip route":[{"Prefix":"10.255.0.1/32","Route Type":"static","Active":"True","Next-hop (Type)":"192.0.2.2/32 (direct)","Next-hop Interface":"ethernet-1/1.0"}]}]}`)
+	routes, err := ParseSRLinuxRouteTableNetworkInstance("srl1", "tenant-a", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRouteTableNetworkInstance() error = %v", err)
+	}
+	if routeByVRFPrefixProtocol(routes, "tenant-a", "10.255.0.1/32", "static") == nil {
+		t.Fatalf("tenant-a static route missing: %#v", routes)
 	}
 }
 
@@ -992,6 +1020,15 @@ func routeByPrefix(routes []NormalizedBgpRoute, prefix string) *NormalizedBgpRou
 func routeByPrefixProtocol(routes []NormalizedBgpRoute, prefix, protocol string) *NormalizedBgpRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
+			return &routes[i]
+		}
+	}
+	return nil
+}
+
+func routeByVRFPrefixProtocol(routes []NormalizedBgpRoute, vrf, prefix, protocol string) *NormalizedBgpRoute {
+	for i := range routes {
+		if routes[i].NetworkInstance == vrf && routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
 			return &routes[i]
 		}
 	}

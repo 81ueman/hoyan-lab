@@ -1,0 +1,27 @@
+name: hoyan-vrf-ceos-basic
+mgmt:
+    network: hoyan-vrf-ceos-basic
+    ipv4-subnet: 172.86.92.0/24
+topology:
+    kinds:
+        arista_ceos:
+            image: ceos:latest
+    nodes:
+        r1:
+            kind: arista_ceos
+            group: router
+            mgmt-ipv4: 172.86.92.11
+            startup-config: configs/ceos/r1.cfg
+        r2:
+            kind: arista_ceos
+            group: router
+            mgmt-ipv4: 172.86.92.12
+            startup-config: configs/ceos/r2.cfg
+        r3:
+            kind: arista_ceos
+            group: router
+            mgmt-ipv4: 172.86.92.13
+            startup-config: configs/ceos/r3.cfg
+    links:
+        - endpoints: ["r1:eth1", "r2:eth1"]
+        - endpoints: ["r1:eth2", "r3:eth1"]

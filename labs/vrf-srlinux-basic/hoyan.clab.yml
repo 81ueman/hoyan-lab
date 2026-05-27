@@ -1,0 +1,28 @@
+name: hoyan-vrf-srlinux-basic
+mgmt:
+    network: hoyan-vrf-srlinux-basic
+    ipv4-subnet: 172.86.93.0/24
+topology:
+    kinds:
+        nokia_srlinux:
+            image: ghcr.io/nokia/srlinux:25.10
+            type: ixr-d2l
+    nodes:
+        r1:
+            kind: nokia_srlinux
+            group: router
+            mgmt-ipv4: 172.86.93.11
+            startup-config: configs/srlinux/r1.cfg
+        r2:
+            kind: nokia_srlinux
+            group: router
+            mgmt-ipv4: 172.86.93.12
+            startup-config: configs/srlinux/r2.cfg
+        r3:
+            kind: nokia_srlinux
+            group: router
+            mgmt-ipv4: 172.86.93.13
+            startup-config: configs/srlinux/r3.cfg
+    links:
+        - endpoints: ["r1:e1-1", "r2:e1-1"]
+        - endpoints: ["r1:e1-2", "r3:e1-1"]

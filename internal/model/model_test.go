@@ -1478,6 +1478,89 @@ func TestParseFRRVRFInterfacesAndStaticRoutes(t *testing.T) {
 	}
 }
 
+func TestParseCEOSVRFInterfacesAndStaticRoutes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ceos.cfg")
+	config := strings.Join([]string{
+		"interface Ethernet1",
+		"   vrf tenant-a",
+		"   ip address 192.0.2.1/30",
+		"!",
+		"ip route vrf tenant-a 10.0.0.0/24 192.0.2.2",
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseConfig(KindCEOS, path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if got := interfaceByName(cfg.Interfaces, "Ethernet1").VRF; got != "tenant-a" {
+		t.Fatalf("Ethernet1 VRF = %q, want tenant-a", got)
+	}
+	if len(cfg.Routes) != 1 || cfg.Routes[0].NetworkInstance != "tenant-a" {
+		t.Fatalf("routes = %#v, want one tenant-a route", cfg.Routes)
+	}
+}
+
+func TestParseSRLinuxNetworkInstanceInterfacesAndStaticRoutes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "srl.cfg")
+	config := strings.Join([]string{
+		"set / interface ethernet-1/1 subinterface 0 ipv4 address 192.0.2.1/30",
+		"set / network-instance tenant-a interface ethernet-1/1.0",
+		"set / network-instance tenant-a next-hop-groups group tenant-a-nhg nexthop 1 ip-address 192.0.2.2",
+		"set / network-instance tenant-a static-routes route 10.0.0.0/24 next-hop-group tenant-a-nhg admin-state enable",
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseConfig(KindSRLinux, path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if got := interfaceByName(cfg.Interfaces, "ethernet-1/1").VRF; got != "tenant-a" {
+		t.Fatalf("ethernet-1/1 VRF = %q, want tenant-a", got)
+	}
+	if len(cfg.Routes) != 1 || cfg.Routes[0].NetworkInstance != "tenant-a" {
+		t.Fatalf("routes = %#v, want one tenant-a route", cfg.Routes)
+	}
+}
+
+func TestLoadVendorVRFLabs(t *testing.T) {
+	for _, lab := range []string{"vrf-ceos-basic", "vrf-srlinux-basic"} {
+		t.Run(lab, func(t *testing.T) {
+			topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", lab, "hoyan.clab.yml"))
+			if err != nil {
+				t.Fatalf("LoadLabTopology() error = %v", err)
+			}
+			r1, ok := topo.Node("r1")
+			if !ok {
+				t.Fatalf("r1 missing")
+			}
+			if got := interfaceByName(r1.Interfaces, vendorVRFInterfaceName(lab, "tenant-a")).VRF; got != "tenant-a" {
+				t.Fatalf("tenant-a interface VRF = %q", got)
+			}
+			if len(r1.Routes) != 2 {
+				t.Fatalf("r1 routes = %#v, want 2", r1.Routes)
+			}
+		})
+	}
+}
+
+func vendorVRFInterfaceName(lab, vrf string) string {
+	if lab == "vrf-ceos-basic" {
+		if vrf == "tenant-a" {
+			return "Ethernet1"
+		}
+		return "Ethernet2"
+	}
+	if vrf == "tenant-a" {
+		return "ethernet-1/1"
+	}
+	return "ethernet-1/2"
+}
+
 func TestParseFRRBGPVRF(t *testing.T) {
 	cfg := parseFRRConfigText(t, `
 hostname r1

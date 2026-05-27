@@ -31,6 +31,10 @@ func ParseSRLinuxSummary(data []byte) ([]string, error) {
 }
 
 func ParseSRLinuxDetail(node, prefix string, data []byte) ([]NormalizedBgpRoute, error) {
+	return ParseSRLinuxDetailNetworkInstance(node, "default", prefix, data)
+}
+
+func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, data []byte) ([]NormalizedBgpRoute, error) {
 	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -42,7 +46,7 @@ func ParseSRLinuxDetail(node, prefix string, data []byte) ([]NormalizedBgpRoute,
 			routeMaps = append(routeMaps, m)
 		}
 	}
-	route := NormalizedBgpRoute{Node: node, NetworkInstance: "default", AFI: "ipv4", Prefix: prefix}
+	route := NormalizedBgpRoute{Node: node, NetworkInstance: networkInstance, AFI: "ipv4", Prefix: prefix}
 	for _, m := range routeMaps {
 		status := firstString(m, "status", "route status", "route-status")
 		asPath := parseASPath(firstString(m, "as path", "as-path", "asPath"))

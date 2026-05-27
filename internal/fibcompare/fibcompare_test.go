@@ -114,6 +114,35 @@ func TestParseCEOSRoutes(t *testing.T) {
 	}
 }
 
+func TestParseCEOSRoutesMultipleVRFs(t *testing.T) {
+	data := []byte(`{"vrfs":{
+	  "tenant-a":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}},
+	  "tenant-b":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet2"}]}}}
+	}}`)
+	routes, err := ParseCEOSRoutes("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOSRoutes() error = %v", err)
+	}
+	for _, vrf := range []string{"tenant-a", "tenant-b"} {
+		route := routeByVRFPrefix(routes, vrf, "10.255.0.1/32")
+		if route == nil || route.Protocol != "static" {
+			t.Fatalf("%s route = %#v, routes=%#v", vrf, route, routes)
+		}
+	}
+}
+
+func TestParseSRLinuxRoutesNetworkInstance(t *testing.T) {
+	data := []byte(`{"instance":[{"ip route":[{"Prefix":"10.255.0.1/32","Route Type":"static","Active":"True","Next-hop (Type)":"192.0.2.2/32 (direct)","Next-hop Interface":"ethernet-1/1.0"}]}]}`)
+	routes, err := ParseSRLinuxRoutesNetworkInstance("srl1", "tenant-a", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRoutesNetworkInstance() error = %v", err)
+	}
+	route := routeByVRFPrefix(routes, "tenant-a", "10.255.0.1/32")
+	if route == nil || route.Protocol != "static" {
+		t.Fatalf("route = %#v, routes=%#v", route, routes)
+	}
+}
+
 func TestParseSRLinuxRoutes(t *testing.T) {
 	data := []byte("\x00noise\r\n" + `{
 	  "instance": [{
@@ -452,7 +481,7 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
 		case cmd == "docker exec -i frr1 ip -j route show table local":
 			return []byte(`[]`), nil
-		case cmd == "docker exec -i ceos1 Cli -p 15 -c show ip route vrf default | json":
+		case cmd == "docker exec -i ceos1 Cli -p 15 -c show ip route vrf all | json":
 			return []byte(`{"vrfs":{"default":{"routes":{"10.0.1.0/24":{"kernelProgrammed":true,"routeType":"eBGP","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}}}}`), nil
 		case cmd == "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary":
 			return []byte(`{"instance":[{"ip route":[{"Prefix":"10.0.2.0/24","Route Type":"bgp","Active":"True","Next-hop (Type)":"192.0.2.3/31 (indirect/local)","Next-hop Interface":"ethernet-1/1.0 "}]}]}`), nil
@@ -653,6 +682,15 @@ func (f fakeRunner) Run(ctx context.Context, name string, args ...string) ([]byt
 func routeByPrefix(routes []NormalizedFIBRoute, prefix string) *NormalizedFIBRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix {
+			return &routes[i]
+		}
+	}
+	return nil
+}
+
+func routeByVRFPrefix(routes []NormalizedFIBRoute, vrf, prefix string) *NormalizedFIBRoute {
+	for i := range routes {
+		if routes[i].VRF == vrf && routes[i].Prefix == prefix {
 			return &routes[i]
 		}
 	}
