@@ -33,9 +33,12 @@ type FIBRow struct {
 }
 
 type Snapshot struct {
-	Name string
-	RIB  []RIBRow
-	FIB  []FIBRow
+	Name     string
+	LabPath  string
+	Topology *model.Topology
+	Graph    *sim.Graph
+	RIB      []RIBRow
+	FIB      []FIBRow
 }
 
 func Build(labPath, snapshotName string) (Snapshot, error) {
@@ -102,7 +105,7 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 		return factKey(ribRows[i].Snapshot, ribRows[i].Device, ribRows[i].Prefix, ribRows[i].Protocol, ribRows[i].NextHop) <
 			factKey(ribRows[j].Snapshot, ribRows[j].Device, ribRows[j].Prefix, ribRows[j].Protocol, ribRows[j].NextHop)
 	})
-	return Snapshot{Name: snapshotName, RIB: ribRows, FIB: fibRows}, nil
+	return Snapshot{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: graph, RIB: ribRows, FIB: fibRows}, nil
 }
 
 func resolveLabPath(raw string) string {

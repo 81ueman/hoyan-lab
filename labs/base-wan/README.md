@@ -7,7 +7,7 @@ checks, prefix classes, recursive next-hop modeling, and RIB/FIB comparison.
 Examples:
 
 ```bash
-go run ./cmd/hoyan verify --lab labs/base-wan
+go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 go run ./cmd/hoyan live-check --lab labs/base-wan
 go run ./cmd/hoyan rib-compare --lab labs/base-wan
 go run ./cmd/hoyan fib-compare --lab labs/base-wan

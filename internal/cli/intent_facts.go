@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/facts"
@@ -13,6 +14,7 @@ import (
 
 type intentOptions struct {
 	file   string
+	lab    string
 	format string
 }
 
@@ -43,7 +45,11 @@ func NewIntentValidateCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			doc, err := loadIntentFile(opts.file)
+			path, err := resolveIntentInput(cmd, opts)
+			if err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			doc, err := loadIntentFile(path)
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
@@ -53,7 +59,7 @@ func NewIntentValidateCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addIntentFileFlag(cmd, &opts.file)
+	addIntentInputFlags(cmd, &opts)
 	return cmd
 }
 
@@ -68,7 +74,11 @@ func NewIntentExpandCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			doc, err := loadIntentFile(opts.file)
+			path, err := resolveIntentInput(cmd, opts)
+			if err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			doc, err := loadIntentFile(path)
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
@@ -79,7 +89,7 @@ func NewIntentExpandCommand() *cobra.Command {
 			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, expanded)
 		},
 	}
-	addIntentFileFlag(cmd, &opts.file)
+	addIntentInputFlags(cmd, &opts)
 	cmd.Flags().StringVar(&opts.format, "format", "json", "output format: json")
 	return cmd
 }
@@ -95,7 +105,11 @@ func NewIntentVerifyCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			doc, err := loadIntentFile(opts.file)
+			path, err := resolveIntentInput(cmd, opts)
+			if err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			doc, err := loadIntentFile(path)
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
@@ -112,7 +126,7 @@ func NewIntentVerifyCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addIntentFileFlag(cmd, &opts.file)
+	addIntentInputFlags(cmd, &opts)
 	cmd.Flags().StringVar(&opts.format, "format", "json", "output format: json")
 	return cmd
 }
@@ -177,6 +191,11 @@ func addIntentFileFlag(cmd *cobra.Command, value *string) {
 	_ = cmd.MarkFlagRequired("file")
 }
 
+func addIntentInputFlags(cmd *cobra.Command, opts *intentOptions) {
+	cmd.Flags().StringVar(&opts.file, "file", "", "intent YAML file")
+	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.yml")
+}
+
 func addFactsFlags(cmd *cobra.Command, opts *factsOptions) {
 	cmd.Flags().StringVar(&opts.labPath, "lab", defaultLabDir, "scenario lab directory")
 	cmd.Flags().StringVar(&opts.format, "format", "json", "output format: json")
@@ -187,6 +206,25 @@ func loadIntentFile(path string) (*intent.Document, error) {
 		return nil, fmt.Errorf("--file is required")
 	}
 	return intent.Load(path)
+}
+
+func resolveIntentInput(cmd *cobra.Command, opts intentOptions) (string, error) {
+	fileChanged := cmd.Flags().Changed("file")
+	labChanged := cmd.Flags().Changed("lab")
+	if fileChanged && labChanged {
+		return "", fmt.Errorf("--file and --lab are mutually exclusive")
+	}
+	if fileChanged {
+		return opts.file, nil
+	}
+	if labChanged {
+		labDir, err := resolveLabDir(opts.lab)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(labDir, labIntentPath), nil
+	}
+	return "", fmt.Errorf("--file or --lab is required")
 }
 
 func writeFormatJSONOnly(out io.Writer, format string, value any) error {

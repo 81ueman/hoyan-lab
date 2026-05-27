@@ -23,7 +23,7 @@ func Validate(doc *Document) error {
 			}
 		} else {
 			switch in.Check.Table {
-			case "rib", "fib":
+			case "rib", "fib", "packet":
 			default:
 				return fmt.Errorf("%s.check.table: unsupported table %q", path, in.Check.Table)
 			}
@@ -34,10 +34,32 @@ func Validate(doc *Document) error {
 			if _, ok := doc.Snapshots[scenario.Snapshot]; !ok {
 				return fmt.Errorf("%s.check.scenario: scenario %q references unknown snapshot %q", path, in.Check.Scenario, scenario.Snapshot)
 			}
+			if scenario.Failures.Max < 0 {
+				return fmt.Errorf("%s.scenario.failures.max: must be non-negative", path)
+			}
+			if in.Check.Table == "packet" {
+				if strings.TrimSpace(in.Check.Packet.From) == "" {
+					return fmt.Errorf("%s.check.packet.from: required", path)
+				}
+				if strings.TrimSpace(in.Check.Packet.To) == "" {
+					return fmt.Errorf("%s.check.packet.to: required", path)
+				}
+				switch in.Check.Packet.Protocol {
+				case "icmp", "tcp", "udp":
+				default:
+					return fmt.Errorf("%s.check.packet.protocol: unsupported protocol %q", path, in.Check.Packet.Protocol)
+				}
+				if in.Check.Packet.DstPort < 0 || in.Check.Packet.DstPort > 65535 {
+					return fmt.Errorf("%s.check.packet.dst_port: out of range", path)
+				}
+			}
 		}
 		assertion := effectiveAssertion(in)
-		if in.Check.Compare == nil && assertion.Exists == nil && assertion.Count == nil && assertion.DistinctCount == nil && assertion.DistinctValues == nil {
+		if in.Check.Compare == nil && assertion.Exists == nil && assertion.Reachable == nil && assertion.Count == nil && assertion.DistinctCount == nil && assertion.DistinctValues == nil {
 			return fmt.Errorf("%s.assert: exists or count is required", path)
+		}
+		if in.Check.Table == "packet" && assertion.Reachable == nil {
+			return fmt.Errorf("%s.assert.reachable: required for packet table", path)
 		}
 		if err := validateRefs(path, in, doc.Vars); err != nil {
 			return err
@@ -120,6 +142,10 @@ func refsInAny(v any) []string {
 		}
 	case Check:
 		refs = append(refs, refsInAny(x.Where)...)
+		refs = append(refs, refsInAny(x.Packet.From)...)
+		refs = append(refs, refsInAny(x.Packet.VRF)...)
+		refs = append(refs, refsInAny(x.Packet.To)...)
+		refs = append(refs, refsInAny(x.Packet.Protocol)...)
 		refs = append(refs, refsInAny(x.Assert)...)
 		if x.Compare != nil {
 			refs = append(refs, refsInAny(x.Compare.Left.Where)...)
@@ -134,7 +160,7 @@ func refsInAny(v any) []string {
 }
 
 func effectiveAssertion(in Intent) Assertion {
-	if in.Check.Assert.Exists != nil || in.Check.Assert.Count != nil || in.Check.Assert.DistinctCount != nil || in.Check.Assert.DistinctValues != nil || in.Check.Assert.Relation != "" {
+	if in.Check.Assert.Exists != nil || in.Check.Assert.Reachable != nil || in.Check.Assert.Count != nil || in.Check.Assert.DistinctCount != nil || in.Check.Assert.DistinctValues != nil || in.Check.Assert.Relation != "" {
 		return in.Check.Assert
 	}
 	return in.Assert

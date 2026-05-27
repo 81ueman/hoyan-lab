@@ -7,6 +7,9 @@ import (
 	"strconv"
 
 	"github.com/81ueman/hoyan-lab/internal/facts"
+	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 func Verify(doc *Document) (Report, error) {
@@ -43,10 +46,13 @@ func Verify(doc *Document) (Report, error) {
 		if err != nil {
 			return Report{}, err
 		}
-		report.Results = append(report.Results, evaluateIntent(in, scenario.Snapshot, snapshot)...)
+		report.Results = append(report.Results, evaluateIntent(in, scenario, scenario.Snapshot, snapshot)...)
 	}
 	report.Summary.Total = len(report.Results)
-	for _, result := range report.Results {
+	for i, result := range report.Results {
+		if report.Results[i].Counterexamples == nil {
+			report.Results[i].Counterexamples = []any{}
+		}
 		if result.Status == "pass" {
 			report.Summary.Passed++
 		} else {
@@ -56,8 +62,11 @@ func Verify(doc *Document) (Report, error) {
 	return report, nil
 }
 
-func evaluateIntent(in Intent, snapshotName string, snapshot facts.Snapshot) []Result {
+func evaluateIntent(in Intent, scenario Scenario, snapshotName string, snapshot facts.Snapshot) []Result {
 	assertion := effectiveAssertion(in)
+	if in.Check.Table == "packet" {
+		return []Result{evaluatePacketIntent(in, assertion, scenario, snapshotName, snapshot)}
+	}
 	rows := matchingRows(in.Check.Table, in.Check.Where, snapshot)
 	if len(in.Check.GroupBy) == 0 {
 		return []Result{evaluateRows(in, assertion, snapshotName, rows, normalizeGroup(in.Group))}
@@ -91,9 +100,91 @@ func evaluateRows(in Intent, assertion Assertion, snapshotName string, rows []ro
 	if !assertionPasses(assertion, actual) {
 		result.Status = "fail"
 		result.Actual.Reason = failureReason(assertion, len(rows))
-		result.Counterexamples = []string{result.Actual.Reason}
+		result.Counterexamples = []any{result.Actual.Reason}
 	}
 	return result
+}
+
+func evaluatePacketIntent(in Intent, assertion Assertion, scenario Scenario, snapshotName string, snapshot facts.Snapshot) Result {
+	target := sim.PacketTarget{
+		To:       in.Check.Packet.To,
+		Protocol: in.Check.Packet.Protocol,
+		DstPort:  in.Check.Packet.DstPort,
+		VRF:      in.Check.Packet.VRF,
+	}
+	path, reachable, reason := snapshot.Graph.PacketReachableSpecVRF(in.Check.Packet.From, in.Check.Packet.VRF, in.Check.Packet.To, target.Spec(), sim.NoFailures())
+	actualReachable := reachable
+	result := Result{
+		Name:      in.Name,
+		Status:    "pass",
+		Table:     in.Check.Table,
+		Scenario:  in.Check.Scenario,
+		Snapshot:  snapshotName,
+		Group:     normalizeGroup(in.Group),
+		Assertion: assertion,
+		Actual: Actual{
+			Reachable: &actualReachable,
+			Reason:    reason,
+			Path:      path.Nodes,
+		},
+	}
+	expected := assertion.Reachable != nil && *assertion.Reachable
+	if expected && reachable && scenario.Failures.Max > 0 {
+		search, err := snapshot.Graph.FindBreakingFailuresSymbolic(in.Check.Packet.From, target, sim.FailureSearchOptions{
+			IncludeLinks: true,
+			MaxFailures:  scenario.Failures.Max,
+			Domain:       failureDomain(scenario.Failures),
+		})
+		if err == nil && search.Sat {
+			actualReachable = false
+			result.Actual.Reachable = &actualReachable
+			result.Actual.Reason = "unreachable under failure scenario"
+			result.Counterexamples = []any{failureCounterexample(search.Failures, result.Actual.Reason)}
+		} else if err != nil {
+			result.Status = "fail"
+			result.Actual.Reason = err.Error()
+			result.Counterexamples = []any{result.Actual.Reason}
+			return result
+		}
+	}
+	if assertion.Reachable == nil || actualReachable != *assertion.Reachable {
+		result.Status = "fail"
+		if result.Actual.Reason == "" {
+			result.Actual.Reason = fmt.Sprintf("reachable=%v, want %v", actualReachable, *assertion.Reachable)
+		}
+		if len(result.Counterexamples) == 0 {
+			result.Counterexamples = []any{result.Actual.Reason}
+		}
+	}
+	return result
+}
+
+func failureDomain(in FailureConstraints) model.FailureDomain {
+	return model.FailureDomain{
+		IncludeLinkRoles: in.IncludeLinkRoles,
+		ExcludeLinkRoles: in.ExcludeLinkRoles,
+		IncludeLinks:     in.IncludeLinks,
+		ExcludeLinks:     in.ExcludeLinks,
+		IncludeNodeRoles: in.IncludeNodeRoles,
+		ExcludeNodeRoles: in.ExcludeNodeRoles,
+		IncludeNodes:     in.IncludeNodes,
+		ExcludeNodes:     in.ExcludeNodes,
+	}
+}
+
+func failureCounterexample(elements []solver.FailureElement, reason string) FailureCounterexample {
+	out := FailureCounterexample{Reason: reason}
+	for _, element := range elements {
+		switch element.Kind {
+		case solver.FailureLink:
+			out.FailedLinks = append(out.FailedLinks, element.Name)
+		case solver.FailureNode:
+			out.FailedNodes = append(out.FailedNodes, element.Name)
+		}
+	}
+	sort.Strings(out.FailedLinks)
+	sort.Strings(out.FailedNodes)
+	return out
 }
 
 func evaluateCompare(in Intent, loadSnapshot func(string) (facts.Snapshot, error)) ([]Result, error) {
@@ -124,7 +215,7 @@ func evaluateCompare(in Intent, loadSnapshot func(string) (facts.Snapshot, error
 	if len(added) > 0 || len(removed) > 0 {
 		result.Status = "fail"
 		result.Actual.Reason = "canonical rows differ"
-		result.Counterexamples = []string{result.Actual.Reason}
+		result.Counterexamples = []any{result.Actual.Reason}
 	}
 	return []Result{result}, nil
 }
