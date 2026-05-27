@@ -1407,6 +1407,38 @@ func TestParseFRRVRFInterfacesAndStaticRoutes(t *testing.T) {
 	}
 }
 
+func TestParseFRRBGPVRF(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+hostname r1
+interface eth1 vrf tenant-a
+ ip address 192.0.2.1/30
+!
+router bgp 65001 vrf tenant-a
+ neighbor 192.0.2.2 remote-as 65002
+ !
+ address-family ipv4 unicast
+  network 10.255.0.1/32
+  redistribute connected route-map CONNECTED-OUT
+  neighbor 192.0.2.2 activate
+  neighbor 192.0.2.2 route-map IMPORT-A in
+ exit-address-family
+exit
+!
+`)
+	if cfg.ASN != 65001 {
+		t.Fatalf("ASN = %d, want 65001", cfg.ASN)
+	}
+	if len(cfg.Neighbors) != 1 || cfg.Neighbors[0].NetworkInstance != "tenant-a" || cfg.Neighbors[0].Address != "192.0.2.2" || !cfg.Neighbors[0].Activated || cfg.Neighbors[0].ImportPolicy != "IMPORT-A" {
+		t.Fatalf("Neighbors = %#v, want tenant-a neighbor", cfg.Neighbors)
+	}
+	if len(cfg.Routes) != 1 || cfg.Routes[0].Kind != RouteSourceBGP || cfg.Routes[0].NetworkInstance != "tenant-a" || cfg.Routes[0].Prefix.String() != "10.255.0.1/32" {
+		t.Fatalf("Routes = %#v, want tenant-a BGP network", cfg.Routes)
+	}
+	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].NetworkInstance != "tenant-a" || cfg.Redistribute[0].Kind != RouteSourceConnected || cfg.Redistribute[0].RouteMap != "CONNECTED-OUT" {
+		t.Fatalf("Redistribute = %#v, want tenant-a connected route-map", cfg.Redistribute)
+	}
+}
+
 func interfaceByName(interfaces []Interface, name string) Interface {
 	for _, iface := range interfaces {
 		if iface.Name == name {

@@ -143,6 +143,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 	inBGP := false
 	inAF := false
 	inOSPF := false
+	bgpVRF := NetworkInstanceDefault
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNo := 0
 	for scanner.Scan() {
@@ -395,6 +396,10 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				return ParseResult{}, err
 			}
 			cfg.ASN = uint32(asn)
+			bgpVRF = NetworkInstanceDefault
+			if len(fields) >= 5 && fields[3] == "vrf" {
+				bgpVRF = NormalizeNetworkInstance(fields[4])
+			}
 			inBGP = true
 			inAF = false
 			inOSPF = false
@@ -472,10 +477,25 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if err != nil {
 				return ParseResult{}, err
 			}
-			n := getNeighbor(neighbors, fields[1])
+			n := getNeighbor(neighbors, bgpVRF, fields[1])
 			n.RemoteAS = uint32(asn)
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "network":
-			cfg.Prefixes = appendUnique(cfg.Prefixes, fields[1])
+			if bgpVRF == NetworkInstanceDefault {
+				cfg.Prefixes = appendUnique(cfg.Prefixes, fields[1])
+				continue
+			}
+			prefix, err := ParsePrefix(fields[1])
+			if err != nil {
+				return ParseResult{}, err
+			}
+			cfg.Routes = append(cfg.Routes, ConfiguredRoute{
+				NetworkInstance: bgpVRF,
+				AFI:             AFIIPv4,
+				Prefix:          prefix,
+				Kind:            RouteSourceBGP,
+				AdminDistance:   200,
+				Source:          ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line},
+			})
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "aggregate-address":
 			route, err := parseAggregateRoute(kind, path, lineNo, line, fields)
 			if err != nil {
@@ -485,6 +505,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, err.Error()))
 				continue
 			}
+			route.NetworkInstance = bgpVRF
 			cfg.Routes = append(cfg.Routes, route)
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "redistribute":
 			redist, err := parseFRRLikeRedistribution(kind, path, lineNo, line, fields)
@@ -495,13 +516,14 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, err.Error()))
 				continue
 			}
+			redist.NetworkInstance = bgpVRF
 			cfg.Redistribute = append(cfg.Redistribute, redist)
 		case inBGP && inAF && len(fields) >= 3 && fields[0] == "neighbor" && fields[2] == "activate":
-			getNeighbor(neighbors, fields[1]).Activated = true
+			getNeighbor(neighbors, bgpVRF, fields[1]).Activated = true
 		case inBGP && inAF && len(fields) >= 3 && fields[0] == "neighbor" && fields[2] == "next-hop-self":
-			getNeighbor(neighbors, fields[1]).NextHopSelf = true
+			getNeighbor(neighbors, bgpVRF, fields[1]).NextHopSelf = true
 		case isRouteMapPolicyKind(kind) && inBGP && inAF && len(fields) >= 5 && fields[0] == "neighbor" && fields[2] == "route-map":
-			n := getNeighbor(neighbors, fields[1])
+			n := getNeighbor(neighbors, bgpVRF, fields[1])
 			switch fields[4] {
 			case "in":
 				n.ImportPolicy = fields[3]
@@ -1723,11 +1745,13 @@ func routeMapVendorName(kind DeviceKind) string {
 	}
 }
 
-func getNeighbor(neighbors map[string]*BGPNeighbor, addr string) *BGPNeighbor {
-	if neighbors[addr] == nil {
-		neighbors[addr] = &BGPNeighbor{Address: addr}
+func getNeighbor(neighbors map[string]*BGPNeighbor, vrf NetworkInstanceID, addr string) *BGPNeighbor {
+	vrf = NormalizeNetworkInstance(string(vrf))
+	key := string(vrf) + "|" + addr
+	if neighbors[key] == nil {
+		neighbors[key] = &BGPNeighbor{NetworkInstance: vrf, Address: addr}
 	}
-	return neighbors[addr]
+	return neighbors[key]
 }
 
 func parsePrefixListRule(seq int, action, prefix string, fields []string) (PrefixListRule, error) {

@@ -129,10 +129,18 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 			node.Routes[ri].Node = name
 			if node.Routes[ri].NetworkInstance == "" {
 				node.Routes[ri].NetworkInstance = NetworkInstanceDefault
+			} else {
+				node.Routes[ri].NetworkInstance = NormalizeNetworkInstance(string(node.Routes[ri].NetworkInstance))
 			}
 			if node.Routes[ri].AFI == "" {
 				node.Routes[ri].AFI = AFIIPv4
 			}
+		}
+		for ni := range node.Neighbors {
+			node.Neighbors[ni].NetworkInstance = NormalizeNetworkInstance(string(node.Neighbors[ni].NetworkInstance))
+		}
+		for ri := range node.Redistribute {
+			node.Redistribute[ri].NetworkInstance = NormalizeNetworkInstance(string(node.Redistribute[ri].NetworkInstance))
 		}
 		topo.Nodes = append(topo.Nodes, node)
 		for _, acl := range parsed.ACLs {
@@ -368,13 +376,16 @@ func resolveNeighborNodes(topo *Topology) {
 		for _, iface := range n.Interfaces {
 			pfx, err := netip.ParsePrefix(iface.Address)
 			if err == nil {
-				addrToNode[pfx.Addr().String()] = n.Name
+				vrf := NormalizeNetworkInstance(string(iface.VRF))
+				addrToNode[string(vrf)+"|"+pfx.Addr().String()] = n.Name
 			}
 		}
 	}
 	for ni := range topo.Nodes {
 		for pi := range topo.Nodes[ni].Neighbors {
-			peer := addrToNode[topo.Nodes[ni].Neighbors[pi].Address]
+			neighbor := topo.Nodes[ni].Neighbors[pi]
+			vrf := NormalizeNetworkInstance(string(neighbor.NetworkInstance))
+			peer := addrToNode[string(vrf)+"|"+neighbor.Address]
 			topo.Nodes[ni].Neighbors[pi].PeerNode = peer
 		}
 	}
