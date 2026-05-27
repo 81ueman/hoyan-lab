@@ -40,39 +40,32 @@ func (b baseDeviceBehavior) SelectRoutes(device model.Node, routes []RIBEntry) [
 func (b baseDeviceBehavior) ExportRoute(from model.Node, to model.Node, session model.BGPNeighbor, route RIBEntry) BGPRouteDecision {
 	route = route.Normalize()
 	isIBGP := from.ASN == to.ASN
-	if isIBGP && route.LearnedIBGP {
+	if isIBGP && route.Attrs.LearnedIBGP {
 		return BGPRouteDecision{Route: route, Accept: false, Reason: "ibgp readvertisement"}
 	}
 
 	out := route
-	out.ASPath = append([]uint32(nil), route.ASPath...)
-	out.Communities = append([]string(nil), route.Communities...)
+	out.Attrs.ASPath = append([]uint32(nil), route.Attrs.ASPath...)
+	out.Attrs.Communities = append([]string(nil), route.Attrs.Communities...)
 	if !isIBGP {
-		out.ASPath = prependASN(from.ASN, out.ASPath)
+		out.Attrs.ASPath = prependASN(from.ASN, out.Attrs.ASPath)
 	}
-	if !isIBGP || session.NextHopSelf || out.NextHop == "" {
-		out.NextHop = from.Name
+	if !isIBGP || session.NextHopSelf || !out.ForwardingNextHop.Valid() {
+		out.ForwardingNextHop.Node = from.Name
 		out.ForwardingNextHop.Addr = ""
 	}
-	out.LearnedIBGP = isIBGP
-	out.Attrs.ASPath = append([]uint32(nil), out.ASPath...)
-	out.Attrs.Communities = append([]string(nil), out.Communities...)
-	if out.ForwardingNextHop.Addr == "" {
-		out.ForwardingNextHop.Node = out.NextHop
-	}
-	out.Attrs.LearnedIBGP = out.LearnedIBGP
+	out.Attrs.LearnedIBGP = isIBGP
 
 	return BGPRouteDecision{Route: out.Normalize(), Accept: true}
 }
 
 func (b baseDeviceBehavior) ImportRoute(to model.Node, from model.Node, session model.BGPNeighbor, route RIBEntry) BGPRouteDecision {
 	route = route.Normalize()
-	if containsASN(route.ASPath, to.ASN) {
+	if containsASN(route.Attrs.ASPath, to.ASN) {
 		return BGPRouteDecision{Route: route, Accept: false, Reason: "as loop"}
 	}
 	out := route
 	if from.ASN != to.ASN {
-		out.LocalPref = 0
 		out.Attrs.LocalPref = 0
 	}
 	return BGPRouteDecision{Route: out.Normalize(), Accept: true}

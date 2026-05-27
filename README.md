@@ -118,7 +118,7 @@ nftables ACLs use the chain policy; the current lab's nftables chain has
 `policy accept`, so unmatched packets are permitted. `model.ACL` is the single
 data-plane policy IR for parsed configs, manually constructed topologies, and
 packet reachability inspection; the earlier deny-only `model.Policy`
-compatibility path has been removed. Full vendor ACL grammar, stateful
+path has been removed. Full vendor ACL grammar, stateful
 firewall/conntrack, NAT, PBR, and QoS are intentionally outside the current
 model.
 
@@ -488,8 +488,8 @@ Known unsupported or approximated bestpath knobs:
   modeled routes carry router-id attributes.
 - Originator-id and cluster-list length: unsupported.
 - Deterministic MED: documented in `BGPDecisionOptions`, unsupported.
-- Always-compare-MED: documented in `BGPDecisionOptions`; the default model
-  currently uses the always-compare approximation for backward compatibility.
+- Always-compare-MED: documented in `BGPDecisionOptions`; disabled by default,
+  so MED is compared only between routes from the same neighboring AS.
 - Compare-routerid: documented in `BGPDecisionOptions`, unsupported.
 - Multipath / ECMP install policy: documented in `BGPDecisionOptions`; route
   equivalence and FIB install semantics are tracked separately in #65.
@@ -520,21 +520,20 @@ docker exec -it clab-hoyan-base-wan-cust-bj ping -c 3 10.4.1.10
 
 ## Z3
 
-The default verifier backend enumerates small failure sets so normal tests work
-without native libraries. A Z3-backed solver is available behind the `z3` build
-tag and uses cgo against `libz3`.
+The verifier uses the Z3-backed solver by default and links against `libz3`
+through cgo. A missing Z3 development package is a build/test failure.
 
 On Debian:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y libz3-dev
-go test -tags z3 ./...
+go test ./...
 ```
 
 ## Tests
 
 ```bash
 go test ./...
-go test -tags z3 ./...
+staticcheck ./...
 ```

@@ -27,7 +27,7 @@ func TestRouteNextHopForPolicyUsesResolvedPeerAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	got := routeNextHopForPolicy(idx, "local", "", RIBEntry{NextHop: "peer"})
+	got := routeNextHopForPolicy(idx, "local", "", testRIB("", withNextHop("peer")))
 	if got != "198.51.100.20" {
 		t.Fatalf("routeNextHopForPolicy() = %q, want resolved peer address 198.51.100.20", got)
 	}
@@ -62,7 +62,7 @@ func TestRoutePolicyNextHopPrefixListUsesResolvedAddress(t *testing.T) {
 		}},
 	}
 	rule := model.RoutePolicyRule{MatchNextHopPrefixList: "NH"}
-	if !routePolicyRuleMatches(idx, node, "", rule, RIBEntry{NextHop: "peer"}) {
+	if !routePolicyRuleMatches(idx, node, "", rule, testRIB("", withNextHop("peer"))) {
 		t.Fatalf("routePolicyRuleMatches() = false, want next-hop prefix-list to match resolved peer address")
 	}
 }
@@ -80,15 +80,14 @@ func TestRoutePolicySetNextHopSelf(t *testing.T) {
 		}},
 	}
 	route := RIBEntry{
-		Prefix:            model.MustPrefix("10.3.0.0/16"),
-		NextHop:           "gz-edge1",
+		NLRI:              RouteNLRI{Prefix: model.MustPrefix("10.3.0.0/16")},
 		ForwardingNextHop: RouteNextHop{Node: "gz-edge1", Addr: "198.18.10.8"},
 	}
 	decision := applyRoutePolicy(nil, node, "core-bj", "NH-SELF", route)
 	if !decision.Accept {
 		t.Fatalf("decision rejected route: %#v", decision)
 	}
-	if decision.Route.NextHop != "core-gz" || decision.Route.ForwardingNextHop.Node != "core-gz" || decision.Route.ForwardingNextHop.Addr != "" {
+	if decision.Route.ForwardingNextHop.Node != "core-gz" || decision.Route.ForwardingNextHop.Addr != "" {
 		t.Fatalf("route next-hop = %#v, want core-gz self", decision.Route)
 	}
 }
@@ -105,11 +104,11 @@ func TestRoutePolicySetIPAddressNextHop(t *testing.T) {
 			}},
 		}},
 	}
-	decision := applyRoutePolicy(nil, node, "peer", "SET-NH", RIBEntry{Prefix: model.MustPrefix("10.0.0.0/24"), NextHop: "local"})
+	decision := applyRoutePolicy(nil, node, "peer", "SET-NH", testRIB("10.0.0.0/24", withNextHop("local")))
 	if !decision.Accept {
 		t.Fatalf("decision rejected route: %#v", decision)
 	}
-	if decision.Route.NextHop != "192.0.2.1" || decision.Route.ForwardingNextHop.Node != "" || decision.Route.ForwardingNextHop.Addr != "192.0.2.1" {
+	if decision.Route.ForwardingNextHop.Node != "" || decision.Route.ForwardingNextHop.Addr != "192.0.2.1" {
 		t.Fatalf("route next-hop = %#v, want address-only recursive next-hop", decision.Route)
 	}
 }

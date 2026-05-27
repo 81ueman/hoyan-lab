@@ -1,5 +1,3 @@
-//go:build z3
-
 package dataplane
 
 import (
@@ -22,16 +20,15 @@ func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing
 		{Kind: solver.FailureNode, Name: "backup"},
 	}
 
-	forbidden := concreteBreakingFailureCombos(engine, from, to, protocol, elements, maxFailures)
-	enumerated, err := (solver.Z3Backend{}).Solve(solver.FailureProblem{
+	symbolicResult := engine.SymbolicPacketReachability(from, to, protocol)
+	enumerated, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
-		Forbidden:   forbidden,
+		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
 	})
 	if err != nil {
-		t.Fatalf("Z3 concrete Solve() error = %v", err)
+		t.Fatalf("enumerating symbolic SolveSymbolic() error = %v", err)
 	}
-	symbolicResult := engine.SymbolicPacketReachability(from, to, protocol)
 	z3Symbolic, err := (solver.Z3Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
@@ -40,7 +37,7 @@ func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing
 	if err != nil {
 		t.Fatalf("Z3 symbolic SolveSymbolic() error = %v", err)
 	}
-	assertSolverParityAnswer(t, engine, from, to, protocol, maxFailures, enumerated, z3Symbolic)
+	assertSolverParityAnswer(t, engine, from, to, protocol, maxFailures, enumerated.Sat, z3Symbolic)
 }
 
 func TestRouteReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.T) {
@@ -56,16 +53,15 @@ func TestRouteReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.
 		{Kind: solver.FailureNode, Name: "backup"},
 	}
 
-	forbidden := concreteBreakingRouteFailureCombos(engine, from, prefix, elements, maxFailures)
-	enumerated, err := (solver.Z3Backend{}).Solve(solver.FailureProblem{
+	symbolicResult := engine.SymbolicRouteReachability(from, prefix)
+	enumerated, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
-		Forbidden:   forbidden,
+		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
 	})
 	if err != nil {
-		t.Fatalf("Z3 route Solve() error = %v", err)
+		t.Fatalf("enumerating route SolveSymbolic() error = %v", err)
 	}
-	symbolicResult := engine.SymbolicRouteReachability(from, prefix)
 	z3Symbolic, err := (solver.Z3Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
@@ -74,5 +70,5 @@ func TestRouteReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.
 	if err != nil {
 		t.Fatalf("Z3 route SolveSymbolic() error = %v", err)
 	}
-	assertRouteSolverParityAnswer(t, engine, from, prefix, maxFailures, enumerated, z3Symbolic)
+	assertRouteSolverParityAnswer(t, engine, from, prefix, maxFailures, enumerated.Sat, z3Symbolic)
 }

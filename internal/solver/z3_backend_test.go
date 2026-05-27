@@ -1,5 +1,3 @@
-//go:build z3
-
 package solver
 
 import (
@@ -7,20 +5,6 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/symbolic"
 )
-
-func TestZ3Backend(t *testing.T) {
-	ans, err := (Z3Backend{}).Solve(FailureProblem{
-		Elements:    linkElements("a", "b", "c"),
-		MaxFailures: 2,
-		Forbidden:   [][]FailureElement{linkElements("a", "c")},
-	})
-	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
-	}
-	if !ans.Sat || ans.Backend != "z3" {
-		t.Fatalf("answer = %#v", ans)
-	}
-}
 
 func TestZ3BackendSymbolicGoal(t *testing.T) {
 	reachable := symbolic.Or(
@@ -51,25 +35,20 @@ func TestZ3BackendSymbolicGoal(t *testing.T) {
 	}
 }
 
-func TestZ3BackendSymbolicMatchesEnumeratedProblem(t *testing.T) {
+func TestZ3BackendSymbolicMatchesEnumeratingBackend(t *testing.T) {
 	elements := linkElements("a", "b", "c", "d")
-	enumerated, err := (Z3Backend{}).Solve(FailureProblem{
-		Elements:    elements,
-		MaxFailures: 2,
-		Forbidden: [][]FailureElement{
-			linkElements("a", "c"),
-			linkElements("a", "d"),
-			linkElements("b", "c"),
-			linkElements("b", "d"),
-		},
-	})
-	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
-	}
 	reachable := symbolic.Or(
 		symbolic.And(symbolic.LinkVar("a"), symbolic.LinkVar("b")),
 		symbolic.And(symbolic.LinkVar("c"), symbolic.LinkVar("d")),
 	)
+	enumerated, err := (EnumeratingBackend{}).SolveSymbolic(SymbolicFailureProblem{
+		Elements:    elements,
+		MaxFailures: 2,
+		Goal:        symbolic.Not(reachable),
+	})
+	if err != nil {
+		t.Fatalf("enumerating SolveSymbolic() error = %v", err)
+	}
 	symbolicAns, err := (Z3Backend{}).SolveSymbolic(SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: 2,

@@ -1574,11 +1574,6 @@ func parseACLRule(kind DeviceKind, path string, lineNo int, raw, name string, fi
 	}, true, nil
 }
 
-func skipACLAddress(fields []string) (int, error) {
-	_, n, err := parseACLAddress(fields)
-	return n, err
-}
-
 func parseACLAddress(fields []string) (Prefix, int, error) {
 	if len(fields) == 0 {
 		return Prefix{}, 0, fmt.Errorf("unsupported ACL empty address")

@@ -62,9 +62,8 @@ func DefaultWANFailureDomain() model.FailureDomain {
 	return failure.DefaultWANFailureDomain()
 }
 
-func True() Cond           { return failure.True() }
-func False() Cond          { return failure.False() }
-func Var(name string) Cond { return failure.Var(name) }
+func True() Cond  { return failure.True() }
+func False() Cond { return failure.False() }
 func LinkVar(name string) Cond {
 	return failure.LinkVar(name)
 }
@@ -342,11 +341,7 @@ func (g *Graph) symbolicFailureProblem(from string, target SymbolicTarget, opts 
 }
 
 func solveSymbolicFailureProblem(problem solver.SymbolicFailureProblem) (solver.Answer, error) {
-	backend, ok := solver.DefaultBackend().(solver.SymbolicBackend)
-	if !ok {
-		return solver.Answer{}, fmt.Errorf("solver backend does not support symbolic failure problems")
-	}
-	ans, err := backend.SolveSymbolic(problem)
+	ans, err := solver.DefaultBackend().SolveSymbolic(problem)
 	if err != nil {
 		return ans, err
 	}

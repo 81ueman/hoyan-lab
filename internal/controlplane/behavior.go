@@ -1,7 +1,6 @@
 package controlplane
 
 import (
-	"net/netip"
 	"sort"
 	"strings"
 
@@ -19,12 +18,6 @@ type ControlMessage struct {
 type PacketMessage struct {
 	Node string
 	Spec model.PacketSpec
-
-	Prefix           netip.Prefix
-	DstSet           model.PrefixSet
-	Protocol         string
-	IngressInterface string
-	EgressInterface  string
 }
 
 type PolicyDecision struct {
@@ -91,7 +84,7 @@ func (b baseDeviceBehavior) EvaluateDataACL(device model.Node, pkt PacketMessage
 
 func (b baseDeviceBehavior) RouteValidForRIB(device model.Node, route RIBEntry) bool {
 	route = route.Normalize()
-	return !route.Invalid
+	return !route.Attrs.Invalid
 }
 
 func (b baseDeviceBehavior) RouteEligibleForAdvertisement(device model.Node, route RIBEntry) bool {
@@ -211,33 +204,9 @@ func prefixSetIsAny(set model.PrefixSet) bool {
 }
 
 func (p PacketMessage) NormalizedSpec() model.PacketSpec {
-	spec := p.Spec
-	if spec.DstSet == nil && p.DstSet != nil {
-		spec.DstSet = p.DstSet
-	}
-	if spec.DstSet == nil && p.Prefix.IsValid() {
-		spec.DstSet = model.ExactPrefixSet{Prefix: model.PrefixFromNetIP(p.Prefix)}
-	}
-	if spec.Protocol == "" {
-		spec.Protocol = p.Protocol
-	}
-	if spec.IngressInterface == "" {
-		spec.IngressInterface = p.IngressInterface
-	}
-	if spec.EgressInterface == "" {
-		spec.EgressInterface = p.EgressInterface
-	}
-	return spec.WithNormalizedPorts()
+	return p.Spec.WithNormalizedPorts()
 }
 
 func interfaceMatches(policyInterface, packetInterface string) bool {
 	return model.AnyEquivalentInterfaceName(policyInterface, packetInterface)
-}
-
-func mustPrefix(prefix string) netip.Prefix {
-	pfx, err := netip.ParsePrefix(prefix)
-	if err != nil {
-		return netip.Prefix{}
-	}
-	return pfx
 }

@@ -187,13 +187,13 @@ func selectedDiscardCandidateEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), SourceKind: model.RouteSourceBlackhole, Discard: true, Condition: failure.LinkVar("prefer-discard")},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.True()},
 		},
 		"backup": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func selectedProblemCandidateEngine(problemNextHop string) *Engine {
@@ -213,13 +213,13 @@ func selectedProblemCandidateEngine(problemNextHop string) *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: problemNextHop, Condition: failure.LinkVar("prefer-problem")},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.True()},
 		},
 		"backup": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func recursiveProblemEngine(entry FIBEntry) *Engine {
@@ -232,9 +232,9 @@ func recursiveProblemEngine(entry FIBEntry) *Engine {
 		},
 		Links: []model.Link{},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {entry},
-	})
+	}))
 }
 
 func reasonLink(kind SymbolicUnreachableReasonKind) string {

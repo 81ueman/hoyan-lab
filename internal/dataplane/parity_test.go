@@ -219,14 +219,6 @@ func TestPacketReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T
 	}
 
 	forbidden := concreteBreakingFailureCombos(engine, from, to, protocol, elements, maxFailures)
-	enumerated, err := (solver.EnumeratingBackend{}).Solve(solver.FailureProblem{
-		Elements:    elements,
-		MaxFailures: maxFailures,
-		Forbidden:   forbidden,
-	})
-	if err != nil {
-		t.Fatalf("enumerated concrete Solve() error = %v", err)
-	}
 	symbolicResult := engine.SymbolicPacketReachability(from, to, protocol)
 	symbolicAns, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
@@ -236,7 +228,7 @@ func TestPacketReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T
 	if err != nil {
 		t.Fatalf("symbolic SolveSymbolic() error = %v", err)
 	}
-	assertSolverParityAnswer(t, engine, from, to, protocol, maxFailures, enumerated, symbolicAns)
+	assertSolverParityAnswer(t, engine, from, to, protocol, maxFailures, len(forbidden) > 0, symbolicAns)
 }
 
 func TestRouteReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T) {
@@ -253,14 +245,6 @@ func TestRouteReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T)
 	}
 
 	forbidden := concreteBreakingRouteFailureCombos(engine, from, prefix, elements, maxFailures)
-	enumerated, err := (solver.EnumeratingBackend{}).Solve(solver.FailureProblem{
-		Elements:    elements,
-		MaxFailures: maxFailures,
-		Forbidden:   forbidden,
-	})
-	if err != nil {
-		t.Fatalf("enumerated route Solve() error = %v", err)
-	}
 	symbolicResult := engine.SymbolicRouteReachability(from, prefix)
 	symbolicAns, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
@@ -270,7 +254,7 @@ func TestRouteReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T)
 	if err != nil {
 		t.Fatalf("symbolic route SolveSymbolic() error = %v", err)
 	}
-	assertRouteSolverParityAnswer(t, engine, from, prefix, maxFailures, enumerated, symbolicAns)
+	assertRouteSolverParityAnswer(t, engine, from, prefix, maxFailures, len(forbidden) > 0, symbolicAns)
 }
 
 func concreteBreakingFailureCombos(engine *Engine, from, to, protocol string, elements []solver.FailureElement, maxFailures int) [][]solver.FailureElement {
@@ -301,52 +285,36 @@ func concreteBreakingRouteFailureCombos(engine *Engine, from, prefix string, ele
 	return forbidden
 }
 
-func assertSolverParityAnswer(t *testing.T, engine *Engine, from, to, protocol string, maxFailures int, concrete, symbolic solver.Answer) {
+func assertSolverParityAnswer(t *testing.T, engine *Engine, from, to, protocol string, maxFailures int, concreteSat bool, symbolic solver.Answer) {
 	t.Helper()
-	if concrete.Sat != symbolic.Sat {
-		t.Fatalf("solver SAT mismatch: concrete=%#v symbolic=%#v", concrete, symbolic)
+	if concreteSat != symbolic.Sat {
+		t.Fatalf("solver SAT mismatch: concrete=%v symbolic=%#v", concreteSat, symbolic)
 	}
-	if !concrete.Sat {
+	if !concreteSat {
 		return
 	}
-	if len(concrete.Failures) > maxFailures || len(symbolic.Failures) > maxFailures {
-		t.Fatalf("solver answer exceeds maxFailures=%d: concrete=%#v symbolic=%#v", maxFailures, concrete, symbolic)
+	if len(symbolic.Failures) > maxFailures {
+		t.Fatalf("solver answer exceeds maxFailures=%d: symbolic=%#v", maxFailures, symbolic)
 	}
-	if len(concrete.Failures) != len(symbolic.Failures) {
-		t.Fatalf("solver answer size mismatch: concrete=%#v symbolic=%#v", concrete, symbolic)
-	}
-	for name, failures := range map[string][]solver.FailureElement{
-		"concrete": concrete.Failures,
-		"symbolic": symbolic.Failures,
-	} {
-		_, ok, reason := engine.PacketReachable(from, to, protocol, failure.SetFromElements(failures))
-		if ok {
-			t.Fatalf("%s solver answer does not break concrete reachability: answer=%v reason=%q", name, solverFailureStrings(failures), reason)
-		}
+	_, ok, reason := engine.PacketReachable(from, to, protocol, failure.SetFromElements(symbolic.Failures))
+	if ok {
+		t.Fatalf("symbolic solver answer does not break concrete reachability: answer=%v reason=%q", solverFailureStrings(symbolic.Failures), reason)
 	}
 }
 
-func assertRouteSolverParityAnswer(t *testing.T, engine *Engine, from, prefix string, maxFailures int, concrete, symbolic solver.Answer) {
+func assertRouteSolverParityAnswer(t *testing.T, engine *Engine, from, prefix string, maxFailures int, concreteSat bool, symbolic solver.Answer) {
 	t.Helper()
-	if concrete.Sat != symbolic.Sat {
-		t.Fatalf("route solver SAT mismatch: concrete=%#v symbolic=%#v", concrete, symbolic)
+	if concreteSat != symbolic.Sat {
+		t.Fatalf("route solver SAT mismatch: concrete=%v symbolic=%#v", concreteSat, symbolic)
 	}
-	if !concrete.Sat {
+	if !concreteSat {
 		return
 	}
-	if len(concrete.Failures) > maxFailures || len(symbolic.Failures) > maxFailures {
-		t.Fatalf("route solver answer exceeds maxFailures=%d: concrete=%#v symbolic=%#v", maxFailures, concrete, symbolic)
+	if len(symbolic.Failures) > maxFailures {
+		t.Fatalf("route solver answer exceeds maxFailures=%d: symbolic=%#v", maxFailures, symbolic)
 	}
-	if len(concrete.Failures) != len(symbolic.Failures) {
-		t.Fatalf("route solver answer size mismatch: concrete=%#v symbolic=%#v", concrete, symbolic)
-	}
-	for name, failures := range map[string][]solver.FailureElement{
-		"concrete": concrete.Failures,
-		"symbolic": symbolic.Failures,
-	} {
-		if _, ok := engine.RouteReachable(from, prefix, failure.SetFromElements(failures)); ok {
-			t.Fatalf("%s route solver answer does not break concrete reachability: answer=%v", name, solverFailureStrings(failures))
-		}
+	if _, ok := engine.RouteReachable(from, prefix, failure.SetFromElements(symbolic.Failures)); ok {
+		t.Fatalf("symbolic route solver answer does not break concrete reachability: answer=%v", solverFailureStrings(symbolic.Failures))
 	}
 }
 
@@ -363,10 +331,10 @@ func singlePathEngine() *Engine {
 			{Name: "mid-dst", A: "mid", B: "dst", AIntf: "eth2", BIntf: "eth1", Cost: 1},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func redundantPathEngine() *Engine {
@@ -385,14 +353,14 @@ func redundantPathEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "primary", Condition: failure.And(failure.LinkVar("src-primary"), failure.LinkVar("primary-dst"))},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.And(failure.LinkVar("src-backup"), failure.LinkVar("backup-dst"))},
 		},
 		"primary": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.LinkVar("primary-dst")}},
 		"backup":  {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.LinkVar("backup-dst")}},
-	})
+	}))
 }
 
 func routeRedundantPathEngine() *Engine {
@@ -411,24 +379,20 @@ func routeRedundantPathEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	rib := map[string]map[string][]controlplane.RIBEntry{
+	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
 		"src": {
-			pfx.String(): {
+			string(model.NetworkInstanceDefault): {pfx.String(): {
 				{
-					Prefix:       pfx,
-					Origin:       "dst",
-					Nodes:        []string{"dst", "primary", "src"},
-					Links:        []string{"primary-dst", "src-primary"},
+					NLRI:         controlplane.RouteNLRI{Prefix: pfx},
+					Provenance:   controlplane.RouteProvenance{OriginNode: "dst", PathNodes: []string{"dst", "primary", "src"}, PathLinks: []string{"primary-dst", "src-primary"}},
 					SelectedCond: failure.And(failure.LinkVar("src-primary"), failure.LinkVar("primary-dst")),
 				},
 				{
-					Prefix:       pfx,
-					Origin:       "dst",
-					Nodes:        []string{"dst", "backup", "src"},
-					Links:        []string{"backup-dst", "src-backup"},
+					NLRI:         controlplane.RouteNLRI{Prefix: pfx},
+					Provenance:   controlplane.RouteProvenance{OriginNode: "dst", PathNodes: []string{"dst", "backup", "src"}, PathLinks: []string{"backup-dst", "src-backup"}},
 					SelectedCond: failure.And(failure.LinkVar("src-backup"), failure.LinkVar("backup-dst")),
 				},
-			},
+			}},
 		},
 	}
 	return NewEngine(idx, rib, nil)
@@ -451,14 +415,14 @@ func longestPrefixFallbackEngine() *Engine {
 			{Name: "fallback-dst", A: "fallback", B: "dst", Cost: 5},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: specificPfx.NetIP(), NextHop: "specific", Condition: failure.LinkVar("prefer-specific")},
 			{Prefix: dstPfx.NetIP(), NextHop: "fallback", Condition: failure.True()},
 		},
 		"specific": {{Prefix: dstPfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
 		"fallback": {{Prefix: dstPfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func samePrefixCandidatesEngine() *Engine {
@@ -477,14 +441,14 @@ func samePrefixCandidatesEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "primary", Condition: failure.LinkVar("prefer-primary")},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.True()},
 		},
 		"primary": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
 		"backup":  {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func noRouteEngine() *Engine {
@@ -496,7 +460,7 @@ func noRouteEngine() *Engine {
 		},
 		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", Cost: 1}},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{})
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{}))
 }
 
 func discardRouteEngine(cond failure.Cond) *Engine {
@@ -507,9 +471,9 @@ func discardRouteEngine(cond failure.Cond) *Engine {
 			{Name: "dst", Kind: model.KindFRR, Prefixes: []model.Prefix{pfx}},
 		},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), SourceKind: model.RouteSourceBlackhole, Discard: true, Condition: cond}},
-	})
+	}))
 }
 
 func forwardingLoopEngine() *Engine {
@@ -522,10 +486,10 @@ func forwardingLoopEngine() *Engine {
 		},
 		Links: []model.Link{{Name: "a-b", A: "a", B: "b", Cost: 1}},
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"a": {{Prefix: pfx.NetIP(), NextHop: "b", Condition: failure.True()}},
 		"b": {{Prefix: pfx.NetIP(), NextHop: "a", Condition: failure.True()}},
-	})
+	}))
 }
 
 func ingressACLDenyEngine() *Engine {
@@ -545,10 +509,10 @@ func ingressACLDenyEngine() *Engine {
 		}),
 		ACLBindings: testACLBindings("DENY-TCP-IN", "mid", "eth1", "ingress"),
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func egressACLDenyEngine(policyInterface, policyProtocol string) *Engine {
@@ -568,10 +532,10 @@ func egressACLDenyEngine(policyInterface, policyProtocol string) *Engine {
 		}),
 		ACLBindings: testACLBindings("DENY-POLICY", "mid", policyInterface, "egress"),
 	})
-	return NewEngine(idx, nil, map[string][]FIBEntry{
+	return NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 }
 
 func TestSymbolicPacketReachabilityForPacketClassMatchesRepresentativeSpec(t *testing.T) {

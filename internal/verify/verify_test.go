@@ -18,8 +18,8 @@ func TestRunBundledQueries(t *testing.T) {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
 	report := Run(topo, queries)
-	if len(report.Results) != 15 {
-		t.Fatalf("results = %d, want 15", len(report.Results))
+	if len(report.Results) != 19 {
+		t.Fatalf("results = %d, want 19", len(report.Results))
 	}
 	for _, result := range report.Results {
 		switch result.Name {
@@ -44,9 +44,9 @@ func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
-	report := RunWithOptions(topo, queries, VerifyOptions{UsePrefixUniverse: true})
+	report := RunWithOptions(topo, queries, VerifyOptions{})
 	if len(report.Results) <= 13 {
-		t.Fatalf("prefix-class results = %d, want more than legacy query count", len(report.Results))
+		t.Fatalf("prefix-class results = %d, want class-expanded results", len(report.Results))
 	}
 	var foundRouteClass, foundPacketClass, foundFailureClass bool
 	for _, result := range report.Results {
@@ -79,8 +79,8 @@ func TestRunWithOptionsCollapsesEquivalentPrefixClassResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
-	raw := RunWithOptions(topo, queries, VerifyOptions{UsePrefixUniverse: true})
-	collapsed := RunWithOptions(topo, queries, VerifyOptions{UsePrefixUniverse: true, CollapseEquivalentResults: true})
+	raw := RunWithOptions(topo, queries, VerifyOptions{})
+	collapsed := RunWithOptions(topo, queries, VerifyOptions{CollapseEquivalentResults: true})
 	if len(collapsed.Results) >= len(raw.Results) {
 		t.Fatalf("collapsed results = %d, raw results = %d; want fewer collapsed results", len(collapsed.Results), len(raw.Results))
 	}
@@ -130,7 +130,7 @@ func TestRouteCheckPrefixClassesEvaluateClassSpace(t *testing.T) {
 		MaxFailures: 1,
 	}}}
 
-	report := RunWithOptions(topo, queries, VerifyOptions{UsePrefixUniverse: true})
+	report := RunWithOptions(topo, queries, VerifyOptions{})
 	if len(report.Results) < 2 {
 		t.Fatalf("prefix-class route results = %d, want split classes: %#v", len(report.Results), report.Results)
 	}

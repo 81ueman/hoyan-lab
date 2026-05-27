@@ -186,11 +186,6 @@ func NewFactsFIBCommand() *cobra.Command {
 	return cmd
 }
 
-func addIntentFileFlag(cmd *cobra.Command, value *string) {
-	cmd.Flags().StringVar(value, "file", "", "intent YAML file")
-	_ = cmd.MarkFlagRequired("file")
-}
-
 func addIntentInputFlags(cmd *cobra.Command, opts *intentOptions) {
 	cmd.Flags().StringVar(&opts.file, "file", "", "intent YAML file")
 	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.yml")

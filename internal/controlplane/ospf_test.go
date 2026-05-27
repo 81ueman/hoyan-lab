@@ -28,13 +28,13 @@ func TestOSPFPrefersLowerMetricAndKeepsFallback(t *testing.T) {
 		t.Fatalf("r1 routes to r2 loopback = %#v, want primary and fallback", routes)
 	}
 	best := routes[0].Normalize()
-	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 3 || best.NextHop != "r4" {
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 3 || best.ForwardingNextHop.Node != "r4" {
 		t.Fatalf("best route = %#v, want OSPF metric 3 via r4", best)
 	}
 	var fallbackFound bool
 	for _, route := range routes {
 		route = route.Normalize()
-		if route.NextHop == "r2" && route.RouteSource.Metric == 10 {
+		if route.ForwardingNextHop.Node == "r2" && route.RouteSource.Metric == 10 {
 			fallbackFound = true
 		}
 	}
@@ -63,7 +63,7 @@ func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
 		t.Fatalf("r1 did not learn r4 loopback")
 	}
 	best := routes[0].Normalize()
-	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.OSPFRouteType != "inter-area" || best.RouteSource.Metric != 3 || best.NextHop != "r2" {
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.OSPFRouteType != "inter-area" || best.RouteSource.Metric != 3 || best.ForwardingNextHop.Node != "r2" {
 		t.Fatalf("best route = %#v, want inter-area OSPF metric 3 via r2", best)
 	}
 	if got := rib["r1"]["198.51.100.2/31"]; len(got) == 0 || got[0].Normalize().RouteSource.OSPFRouteType != "inter-area" {
@@ -88,7 +88,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	engine := NewEngine(idx, map[string]map[string][]RIBEntry{})
+	engine := NewEngine(idx, map[string]map[string]map[string][]RIBEntry{})
 	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
 	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState ospfInterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
@@ -106,7 +106,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 		t.Fatalf("r1 did not learn r3 loopback")
 	}
 	best := routes[0].Normalize()
-	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 5 || best.NextHop != "r3" || best.RouteSource.OSPFRouteType != "intra-area" {
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.Metric != 5 || best.ForwardingNextHop.Node != "r3" || best.RouteSource.OSPFRouteType != "intra-area" {
 		t.Fatalf("best route = %#v, want OSPF metric 5 via r3", best)
 	}
 }
@@ -193,7 +193,7 @@ func TestOSPFRedistributesConnectedWithRouteMapAndType1Metric(t *testing.T) {
 
 	rib := simulateOSPFTestRIB(t, topo)
 	route := bestOSPFTestRoute(t, rib, "r2", "198.18.1.0/24")
-	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal1 || route.RouteSource.Metric != 8 || route.NextHop != "r1" {
+	if route.RouteSource.OSPFRouteType != ospfRouteTypeExternal1 || route.RouteSource.Metric != 8 || route.ForwardingNextHop.Node != "r1" {
 		t.Fatalf("redistributed connected route = %#v, want E1 metric 8 via r1", route)
 	}
 	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != ospfRouteTypeIntraArea {
@@ -302,9 +302,13 @@ func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[stri
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string][]RIBEntry{}
+	rib := map[string]map[string]map[string][]RIBEntry{}
 	NewEngine(idx, rib).Simulate()
-	return rib
+	out := map[string]map[string][]RIBEntry{}
+	for node, byVRF := range rib {
+		out[node] = byVRF[string(model.NetworkInstanceDefault)]
+	}
+	return out
 }
 
 func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
@@ -313,20 +317,20 @@ func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string][]RIBEntry{}
+	rib := map[string]map[string]map[string][]RIBEntry{}
 	NewEngine(idx, rib).Simulate()
-	routes := rib["r1"]["10.255.12.12/32"]
+	routes := rib["r1"][string(model.NetworkInstanceDefault)]["10.255.12.12/32"]
 	if len(routes) != 11 {
 		t.Fatalf("r1 routes to r12 loopback = %d, want one candidate per first hop", len(routes))
 	}
 	best := routes[0].Normalize()
-	if best.NextHop != "r12" || best.RouteSource.Metric != 1 {
+	if best.ForwardingNextHop.Node != "r12" || best.RouteSource.Metric != 1 {
 		t.Fatalf("best route = %#v, want direct SPF route to r12", best)
 	}
 	for _, route := range routes {
 		route = route.Normalize()
-		if len(route.Nodes) > 3 {
-			t.Fatalf("route path = %#v, want SPF representative path without enumerated detours", route.Nodes)
+		if len(route.Provenance.PathNodes) > 3 {
+			t.Fatalf("route path = %#v, want SPF representative path without enumerated detours", route.Provenance.PathNodes)
 		}
 	}
 }

@@ -1,5 +1,3 @@
-//go:build z3
-
 package solver
 
 /*
@@ -16,23 +14,6 @@ import (
 )
 
 type Z3Backend struct{}
-
-func (Z3Backend) Solve(problem FailureProblem) (Answer, error) {
-	return solveZ3(problem.Elements, problem.MaxFailures, func(ctx C.Z3_context, vars map[string]C.Z3_ast) C.Z3_ast {
-		if len(problem.Forbidden) == 0 {
-			return C.Z3_mk_false(ctx)
-		}
-		var clauses []C.Z3_ast
-		for _, clause := range problem.Forbidden {
-			var lits []C.Z3_ast
-			for _, element := range clause {
-				lits = append(lits, vars[element.String()])
-			}
-			clauses = append(clauses, mkAnd(ctx, lits))
-		}
-		return mkOr(ctx, clauses)
-	}, "z3")
-}
 
 func (Z3Backend) SolveSymbolic(problem SymbolicFailureProblem) (Answer, error) {
 	return solveZ3(problem.Elements, problem.MaxFailures, func(ctx C.Z3_context, vars map[string]C.Z3_ast) C.Z3_ast {

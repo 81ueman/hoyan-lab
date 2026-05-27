@@ -318,14 +318,6 @@ func TestModelRIBStrictConfigRejectsUnsupportedStatements(t *testing.T) {
 	}
 }
 
-func TestNormalizeLegacyLongFlags(t *testing.T) {
-	got := normalizeLegacyLongFlags([]string{"topology", "render", "-suffix", "issue-38", "-output=out.yml", "-h", "--topology", "x.yml", "-1s"})
-	want := []string{"topology", "render", "--suffix", "issue-38", "--output=out.yml", "-h", "--topology", "x.yml", "-1s"}
-	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
-		t.Fatalf("normalizeLegacyLongFlags() = %#v, want %#v", got, want)
-	}
-}
-
 func writeUnsupportedConfigLab(t *testing.T) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -403,7 +395,6 @@ func TestVerifyCommandOutputsStructuredPrefixClassJSON(t *testing.T) {
 	cmd.SetArgs([]string{
 		"--topology", filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"),
 		"--queries", filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--prefix-classes",
 		"--no-collapse",
 		"--format", "json",
 	})
@@ -489,7 +480,6 @@ func TestVerifyCommandPrefixClassThresholdFails(t *testing.T) {
 	cmd.SetArgs([]string{
 		"--topology", filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"),
 		"--queries", filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--prefix-classes",
 		"--max-prefix-classes", "1",
 	})
 	err := cmd.Execute()
@@ -512,7 +502,6 @@ func TestVerifyCommandShowsPrefixUniverseStats(t *testing.T) {
 	cmd.SetArgs([]string{
 		"--topology", filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"),
 		"--queries", filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--prefix-classes",
 		"--show-prefix-universe-stats",
 	})
 	if err := cmd.Execute(); err != nil {
@@ -534,7 +523,6 @@ func TestVerifyCommandCollapsesPrefixClassOutputByDefault(t *testing.T) {
 	collapsedCmd.SetArgs([]string{
 		"--topology", filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"),
 		"--queries", filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--prefix-classes",
 		"--format", "json",
 	})
 	if err := collapsedCmd.Execute(); err != nil {
@@ -546,7 +534,6 @@ func TestVerifyCommandCollapsesPrefixClassOutputByDefault(t *testing.T) {
 	rawCmd.SetArgs([]string{
 		"--topology", filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"),
 		"--queries", filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--prefix-classes",
 		"--no-collapse",
 		"--format", "json",
 	})

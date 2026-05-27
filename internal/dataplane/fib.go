@@ -46,54 +46,19 @@ type FIBEntry struct {
 }
 
 type Engine struct {
-	idx       *model.TopologyIndex
-	rib       map[string]map[string]map[string][]controlplane.RIBEntry
-	fib       map[string]map[string][]FIBEntry
-	legacyFIB map[string][]FIBEntry
+	idx *model.TopologyIndex
+	rib map[string]map[string]map[string][]controlplane.RIBEntry
+	fib map[string]map[string][]FIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib any, fib any) *Engine {
-	e := &Engine{idx: idx, rib: normalizeRIBMap(rib), fib: normalizeFIBMap(fib)}
-	if legacy, ok := fib.(map[string][]FIBEntry); ok {
-		e.legacyFIB = legacy
+func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]controlplane.RIBEntry, fib map[string]map[string][]FIBEntry) *Engine {
+	if rib == nil {
+		rib = map[string]map[string]map[string][]controlplane.RIBEntry{}
 	}
-	return e
-}
-
-func normalizeRIBMap(raw any) map[string]map[string]map[string][]controlplane.RIBEntry {
-	switch rib := raw.(type) {
-	case map[string]map[string]map[string][]controlplane.RIBEntry:
-		if rib == nil {
-			return map[string]map[string]map[string][]controlplane.RIBEntry{}
-		}
-		return rib
-	case map[string]map[string][]controlplane.RIBEntry:
-		out := map[string]map[string]map[string][]controlplane.RIBEntry{}
-		for node, byPrefix := range rib {
-			out[node] = map[string]map[string][]controlplane.RIBEntry{string(model.NetworkInstanceDefault): byPrefix}
-		}
-		return out
-	default:
-		return map[string]map[string]map[string][]controlplane.RIBEntry{}
+	if fib == nil {
+		fib = map[string]map[string][]FIBEntry{}
 	}
-}
-
-func normalizeFIBMap(raw any) map[string]map[string][]FIBEntry {
-	switch fib := raw.(type) {
-	case map[string]map[string][]FIBEntry:
-		if fib == nil {
-			return map[string]map[string][]FIBEntry{}
-		}
-		return fib
-	case map[string][]FIBEntry:
-		out := map[string]map[string][]FIBEntry{}
-		for node, entries := range fib {
-			out[node] = map[string][]FIBEntry{string(model.NetworkInstanceDefault): entries}
-		}
-		return out
-	default:
-		return map[string]map[string][]FIBEntry{}
-	}
+	return &Engine{idx: idx, rib: rib, fib: fib}
 }
 
 func (e *Engine) DeriveFIB() {
@@ -142,17 +107,14 @@ func (e *Engine) DeriveFIB() {
 						}
 					}
 					resolvedNextHop := route.ForwardingNextHop.Node
-					if resolvedNextHop == "" && route.ForwardingNextHop.Addr == "" {
-						resolvedNextHop = route.NextHop
-					}
 					nextHopAddress := route.ForwardingNextHop.Addr
-					rawNextHop := route.NextHop
+					rawNextHop := route.ForwardingNextHop.Node
 					if rawNextHop == "" {
 						rawNextHop = nextHopAddress
 					}
 					resolutionStatus, resolutionReason := nextHopResolution(resolvedNextHop, nextHopAddress)
 					entries = append(entries, FIBEntry{
-						Prefix:           route.Prefix.NetIP(),
+						Prefix:           route.NLRI.Prefix.NetIP(),
 						VRF:              vrf,
 						NextHop:          resolvedNextHop,
 						RawNextHop:       rawNextHop,
@@ -163,7 +125,7 @@ func (e *Engine) DeriveFIB() {
 						SourceKind:       route.SourceKind,
 						Discard:          route.SourceKind == model.RouteSourceBlackhole,
 						ConnectedClass:   route.RouteSource.ConnectedClass,
-						Path:             Path{Nodes: route.Nodes, Links: route.Links, Cost: e.idx.PathCost(route.Links)},
+						Path:             Path{Nodes: route.Provenance.PathNodes, Links: route.Provenance.PathLinks, Cost: e.idx.PathCost(route.Provenance.PathLinks)},
 						Condition:        route.SelectedCond,
 						Rank:             group.rank,
 						GroupID:          group.id,
@@ -181,9 +143,6 @@ func (e *Engine) DeriveFIB() {
 				return entries[i].Prefix.Bits() > entries[j].Prefix.Bits()
 			})
 			e.fib[node][vrf] = entries
-			if e.legacyFIB != nil && vrf == string(model.NetworkInstanceDefault) {
-				e.legacyFIB[node] = entries
-			}
 		}
 	}
 }
@@ -213,7 +172,7 @@ type fibRouteGroup struct {
 }
 
 func routeGroupFor(decision controlplane.BGPDecisionProcess, node model.Node, groups []fibRouteGroup, route controlplane.RIBEntry) (fibRouteGroup, bool) {
-	prefix := route.Prefix.String()
+	prefix := route.NLRI.Prefix.String()
 	for _, group := range groups {
 		if decision.Equivalent(node, group.route, route) {
 			return fibRouteGroup{

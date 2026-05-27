@@ -12,7 +12,6 @@ import (
 )
 
 type VerifyOptions struct {
-	UsePrefixUniverse         bool
 	CollapseEquivalentResults bool
 	MaxPrefixClasses          int
 }
@@ -22,70 +21,7 @@ func Run(topo *model.Topology, queries *model.Queries) Report {
 }
 
 func RunWithOptions(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {
-	if !opts.UsePrefixUniverse {
-		return runLegacy(topo, queries)
-	}
 	return runPrefixClasses(topo, queries, opts)
-}
-
-func runLegacy(topo *model.Topology, queries *model.Queries) Report {
-	g := sim.NewGraph(topo)
-	report := Report{}
-	for _, q := range queries.RouteChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
-		path, reachable := g.RouteReachableVRF(q.From, vrf, q.Prefix.String(), sim.NoFailures())
-		result := NewRouteResult(q.Name, reachable, true, path, "")
-		if cut, ok := findBreakingFailures(g, q.From, sim.RoutePrefixSetTarget{Space: model.ExactPrefixSet{Prefix: q.Prefix}, VRF: vrf}, failureSearchOptions(q.MaxFailures, q.FailureDomain), &result); ok {
-			result.SetCounterexample(formatFailureElements(cut))
-			result.Metadata.Reason = "reachable now but not resilient to requested failure budget"
-		}
-		report.Results = append(report.Results, result)
-	}
-	for _, q := range queries.PacketChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
-		ports := q.DstPortValues()
-		for _, port := range ports {
-			spec := model.PacketSpec{Protocol: q.Protocol, DstPort: model.ExactPort(port)}
-			path, reachable, reason := g.PacketReachableSpecVRF(q.From, vrf, q.To, spec, sim.NoFailures())
-			expected := true
-			if q.ExpectReachable != nil {
-				expected = *q.ExpectReachable
-			}
-			result := NewPacketResult(queryResultName(q.Name, port, len(ports)), reachable, expected, path, reason)
-			if expected && reachable {
-				target := sim.PacketTarget{To: q.To, Protocol: q.Protocol, DstPort: port, VRF: vrf}
-				if cut, ok := findBreakingFailures(g, q.From, target, failureSearchOptions(q.MaxFailures, q.FailureDomain), &result); ok {
-					result.SetCounterexample(formatFailureElements(cut))
-					result.Metadata.Reason = "reachable now but not resilient to requested failure budget"
-				}
-			}
-			report.Results = append(report.Results, result)
-		}
-	}
-	for _, q := range queries.FailureChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
-		ports := q.DstPortValues()
-		for _, port := range ports {
-			var target sim.SymbolicTarget
-			if !q.Prefix.IsZero() {
-				target = sim.PacketPrefixTarget{Prefix: q.Prefix, Protocol: q.Protocol, DstPort: port, VRF: vrf}
-			} else {
-				target = sim.PacketTarget{To: q.To, Protocol: q.Protocol, DstPort: port, VRF: vrf}
-			}
-			expected := true
-			if q.ExpectReachable != nil {
-				expected = *q.ExpectReachable
-			}
-			result := NewFailureResult(queryResultName(q.Name, port, len(ports)), true, expected, "")
-			if cut, ok := findBreakingFailures(g, q.From, target, failureSearchOptions(q.MaxFailures, q.FailureDomain), &result); ok {
-				result.Metadata.Reachable = false
-				result.SetCounterexample(formatFailureElements(cut))
-				result.Metadata.Reason = "counterexample within failure budget"
-			}
-			report.Results = append(report.Results, result)
-		}
-	}
-	return report
 }
 
 func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {

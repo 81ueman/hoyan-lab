@@ -9,6 +9,14 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
+func testFIB(raw map[string][]FIBEntry) map[string]map[string][]FIBEntry {
+	out := map[string]map[string][]FIBEntry{}
+	for node, entries := range raw {
+		out[node] = map[string][]FIBEntry{string(model.NetworkInstanceDefault): entries}
+	}
+	return out
+}
+
 func TestRouteReachableUsesSelectedCondition(t *testing.T) {
 	idx, err := model.BuildTopologyIndex(&model.Topology{
 		Nodes: []model.Node{
@@ -20,10 +28,16 @@ func TestRouteReachableUsesSelectedCondition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rib := map[string]map[string][]controlplane.RIBEntry{
-		"a": {"10.0.0.0/24": {{Prefix: model.MustPrefix("10.0.0.0/24"), Nodes: []string{"b", "a"}, Links: []string{"a-b"}, SelectedCond: failure.LinkVar("a-b")}}},
+	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
+		"a": {string(model.NetworkInstanceDefault): {"10.0.0.0/24": {{
+			NLRI:              controlplane.RouteNLRI{Prefix: model.MustPrefix("10.0.0.0/24")},
+			Provenance:        controlplane.RouteProvenance{PathNodes: []string{"b", "a"}, PathLinks: []string{"a-b"}},
+			SelectedCond:      failure.LinkVar("a-b"),
+			RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
+			ForwardingNextHop: controlplane.RouteNextHop{Node: "b"},
+		}}}},
 	}
-	e := NewEngine(idx, rib, map[string][]FIBEntry{})
+	e := NewEngine(idx, rib, map[string]map[string][]FIBEntry{})
 	path, ok := e.RouteReachable("a", "10.0.0.0/24", failure.None())
 	if !ok || path.Cost != 10 || path.Nodes[0] != "a" || path.Nodes[1] != "b" {
 		t.Fatalf("RouteReachable() = %#v %v", path, ok)
@@ -49,10 +63,10 @@ func TestSymbolicPacketReachabilitySinglePathIncludesForwardingConditions(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	result := e.SymbolicPacketReachability("src", "10.0.0.10", "icmp")
 	if len(result.Paths) != 1 {
 		t.Fatalf("symbolic paths = %d, want 1: %#v", len(result.Paths), result)
@@ -94,10 +108,10 @@ func TestSymbolicPacketReachabilityForExactPrefixSetMatchesConcreteIP(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	concrete := e.SymbolicPacketReachability("src", "10.0.0.10", "icmp")
 	prefixSet := e.SymbolicPacketReachabilityForPrefixSet("src", model.ExactPrefixSet{Prefix: pfx}, "icmp")
 	if concrete.Reachable.Key() != prefixSet.Reachable.Key() {
@@ -135,14 +149,14 @@ func TestSymbolicPacketReachabilityRedundantPathsAreORed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "primary", Condition: failure.LinkVar("src-primary")},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.True()},
 		},
 		"primary": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
 		"backup":  {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	result := e.SymbolicPacketReachability("src", "10.0.0.10", "icmp")
 	if len(result.Paths) != 2 {
 		t.Fatalf("symbolic paths = %d, want 2: %#v", len(result.Paths), result)
@@ -178,12 +192,12 @@ func TestSymbolicLookupFIBAddsNotHigherMatchingConditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: defaultPfx.NetIP(), NextHop: "fallback", Condition: failure.True()},
 			{Prefix: pfx.NetIP(), NextHop: "specific", Condition: failure.LinkVar("prefer-specific")},
 		},
-	})
+	}))
 	candidates := e.SymbolicLookupFIB("src", "10.0.0.10")
 	if len(candidates) != 2 {
 		t.Fatalf("SymbolicLookupFIB candidates = %d, want 2", len(candidates))
@@ -219,12 +233,12 @@ func TestSymbolicLookupFIBForPrefixSetAddsNotHigherMatchingConditions(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: defaultPfx.NetIP(), NextHop: "fallback", Condition: failure.True()},
 			{Prefix: pfx.NetIP(), NextHop: "specific", Condition: failure.LinkVar("prefer-specific")},
 		},
-	})
+	}))
 	candidates := e.SymbolicLookupFIBForPrefixSet("src", model.ExactPrefixSet{Prefix: pfx})
 	if len(candidates) != 2 {
 		t.Fatalf("SymbolicLookupFIBForPrefixSet candidates = %d, want 2", len(candidates))
@@ -259,13 +273,13 @@ func TestSymbolicLookupFIBKeepsEquivalentGroupCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "a", Condition: failure.LinkVar("src-a"), Rank: 0, GroupID: "ecmp-10.0.0.0/24", Equivalent: true},
 			{Prefix: pfx.NetIP(), NextHop: "b", Condition: failure.LinkVar("src-b"), Rank: 0, GroupID: "ecmp-10.0.0.0/24", Equivalent: true},
 			{Prefix: defaultPfx.NetIP(), NextHop: "fallback", Condition: failure.True(), Rank: 1, GroupID: "default"},
 		},
-	})
+	}))
 	candidates := e.SymbolicLookupFIB("src", "10.0.0.10")
 	if len(candidates) != 3 {
 		t.Fatalf("SymbolicLookupFIB candidates = %d, want 3", len(candidates))
@@ -300,14 +314,14 @@ func TestPacketReachableUsesAnyLiveEquivalentFIBMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "a", Condition: failure.True(), Rank: 0, GroupID: "ecmp", Equivalent: true},
 			{Prefix: pfx.NetIP(), NextHop: "b", Condition: failure.True(), Rank: 0, GroupID: "ecmp", Equivalent: true},
 		},
 		"a": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
 		"b": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	cases := []failure.Set{
 		failure.None(),
 		failure.Links("src-a"),
@@ -353,14 +367,14 @@ func TestSymbolicPacketReachabilityEvalMatchesConcretePacketReachable(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {
 			{Prefix: pfx.NetIP(), NextHop: "primary", Condition: failure.LinkVar("src-primary")},
 			{Prefix: pfx.NetIP(), NextHop: "backup", Condition: failure.True()},
 		},
 		"primary": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
 		"backup":  {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	result := e.SymbolicPacketReachability("src", "10.0.0.10", "icmp")
 	cases := []failure.Set{
 		failure.None(),
@@ -403,10 +417,10 @@ func TestPacketReachableMatchesPolicyInterface(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	_, ok, reason := e.PacketReachable("src", "10.0.0.10", "tcp", failure.None())
 	if ok || reason != "denied by acl NFT-DENY" {
 		t.Fatalf("tcp PacketReachable() ok=%v reason=%q, want nft deny", ok, reason)
@@ -440,10 +454,10 @@ func TestPacketReachableMatchesPolicyDstPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	http := model.PacketSpec{Protocol: "tcp", DstPort: model.ExactPortSet{Port: 80}}
 	if _, ok, reason := e.PacketReachableSpec("src", "10.0.0.10", http, failure.None()); ok || reason != "denied by acl DENY-HTTP" {
 		t.Fatalf("tcp/80 PacketReachableSpec() ok=%v reason=%q, want policy deny", ok, reason)
@@ -492,10 +506,10 @@ func TestPacketReachableUsesACLPermitAndDefaultAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	https := model.PacketSpec{Protocol: "tcp", DstPort: model.ExactPort(443)}
 	if _, ok, reason := e.PacketReachableSpec("src", "10.0.0.10", https, failure.None()); !ok {
 		t.Fatalf("tcp/443 PacketReachableSpec() ok=false reason=%q, want ACL permit", reason)
@@ -530,10 +544,10 @@ func TestSymbolicPacketReachabilityForClassAppliesDstPrefixPolicy(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 	universe, err := model.BuildPrefixUniverse([]model.PrefixSet{model.ExactPrefixSet{Prefix: pfx}})
 	if err != nil {
 		t.Fatal(err)
@@ -576,10 +590,10 @@ func TestSymbolicPacketReachabilityRecordsPolicyDeny(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"src": {{Prefix: pfx.NetIP(), NextHop: "mid", Condition: failure.True()}},
 		"mid": {{Prefix: pfx.NetIP(), NextHop: "dst", Condition: failure.True()}},
-	})
+	}))
 
 	result := e.SymbolicPacketReachability("src", "10.0.0.10", "tcp")
 	if result.Reachable.Eval(e.FailureContext(failure.None())) {
@@ -627,10 +641,10 @@ func TestSymbolicPacketReachabilityDoesNotExploreLoopsForever(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"a": {{Prefix: pfx.NetIP(), NextHop: "b", Condition: failure.True()}},
 		"b": {{Prefix: pfx.NetIP(), NextHop: "a", Condition: failure.True()}},
-	})
+	}))
 	result := e.SymbolicPacketReachability("a", "10.0.0.10", "icmp")
 	if len(result.Paths) != 0 {
 		t.Fatalf("symbolic loop should produce no reachable paths, got %#v", result.Paths)
@@ -715,10 +729,10 @@ func TestPacketReachableDetectsForwardingLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := NewEngine(idx, nil, map[string][]FIBEntry{
+	e := NewEngine(idx, nil, testFIB(map[string][]FIBEntry{
 		"a": {{Prefix: pfx.NetIP(), NextHop: "b", Condition: failure.True()}},
 		"b": {{Prefix: pfx.NetIP(), NextHop: "a", Condition: failure.True()}},
-	})
+	}))
 	_, ok, reason := e.PacketReachable("a", "10.0.0.10", "icmp", failure.None())
 	if ok || reason != "forwarding loop" {
 		t.Fatalf("PacketReachable() = ok %v reason %q, want forwarding loop", ok, reason)
@@ -768,18 +782,18 @@ func testACLBindings(name, node, iface, direction string) []model.ACLBinding {
 func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
 	equivalentRoutes := []controlplane.RIBEntry{
-		{Prefix: prefix, Origin: "a", LocalPref: 100, ASPath: []uint32{65100}, Nodes: []string{"a", "rx"}, SelectedCond: failure.LinkVar("path-a")},
-		{Prefix: prefix, Origin: "b", LocalPref: 100, ASPath: []uint32{65200}, Nodes: []string{"b", "rx"}, SelectedCond: failure.LinkVar("path-b")},
+		{NLRI: controlplane.RouteNLRI{Prefix: prefix}, Provenance: controlplane.RouteProvenance{OriginNode: "a", PathNodes: []string{"a", "rx"}}, Attrs: controlplane.BGPAttributes{LocalPref: 100, ASPath: []uint32{65100}}, SelectedCond: failure.LinkVar("path-a"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
+		{NLRI: controlplane.RouteNLRI{Prefix: prefix}, Provenance: controlplane.RouteProvenance{OriginNode: "b", PathNodes: []string{"b", "rx"}}, Attrs: controlplane.BGPAttributes{LocalPref: 100, ASPath: []uint32{65200}}, SelectedCond: failure.LinkVar("path-b"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
 	}
 
 	frrIdx, err := model.BuildTopologyIndex(&model.Topology{Nodes: []model.Node{{Name: "rx", Kind: model.KindFRR, ASN: 65000}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	frrRIB := map[string]map[string][]controlplane.RIBEntry{"rx": {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}
-	frrFIB := map[string][]FIBEntry{}
+	frrRIB := map[string]map[string]map[string][]controlplane.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}}
+	frrFIB := map[string]map[string][]FIBEntry{}
 	NewEngine(frrIdx, frrRIB, frrFIB).DeriveFIB()
-	if got := len(frrFIB["rx"]); got != 1 {
+	if got := len(frrFIB["rx"][string(model.NetworkInstanceDefault)]); got != 1 {
 		t.Fatalf("FRR FIB entries = %d, want equivalent route collapsed to 1", got)
 	}
 
@@ -788,17 +802,18 @@ func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	genericRIB := map[string]map[string][]controlplane.RIBEntry{"rx": {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}
-	genericFIB := map[string][]FIBEntry{}
+	genericRIB := map[string]map[string]map[string][]controlplane.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}}
+	genericFIB := map[string]map[string][]FIBEntry{}
 	NewEngine(genericIdx, genericRIB, genericFIB).DeriveFIB()
-	if got := len(genericFIB["rx"]); got != 2 {
+	if got := len(genericFIB["rx"][string(model.NetworkInstanceDefault)]); got != 2 {
 		t.Fatalf("generic FIB entries = %d, want equivalent routes kept", got)
 	}
-	if genericFIB["rx"][0].Rank != genericFIB["rx"][1].Rank || genericFIB["rx"][0].GroupID == "" || genericFIB["rx"][0].GroupID != genericFIB["rx"][1].GroupID {
-		t.Fatalf("generic equivalent routes should share rank/group: %#v", genericFIB["rx"])
+	genericEntries := genericFIB["rx"][string(model.NetworkInstanceDefault)]
+	if genericEntries[0].Rank != genericEntries[1].Rank || genericEntries[0].GroupID == "" || genericEntries[0].GroupID != genericEntries[1].GroupID {
+		t.Fatalf("generic equivalent routes should share rank/group: %#v", genericEntries)
 	}
-	if !genericFIB["rx"][0].Equivalent || !genericFIB["rx"][1].Equivalent {
-		t.Fatalf("generic equivalent routes should be marked equivalent: %#v", genericFIB["rx"])
+	if !genericEntries[0].Equivalent || !genericEntries[1].Equivalent {
+		t.Fatalf("generic equivalent routes should be marked equivalent: %#v", genericEntries)
 	}
 }
 
@@ -810,18 +825,18 @@ func TestDeriveFIBMarksAddressOnlyNextHopUnresolved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fib := map[string][]FIBEntry{}
-	NewEngine(idx, map[string]map[string][]controlplane.RIBEntry{
-		"rx": {prefix.String(): {{
-			Prefix:            prefix,
+	fib := map[string]map[string][]FIBEntry{}
+	NewEngine(idx, map[string]map[string]map[string][]controlplane.RIBEntry{
+		"rx": {string(model.NetworkInstanceDefault): {prefix.String(): {{
+			NLRI:              controlplane.RouteNLRI{Prefix: prefix},
 			ForwardingNextHop: controlplane.RouteNextHop{Addr: "192.0.2.1"},
 			SelectedCond:      failure.True(),
-		}}},
+		}}}},
 	}, fib).DeriveFIB()
-	if got := len(fib["rx"]); got != 1 {
+	if got := len(fib["rx"][string(model.NetworkInstanceDefault)]); got != 1 {
 		t.Fatalf("FIB entries = %d, want 1", got)
 	}
-	entry := fib["rx"][0]
+	entry := fib["rx"][string(model.NetworkInstanceDefault)][0]
 	if entry.NextHop != "" || entry.NextHopAddress != "192.0.2.1" || entry.ResolutionStatus != NextHopResolutionUnresolvedRecursive {
 		t.Fatalf("FIB next-hop resolution = %#v, want unresolved address-only next-hop", entry)
 	}
@@ -832,30 +847,30 @@ func TestDeriveFIBMarksBlackholeRouteAsDiscard(t *testing.T) {
 	idx := mustTopologyIndex(&model.Topology{
 		Nodes: []model.Node{{Name: "src", Kind: model.KindFRR}},
 	})
-	rib := map[string]map[string][]controlplane.RIBEntry{
+	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
 		"src": {
-			prefix.String(): {
+			string(model.NetworkInstanceDefault): {prefix.String(): {
 				{
-					Prefix:       prefix,
+					NLRI:         controlplane.RouteNLRI{Prefix: prefix},
 					SourceKind:   model.RouteSourceBlackhole,
 					RouteSource:  model.ConfiguredRoute{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0"},
 					SelectedCond: failure.True(),
 				},
 				{
-					Prefix:       prefix,
-					SourceKind:   model.RouteSourceBGP,
-					NextHop:      "remote",
-					SelectedCond: failure.True(),
+					NLRI:              controlplane.RouteNLRI{Prefix: prefix},
+					SourceKind:        model.RouteSourceBGP,
+					ForwardingNextHop: controlplane.RouteNextHop{Node: "remote"},
+					SelectedCond:      failure.True(),
 				},
-			},
+			}},
 		},
 	}
-	fib := map[string][]FIBEntry{}
+	fib := map[string]map[string][]FIBEntry{}
 	NewEngine(idx, rib, fib).DeriveFIB()
-	if len(fib["src"]) != 1 {
+	if len(fib["src"][string(model.NetworkInstanceDefault)]) != 1 {
 		t.Fatalf("FIB entries = %#v, want local blackhole selected over same-prefix BGP", fib["src"])
 	}
-	entry := fib["src"][0]
+	entry := fib["src"][string(model.NetworkInstanceDefault)][0]
 	if !entry.Discard || entry.SourceKind != model.RouteSourceBlackhole || entry.Interface != "Null0" {
 		t.Fatalf("blackhole FIB entry = %#v, want discard blackhole via Null0", entry)
 	}

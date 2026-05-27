@@ -28,45 +28,36 @@ func applyRoutePolicy(idx *model.TopologyIndex, node model.Node, peerName string
 		}
 		out := route
 		if rule.SetLocalPref != nil {
-			out.LocalPref = *rule.SetLocalPref
 			out.Attrs.LocalPref = *rule.SetLocalPref
 		}
 		if rule.SetLocalPrefDelta != nil {
-			out.LocalPref = defaultLocalPref(out.LocalPref) + *rule.SetLocalPrefDelta
-			out.Attrs.LocalPref = out.LocalPref
+			out.Attrs.LocalPref = defaultLocalPref(out.Attrs.LocalPref) + *rule.SetLocalPrefDelta
 		}
 		if rule.SetMED != nil {
-			out.MED = *rule.SetMED
 			out.Attrs.MED = *rule.SetMED
 		}
 		if rule.SetMEDDelta != nil {
-			out.MED += *rule.SetMEDDelta
-			out.Attrs.MED = out.MED
+			out.Attrs.MED += *rule.SetMEDDelta
 		}
 		if len(rule.SetASPathPrepend) > 0 {
-			out.ASPath = append(append([]uint32(nil), rule.SetASPathPrepend...), out.ASPath...)
-			out.Attrs.ASPath = append([]uint32(nil), out.ASPath...)
+			out.Attrs.ASPath = append(append([]uint32(nil), rule.SetASPathPrepend...), out.Attrs.ASPath...)
 		}
 		if len(rule.SetCommunities) > 0 {
 			if rule.SetCommunityAdditive {
-				out.Communities = appendUniqueStrings(out.Communities, rule.SetCommunities...)
+				out.Attrs.Communities = appendUniqueStrings(out.Attrs.Communities, rule.SetCommunities...)
 			} else {
-				out.Communities = append([]string(nil), rule.SetCommunities...)
+				out.Attrs.Communities = append([]string(nil), rule.SetCommunities...)
 			}
-			sort.Strings(out.Communities)
-			out.Attrs.Communities = append([]string(nil), out.Communities...)
+			sort.Strings(out.Attrs.Communities)
 		}
 		if rule.SetOriginCode != "" {
-			out.OriginCode = rule.SetOriginCode
 			out.Attrs.OriginCode = BGPOriginCode(rule.SetOriginCode)
 		}
 		if rule.SetNextHopSelf {
-			out.NextHop = node.Name
 			out.ForwardingNextHop.Node = node.Name
 			out.ForwardingNextHop.Addr = ""
 		}
 		if rule.SetNextHop != "" {
-			out.NextHop = rule.SetNextHop
 			out.ForwardingNextHop = routeNextHopForSet(idx, node.Name, rule.SetNextHop)
 		}
 		return BGPRouteDecision{Route: out.Normalize(), Accept: true}
@@ -76,16 +67,16 @@ func applyRoutePolicy(idx *model.TopologyIndex, node model.Node, peerName string
 
 func routePolicyRuleMatches(idx *model.TopologyIndex, node model.Node, peerName string, rule model.RoutePolicyRule, route RIBEntry) bool {
 	route = route.Normalize()
-	if rule.MatchPrefixList != "" && !prefixListPermitsPrefix(node, rule.MatchPrefixList, route.Prefix.NetIP()) {
+	if rule.MatchPrefixList != "" && !prefixListPermitsPrefix(node, rule.MatchPrefixList, route.NLRI.Prefix.NetIP()) {
 		return false
 	}
 	if rule.MatchNextHopPrefixList != "" && !prefixListPermitsAddress(node, rule.MatchNextHopPrefixList, routeNextHopForPolicy(idx, node.Name, peerName, route)) {
 		return false
 	}
-	if rule.MatchASPathList != "" && !asPathListPermits(node, rule.MatchASPathList, route.ASPath) {
+	if rule.MatchASPathList != "" && !asPathListPermits(node, rule.MatchASPathList, route.Attrs.ASPath) {
 		return false
 	}
-	if rule.MatchCommunityList != "" && !communityListPermits(node, rule.MatchCommunityList, route.Communities, rule.MatchCommunityExact) {
+	if rule.MatchCommunityList != "" && !communityListPermits(node, rule.MatchCommunityList, route.Attrs.Communities, rule.MatchCommunityExact) {
 		return false
 	}
 	return true
@@ -98,14 +89,6 @@ func routePolicyByName(node model.Node, name string) (model.RoutePolicy, bool) {
 		}
 	}
 	return model.RoutePolicy{}, false
-}
-
-func prefixListPermits(node model.Node, name string, routePrefix string) bool {
-	want, err := netip.ParsePrefix(routePrefix)
-	if err != nil {
-		return false
-	}
-	return prefixListPermitsPrefix(node, name, want)
 }
 
 func prefixListPermitsAddress(node model.Node, name string, addr string) bool {
@@ -206,24 +189,28 @@ func communityListPermits(node model.Node, name string, communities []string, ex
 
 func routeNextHopForPolicy(idx *model.TopologyIndex, node string, peerName string, route RIBEntry) string {
 	route = route.Normalize()
-	if route.NextHop == "" {
+	nextHop := route.ForwardingNextHop.Node
+	if nextHop == "" {
+		nextHop = route.ForwardingNextHop.Addr
+	}
+	if nextHop == "" {
 		return ""
 	}
-	if route.NextHop == node && peerName != "" {
+	if nextHop == node && peerName != "" {
 		return peerAddress(idx, peerName, node)
 	}
-	if direct := peerAddress(idx, node, route.NextHop); direct != route.NextHop {
+	if direct := peerAddress(idx, node, nextHop); direct != nextHop {
 		return direct
 	}
-	for i := 0; i+1 < len(route.Nodes); i++ {
-		if route.Nodes[i] != route.NextHop {
+	for i := 0; i+1 < len(route.Provenance.PathNodes); i++ {
+		if route.Provenance.PathNodes[i] != nextHop {
 			continue
 		}
-		if addr := peerAddress(idx, route.Nodes[i+1], route.NextHop); addr != route.NextHop {
+		if addr := peerAddress(idx, route.Provenance.PathNodes[i+1], nextHop); addr != nextHop {
 			return addr
 		}
 	}
-	return route.NextHop
+	return nextHop
 }
 
 func routeNextHopForSet(idx *model.TopologyIndex, node, nextHop string) RouteNextHop {

@@ -6,64 +6,17 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/symbolic"
 )
 
-func TestEnumeratingBackend(t *testing.T) {
-	ans, err := DefaultBackend().Solve(FailureProblem{
-		Elements:    linkElements("a", "b", "c"),
-		MaxFailures: 2,
-		Forbidden:   [][]FailureElement{linkElements("a", "c")},
-	})
-	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
-	}
-	if !ans.Sat || len(ans.Failures) != 2 {
-		t.Fatalf("answer = %#v", ans)
-	}
-	if ans.Failures[0].Kind != FailureLink || ans.Failures[0].Name == "" {
-		t.Fatalf("typed failure not preserved: %#v", ans.Failures)
-	}
-}
-
-func TestEnumeratingBackendUnsat(t *testing.T) {
-	ans, err := DefaultBackend().Solve(FailureProblem{
-		Elements:    linkElements("a", "b", "c"),
-		MaxFailures: 1,
-		Forbidden:   [][]FailureElement{linkElements("a", "c")},
-	})
-	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
-	}
-	if ans.Sat {
-		t.Fatalf("answer = %#v, want unsat", ans)
-	}
-}
-
-func TestEnumeratingBackendNodeOnly(t *testing.T) {
-	ans, err := DefaultBackend().Solve(FailureProblem{
-		Elements:    []FailureElement{{Kind: FailureNode, Name: "n1"}},
-		MaxFailures: 1,
-		Forbidden:   [][]FailureElement{{{Kind: FailureNode, Name: "n1"}}},
-	})
-	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
-	}
-	if !ans.Sat || len(ans.Failures) != 1 || ans.Failures[0] != (FailureElement{Kind: FailureNode, Name: "n1"}) {
-		t.Fatalf("answer = %#v, want node n1", ans)
-	}
-}
-
-func TestEnumeratingBackendMixedElements(t *testing.T) {
-	ans, err := DefaultBackend().Solve(FailureProblem{
+func TestEnumeratingBackendSymbolicGoalWithNodeElement(t *testing.T) {
+	ans, err := DefaultBackend().SolveSymbolic(SymbolicFailureProblem{
 		Elements: []FailureElement{
 			{Kind: FailureLink, Name: "l1"},
 			{Kind: FailureNode, Name: "n1"},
 		},
 		MaxFailures: 1,
-		Forbidden: [][]FailureElement{
-			{{Kind: FailureNode, Name: "n1"}},
-		},
+		Goal:        symbolic.Not(symbolic.NodeVar("n1")),
 	})
 	if err != nil {
-		t.Fatalf("Solve() error = %v", err)
+		t.Fatalf("SolveSymbolic() error = %v", err)
 	}
 	if !ans.Sat || len(ans.Failures) != 1 || ans.Failures[0].Kind != FailureNode || ans.Failures[0].Name != "n1" {
 		t.Fatalf("answer = %#v, want node n1", ans)
