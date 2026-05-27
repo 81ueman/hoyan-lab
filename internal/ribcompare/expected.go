@@ -141,7 +141,11 @@ func routeComparableInLiveRIB(idx *model.TopologyIndex, node string, route sim.R
 	case model.RouteSourceStatic:
 		return route.RouteSource.NextHop != ""
 	case model.RouteSourceOSPF:
-		return route.Provenance.OriginNode == node || route.ForwardingNextHop.Node != ""
+		if route.Provenance.OriginNode == node {
+			n, ok := idx.Node(node)
+			return ok && n.Kind == model.KindFRR
+		}
+		return route.ForwardingNextHop.Node != ""
 	case model.RouteSourceBlackhole:
 		return true
 	default:

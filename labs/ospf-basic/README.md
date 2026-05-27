@@ -1,16 +1,16 @@
 # OSPF Basic Lab
 
-This lab validates the supported FRR OSPFv2 subset in Hoyan.
+This lab validates the supported multi-vendor OSPFv2 subset in Hoyan.
 
 Topology:
 
 ```text
       cost 10
-r1 -------- r2
+r1(FRR) --- r2(cEOS)
 |           |
 | cost 1    | cost 1
 |           |
-r4 -------- r3
+r4(FRR) --- r3(SR Linux)
       cost 1
 ```
 
@@ -23,7 +23,7 @@ Each router advertises its loopback in area 0:
 
 The direct `r1-r2` link has OSPF cost 10. The other three links have cost 1, so `r1` reaches `r2`'s loopback through `r4-r3-r2` while all links are up. If `r1-r4` fails, the model and live FRR state should fall back to the direct `r1-r2` link.
 
-Supported syntax used here:
+Supported FRR/cEOS syntax used here:
 
 ```frr
 router ospf
@@ -39,3 +39,13 @@ interface IFNAME
 ```
 
 Redistribution is intentionally not used and remains unsupported for OSPF in this lab.
+
+Supported SR Linux syntax used here:
+
+```text
+set / network-instance default protocols ospf instance default router-id A.B.C.D
+set / network-instance default protocols ospf instance default area AREA interface IFNAME admin-state enable
+set / network-instance default protocols ospf instance default area AREA interface IFNAME interface-type point-to-point
+set / network-instance default protocols ospf instance default area AREA interface IFNAME metric COST
+set / network-instance default protocols ospf instance default area AREA interface IFNAME passive true
+```

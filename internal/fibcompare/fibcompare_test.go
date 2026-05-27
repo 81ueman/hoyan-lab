@@ -72,6 +72,13 @@ func TestParseCEOSRoutes(t *testing.T) {
 	      "routeType": "connected",
 	      "vias": [{"interface":"Ethernet2"}]
 	    },
+	    "10.255.2.2/32": {
+	      "kernelProgrammed": true,
+	      "routeType": "ospfInternal",
+	      "preference": 110,
+	      "metric": 20,
+	      "vias": [{"nexthopAddr":"198.51.100.2","interface":"Ethernet3"}]
+	    },
 	    "203.0.113.0/24": {
 	      "kernelProgrammed": true,
 	      "routeType": "static",
@@ -97,6 +104,10 @@ func TestParseCEOSRoutes(t *testing.T) {
 	if connected == nil || connected.Protocol != "connected" {
 		t.Fatalf("connected route = %#v", connected)
 	}
+	ospf := routeByPrefix(routes, "10.255.2.2/32")
+	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+		t.Fatalf("OSPF route = %#v", ospf)
+	}
 	blackhole := routeByPrefix(routes, "203.0.113.0/24")
 	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
 		t.Fatalf("blackhole route = %#v", blackhole)
@@ -111,6 +122,7 @@ func TestParseSRLinuxRoutes(t *testing.T) {
 	      {"Prefix":"10.0.0.0/24","Route Type":"bgp","Active":"True","Metric":0,"Pref":170,"Next-hop (Type)":"192.0.2.1/31 (indirect/local)","Next-hop Interface":"ethernet-1/1.0 "},
 	      {"Prefix":"198.51.100.0/31","Route Type":"local","Active":"True","Metric":0,"Pref":0,"Next-hop (Type)":"198.51.100.1 (direct)","Next-hop Interface":"ethernet-1/2.0 "},
 	      {"Prefix":"198.51.100.0/24","Route Type":"blackhole","Active":"True","Metric":0,"Pref":1,"Next-hop (Type)":"None"},
+	      {"Prefix":"10.255.2.2/32","Route Type":"ospf-internal","Active":"True","Metric":20,"Pref":110,"Next-hop (Type)":"198.51.100.2/32 (direct)","Next-hop Interface":"ethernet-1/4.0 "},
 	      {"Prefix":"203.0.113.0/24","Route Type":"bgp","Active":"False","Next-hop (Type)":"192.0.2.2/31 (indirect/local)","Next-hop Interface":"ethernet-1/3.0 "}
 	    ]
 	  }]
@@ -135,6 +147,10 @@ func TestParseSRLinuxRoutes(t *testing.T) {
 	connected := routeByPrefix(routes, "198.51.100.0/31")
 	if connected == nil || connected.Protocol != "connected" {
 		t.Fatalf("connected route = %#v", connected)
+	}
+	ospf := routeByPrefix(routes, "10.255.2.2/32")
+	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+		t.Fatalf("OSPF route = %#v", ospf)
 	}
 	blackhole := routeByPrefix(routes, "198.51.100.0/24")
 	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
@@ -238,6 +254,26 @@ func TestExpectedForNodesNormalizesModeledFIB(t *testing.T) {
 	wantHop := NormalizedFIBNextHop{Address: "192.0.2.0", Interface: "eth1"}
 	if !reflect.DeepEqual(route.NextHops, []NormalizedFIBNextHop{wantHop}) || route.Protocol != "bgp" || route.Metric != 7 {
 		t.Fatalf("route = %#v", route)
+	}
+}
+
+func TestExpectedForNodesSuppressesSRLinuxLoopbackConnectedFIB(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{{
+			Name: "srl",
+			Kind: model.KindSRLinux,
+			Interfaces: []model.Interface{
+				{Name: "lo0.0", Address: "10.255.0.1/32"},
+				{Name: "ethernet-1/1.0", Address: "192.0.2.1/31"},
+			},
+		}},
+	}
+	routes := ExpectedForNodes(topo, topo.Nodes)
+	if routeByPrefix(routes, "10.255.0.1/32") != nil {
+		t.Fatalf("SR Linux loopback connected route should not be expected in live FIB: %#v", routes)
+	}
+	if routeByPrefix(routes, "192.0.2.0/31") == nil {
+		t.Fatalf("SR Linux link connected route missing from expected FIB: %#v", routes)
 	}
 }
 

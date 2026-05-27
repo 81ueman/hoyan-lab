@@ -4,8 +4,13 @@ mgmt:
     ipv4-subnet: 172.86.88.0/24
 topology:
     kinds:
+        arista_ceos:
+            image: ceos:latest
         linux:
             image: hoyan-frr-nftables:10.6.1
+        nokia_srlinux:
+            image: ghcr.io/nokia/srlinux:25.10
+            type: ixr-d2l
     nodes:
         r1:
             kind: linux
@@ -13,26 +18,30 @@ topology:
             mgmt-ipv4: 172.86.88.11
             binds:
                 - configs/frr/r1:/etc/frr:ro
+            exec:
+                - ip link set dev eth1 mtu 1500
+                - ip link set dev eth2 mtu 1500
         r2:
-            kind: linux
+            kind: arista_ceos
             group: router
             mgmt-ipv4: 172.86.88.12
-            binds:
-                - configs/frr/r2:/etc/frr:ro
+            startup-config: configs/ceos/r2.cfg
         r3:
-            kind: linux
+            kind: nokia_srlinux
             group: router
             mgmt-ipv4: 172.86.88.13
-            binds:
-                - configs/frr/r3:/etc/frr:ro
+            startup-config: configs/srlinux/r3.cfg
         r4:
             kind: linux
             group: router
             mgmt-ipv4: 172.86.88.14
             binds:
                 - configs/frr/r4:/etc/frr:ro
+            exec:
+                - ip link set dev eth1 mtu 1500
+                - ip link set dev eth2 mtu 1500
     links:
         - endpoints: ["r1:eth1", "r2:eth1"]
-        - endpoints: ["r2:eth2", "r3:eth1"]
-        - endpoints: ["r3:eth2", "r4:eth2"]
+        - endpoints: ["r2:eth2", "r3:e1-1"]
+        - endpoints: ["r3:e1-2", "r4:eth2"]
         - endpoints: ["r4:eth1", "r1:eth2"]

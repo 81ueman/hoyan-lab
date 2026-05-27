@@ -122,6 +122,10 @@ func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResul
 	}
 }
 
+func isOSPFConfigKind(kind DeviceKind) bool {
+	return kind == KindFRR || kind == KindCEOS
+}
+
 func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (ParseResult, error) {
 	var cfg ParsedConfig
 	var warnings []UnsupportedStatement
@@ -335,19 +339,19 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if ok {
 				aclBindings = append(aclBindings, aclBinding{Name: fields[2], Interface: currentInterface, Stage: stage, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
 			}
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
 			oi := ospfInterface(&cfg, currentInterface)
-			oi.Area = fields[3]
+			oi.Area = normalizeOSPFAreaID(fields[3])
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			cfg.OSPF.Interfaces[currentInterface] = *oi
 			cfg.OSPF.Enabled = true
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
 			cost, err := strconv.Atoi(fields[3])
 			if err != nil || cost <= 0 {
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported FRR OSPF interface cost %q", line)
+					return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface cost %q", routeMapVendorName(kind), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF interface cost"))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface cost", routeMapVendorName(kind))))
 				continue
 			}
 			oi := ospfInterface(&cfg, currentInterface)
@@ -355,15 +359,17 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			cfg.OSPF.Interfaces[currentInterface] = *oi
 			cfg.OSPF.Enabled = true
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && fields[3] == "point-to-point":
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && fields[3] == "point-to-point":
 			cfg.OSPF.Enabled = true
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
 			cfg.OSPF.Enabled = true
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf":
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "mtu-ignore":
+			cfg.OSPF.Enabled = true
+		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf":
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF interface statement %q", line)
+				return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface statement %q", routeMapVendorName(kind), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF interface statement"))
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface statement", routeMapVendorName(kind))))
 		case len(fields) >= 4 && fields[0] == "ip" && fields[1] == "route":
 			route, err := parseFRRLikeStaticRoute(kind, path, lineNo, line, fields)
 			if err != nil {
@@ -384,7 +390,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			inAF = false
 			inOSPF = false
 			currentInterface = ""
-		case kind == KindFRR && len(fields) >= 2 && fields[0] == "router" && fields[1] == "ospf":
+		case isOSPFConfigKind(kind) && len(fields) >= 2 && fields[0] == "router" && fields[1] == "ospf":
 			cfg.OSPF.Enabled = true
 			if cfg.OSPF.Interfaces == nil {
 				cfg.OSPF.Interfaces = map[string]OSPFInterface{}
@@ -396,22 +402,22 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			inBGP = false
 			inAF = false
 			currentInterface = ""
-		case kind == KindFRR && inOSPF && len(fields) >= 3 && fields[0] == "ospf" && fields[1] == "router-id":
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 3 && fields[0] == "ospf" && fields[1] == "router-id":
 			cfg.OSPF.RouterID = fields[2]
-		case kind == KindFRR && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
 			cfg.OSPF.RouterID = fields[1]
-		case kind == KindFRR && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
 			prefix, err := ParsePrefix(fields[1])
 			if err != nil {
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported FRR OSPF network %q", line)
+					return ParseResult{}, fmt.Errorf("unsupported %s OSPF network %q", routeMapVendorName(kind), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF network"))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF network", routeMapVendorName(kind))))
 				continue
 			}
-			cfg.OSPF.Networks = append(cfg.OSPF.Networks, OSPFNetwork{Prefix: prefix, Area: fields[3], Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
-		case kind == KindFRR && inOSPF && len(fields) >= 3 && fields[0] == "area":
-			area, err := parseFRROSPFArea(path, lineNo, line, fields)
+			cfg.OSPF.Networks = append(cfg.OSPF.Networks, OSPFNetwork{Prefix: prefix, Area: normalizeOSPFAreaID(fields[3]), Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 3 && fields[0] == "area":
+			area, err := parseFRRLikeOSPFArea(kind, path, lineNo, line, fields)
 			if err != nil {
 				if !collectWarnings {
 					return ParseResult{}, err
@@ -423,14 +429,14 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				cfg.OSPF.Areas = map[string]OSPFArea{}
 			}
 			cfg.OSPF.Areas[area.ID] = area
-		case kind == KindFRR && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
 			cfg.OSPF.PassiveInterfaces = appendUnique(cfg.OSPF.PassiveInterfaces, fields[1])
 			oi := ospfInterface(&cfg, fields[1])
 			oi.Passive = true
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			cfg.OSPF.Interfaces[fields[1]] = *oi
-		case kind == KindFRR && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
-			redist, err := parseFRROSPFRedistribution(path, lineNo, line, fields)
+		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
+			redist, err := parseFRRLikeOSPFRedistribution(kind, path, lineNo, line, fields)
 			if err != nil {
 				if !collectWarnings {
 					return ParseResult{}, err
@@ -439,11 +445,11 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				continue
 			}
 			cfg.OSPF.Redistribute = append(cfg.OSPF.Redistribute, redist)
-		case kind == KindFRR && inOSPF:
+		case isOSPFConfigKind(kind) && inOSPF:
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF statement %q", line)
+				return ParseResult{}, fmt.Errorf("unsupported %s OSPF statement %q", routeMapVendorName(kind), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF statement"))
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF statement", routeMapVendorName(kind))))
 		case inBGP && len(fields) >= 3 && (fields[0] == "bgp" || fields[0] == "router-id") && fields[len(fields)-2] == "router-id":
 			cfg.RouterID = fields[len(fields)-1]
 		case inBGP && len(fields) >= 2 && fields[0] == "router-id":
@@ -573,6 +579,9 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 			iface := fieldAfter(fields, "interface")
 			addr := fields[len(fields)-1]
 			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: iface, Address: addr})
+			if strings.HasPrefix(strings.ToLower(iface), "lo") {
+				cfg.Loopback = addr
+			}
 		case containsSeq(fields, "static-routes", "route"):
 			route, err := parseSRLinuxStaticRoute(path, lineNo, line, fields)
 			if err != nil {
@@ -583,6 +592,13 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 				continue
 			}
 			cfg.Routes = append(cfg.Routes, route)
+		case containsSeq(fields, "protocols", "ospf"):
+			if err := parseSRLinuxOSPF(&cfg, path, lineNo, line, fields); err != nil {
+				if !collectWarnings {
+					return ParseResult{}, fmt.Errorf("%s: %w", line, err)
+				}
+				warnings = append(warnings, unsupportedStatement("srlinux", path, lineNo, line, err.Error()))
+			}
 		case containsSeq(fields, "protocols", "bgp", "autonomous-system") && len(fields) > 0:
 			asn, err := strconv.ParseUint(fields[len(fields)-1], 10, 32)
 			if err != nil {
@@ -719,15 +735,15 @@ func ospfInterface(cfg *ParsedConfig, name string) *OSPFInterface {
 	return &oi
 }
 
-func parseFRROSPFArea(path string, lineNo int, raw string, fields []string) (OSPFArea, error) {
-	area := OSPFArea{ID: fields[1], Source: ConfigSource{Vendor: string(KindFRR), File: path, Line: lineNo, Raw: raw}}
+func parseFRRLikeOSPFArea(kind DeviceKind, path string, lineNo int, raw string, fields []string) (OSPFArea, error) {
+	area := OSPFArea{ID: normalizeOSPFAreaID(fields[1]), Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[2] {
 	case "stub":
 		area.Kind = OSPFAreaStub
 	case "nssa":
 		area.Kind = OSPFAreaNSSA
 	default:
-		return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area statement")
+		return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area statement", routeMapVendorName(kind))
 	}
 	for _, opt := range fields[3:] {
 		switch opt {
@@ -735,30 +751,84 @@ func parseFRROSPFArea(path string, lineNo int, raw string, fields []string) (OSP
 			area.NoSummary = true
 		case "default-information-originate":
 			if area.Kind != OSPFAreaNSSA {
-				return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area option %q", opt)
+				return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
 			}
 			area.DefaultInformationOriginate = true
 		default:
-			return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area option %q", opt)
+			return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
 		}
 	}
 	return area, nil
 }
 
-func parseFRROSPFRedistribution(path string, lineNo int, raw string, fields []string) (OSPFRedistribution, error) {
+func parseFRRLikeOSPFRedistribution(kind DeviceKind, path string, lineNo int, raw string, fields []string) (OSPFRedistribution, error) {
 	if len(fields) != 2 {
-		return OSPFRedistribution{}, fmt.Errorf("unsupported FRR OSPF redistribute statement")
+		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
 	}
-	redist := OSPFRedistribution{Source: ConfigSource{Vendor: string(KindFRR), File: path, Line: lineNo, Raw: raw}}
+	redist := OSPFRedistribution{Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[1] {
 	case "connected":
 		redist.Kind = RouteSourceConnected
 	case "static":
 		redist.Kind = RouteSourceStatic
 	default:
-		return OSPFRedistribution{}, fmt.Errorf("unsupported FRR OSPF redistribute source %q", fields[1])
+		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute source %q", routeMapVendorName(kind), fields[1])
 	}
 	return redist, nil
+}
+
+func parseSRLinuxOSPF(cfg *ParsedConfig, path string, lineNo int, raw string, fields []string) error {
+	cfg.OSPF.Enabled = true
+	source := ConfigSource{Vendor: string(KindSRLinux), File: path, Line: lineNo, Raw: raw}
+	if containsAnyField(fields, "router-id") {
+		cfg.OSPF.RouterID = fields[len(fields)-1]
+		return nil
+	}
+	if containsSeq(fields, "area", "interface") {
+		iface := fieldAfter(fields, "interface")
+		area := normalizeOSPFAreaID(fieldAfter(fields, "area"))
+		if iface == "" || area == "" {
+			return fmt.Errorf("unsupported SR Linux OSPF interface statement")
+		}
+		oi := ospfInterface(cfg, iface)
+		oi.Area = area
+		oi.Source = source
+		if containsAnyField(fields, "metric") {
+			cost, err := strconv.Atoi(fields[len(fields)-1])
+			if err != nil || cost <= 0 {
+				return fmt.Errorf("unsupported SR Linux OSPF interface metric")
+			}
+			oi.Cost = cost
+		}
+		if containsAnyField(fields, "passive") && parseConfigBool(fields[len(fields)-1]) {
+			oi.Passive = true
+			cfg.OSPF.PassiveInterfaces = appendUnique(cfg.OSPF.PassiveInterfaces, iface)
+		}
+		cfg.OSPF.Interfaces[iface] = *oi
+		return nil
+	}
+	if containsAnyField(fields, "admin-state", "version") {
+		return nil
+	}
+	return fmt.Errorf("unsupported SR Linux OSPF statement")
+}
+
+func normalizeOSPFAreaID(area string) string {
+	switch strings.TrimSpace(area) {
+	case "0.0.0.0":
+		return "0"
+	default:
+		return strings.TrimSpace(area)
+	}
+}
+
+func parseConfigBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "yes", "enable", "enabled":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseAggregateRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {

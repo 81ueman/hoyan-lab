@@ -228,7 +228,11 @@ func routeTableItems(value any) []map[string]any {
 }
 
 func normalizedRouteTableProtocol(protocol string) string {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	normalized := strings.ToLower(strings.TrimSpace(protocol))
+	if strings.Contains(normalized, "ospf") {
+		return "ospf"
+	}
+	switch normalized {
 	case "bgp", "ebgp", "ibgp", "":
 		return ""
 	case "kernel", "connected", "connect", "direct", "local", "host":

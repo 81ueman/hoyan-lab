@@ -30,6 +30,10 @@ func InterfaceAliases(kind DeviceKind, clabName string) []string {
 		}
 	case KindSRLinux:
 		switch {
+		case strings.HasPrefix(clabName, "lo") && hasUnit:
+			names = uniqueStrings(append(names, base)...)
+		case strings.HasPrefix(clabName, "lo"):
+			names = uniqueStrings(append(names, clabName+".0")...)
 		case strings.HasPrefix(clabName, "e1-"):
 			port := strings.TrimPrefix(clabName, "e1-")
 			names = uniqueStrings(append(names, "ethernet-1/"+port, "ethernet-1/"+port+".0")...)
