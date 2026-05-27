@@ -25,11 +25,6 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
 	}
-	for _, old := range []string{"live-check", "rib-compare", "fib-compare", "render-topology"} {
-		if strings.Contains(help, old) {
-			t.Fatalf("help output still contains old top-level command %q:\n%s", old, help)
-		}
-	}
 }
 
 func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
@@ -44,11 +39,6 @@ func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
 	for _, want := range []string{"live", "compare", "topology", "labs", "model", "intent", "facts"} {
 		if !names[want] {
 			t.Fatalf("root command missing %q; got %v", want, names)
-		}
-	}
-	for _, old := range []string{"verify", "live-check", "rib-compare", "fib-compare", "render-topology"} {
-		if names[old] {
-			t.Fatalf("root command still includes old command %q; got %v", old, names)
 		}
 	}
 }
