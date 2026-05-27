@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/model"
@@ -21,12 +22,7 @@ func TestOSPFPrefersLowerMetricAndKeepsFallback(t *testing.T) {
 			{Name: "r4-r1", A: "r4", AIntf: "eth1", B: "r1", BIntf: "eth2", Cost: 1, Subnet: "198.51.100.6/31"},
 		},
 	}
-	idx, err := model.BuildTopologyIndex(topo)
-	if err != nil {
-		t.Fatalf("BuildTopologyIndex() error = %v", err)
-	}
-	rib := map[string]map[string][]RIBEntry{}
-	NewEngine(idx, rib).Simulate()
+	rib := simulateOSPFTestRIB(t, topo)
 	routes := rib["r1"]["10.255.2.2/32"]
 	if len(routes) < 2 {
 		t.Fatalf("r1 routes to r2 loopback = %#v, want primary and fallback", routes)
@@ -44,6 +40,34 @@ func TestOSPFPrefersLowerMetricAndKeepsFallback(t *testing.T) {
 	}
 	if !fallbackFound {
 		t.Fatalf("routes = %#v, want fallback via r2 metric 10", routes)
+	}
+}
+
+func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "1", "eth1": "1"}, nil),
+			ospfAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31"}, map[string]string{"lo": "0", "eth1": "1", "eth2": "0"}, nil),
+			ospfAreaNode("r3", "10.255.3.3/32", map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.4/31"}, map[string]string{"lo": "0", "eth1": "0", "eth2": "2"}, nil),
+			ospfAreaNode("r4", "10.255.4.4/32", map[string]string{"eth1": "198.51.100.5/31"}, map[string]string{"lo": "2", "eth1": "2"}, nil),
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+			{Name: "r2-r3", A: "r2", AIntf: "eth2", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
+			{Name: "r3-r4", A: "r3", AIntf: "eth2", B: "r4", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.4/31"},
+		},
+	}
+	rib := simulateOSPFTestRIB(t, topo)
+	routes := rib["r1"]["10.255.4.4/32"]
+	if len(routes) == 0 {
+		t.Fatalf("r1 did not learn r4 loopback")
+	}
+	best := routes[0].Normalize()
+	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.OSPFRouteType != "inter-area" || best.RouteSource.Metric != 3 || best.NextHop != "r2" {
+		t.Fatalf("best route = %#v, want inter-area OSPF metric 3 via r2", best)
+	}
+	if got := rib["r1"]["198.51.100.2/31"]; len(got) == 0 || got[0].Normalize().RouteSource.OSPFRouteType != "inter-area" {
+		t.Fatalf("r1 backbone link route = %#v, want inter-area route", got)
 	}
 }
 
@@ -114,6 +138,30 @@ func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[stri
 	return rib
 }
 
+func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
+	topo := denseOSPFTopology(12)
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	rib := map[string]map[string][]RIBEntry{}
+	NewEngine(idx, rib).Simulate()
+	routes := rib["r1"]["10.255.12.12/32"]
+	if len(routes) != 11 {
+		t.Fatalf("r1 routes to r12 loopback = %d, want one candidate per first hop", len(routes))
+	}
+	best := routes[0].Normalize()
+	if best.NextHop != "r12" || best.RouteSource.Metric != 1 {
+		t.Fatalf("best route = %#v, want direct SPF route to r12", best)
+	}
+	for _, route := range routes {
+		route = route.Normalize()
+		if len(route.Nodes) > 3 {
+			t.Fatalf("route path = %#v, want SPF representative path without enumerated detours", route.Nodes)
+		}
+	}
+}
+
 func ospfNode(name, loopback string, ifaces map[string]string, costs map[string]int) model.Node {
 	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
 	ospfIfaces := map[string]model.OSPFInterface{
@@ -142,10 +190,13 @@ func ospfNode(name, loopback string, ifaces map[string]string, costs map[string]
 }
 
 func ospfAreaNode(name, loopback string, ifaces map[string]string, areasByIface map[string]string, areas map[string]model.OSPFArea) model.Node {
-	loopbackArea := "0"
-	for _, area := range areasByIface {
-		loopbackArea = area
-		break
+	loopbackArea := areasByIface["lo"]
+	if loopbackArea == "" {
+		loopbackArea = "0"
+		for _, area := range areasByIface {
+			loopbackArea = area
+			break
+		}
 	}
 	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
 	ospfIfaces := map[string]model.OSPFInterface{
@@ -176,4 +227,44 @@ func ospfAreaNode(name, loopback string, ifaces map[string]string, areasByIface 
 			Areas:             areas,
 		},
 	}
+}
+
+func denseOSPFTopology(n int) *model.Topology {
+	ifaces := map[string]map[string]string{}
+	costs := map[string]map[string]int{}
+	var links []model.Link
+	linkID := 0
+	for i := 1; i <= n; i++ {
+		ifaces[fmt.Sprintf("r%d", i)] = map[string]string{}
+		costs[fmt.Sprintf("r%d", i)] = map[string]int{}
+	}
+	for i := 1; i <= n; i++ {
+		for j := i + 1; j <= n; j++ {
+			linkID++
+			a := fmt.Sprintf("r%d", i)
+			b := fmt.Sprintf("r%d", j)
+			aIface := fmt.Sprintf("eth%d", j)
+			bIface := fmt.Sprintf("eth%d", i)
+			subnet := fmt.Sprintf("198.%d.%d.0/31", linkID/255, linkID%255)
+			ifaces[a][aIface] = fmt.Sprintf("198.%d.%d.0/31", linkID/255, linkID%255)
+			ifaces[b][bIface] = fmt.Sprintf("198.%d.%d.1/31", linkID/255, linkID%255)
+			costs[a][aIface] = 1
+			costs[b][bIface] = 1
+			links = append(links, model.Link{
+				Name:   fmt.Sprintf("%s-%s", a, b),
+				A:      a,
+				AIntf:  aIface,
+				B:      b,
+				BIntf:  bIface,
+				Cost:   1,
+				Subnet: subnet,
+			})
+		}
+	}
+	nodes := make([]model.Node, 0, n)
+	for i := 1; i <= n; i++ {
+		name := fmt.Sprintf("r%d", i)
+		nodes = append(nodes, ospfNode(name, fmt.Sprintf("10.255.%d.%d/32", i, i), ifaces[name], costs[name]))
+	}
+	return &model.Topology{Nodes: nodes, Links: links}
 }

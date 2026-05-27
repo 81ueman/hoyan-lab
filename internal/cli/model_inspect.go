@@ -62,6 +62,8 @@ type ribInspectRow struct {
 	Prefix                string   `json:"prefix"`
 	SourceKind            string   `json:"source_kind,omitempty"`
 	ConnectedClass        string   `json:"connected_class,omitempty"`
+	OSPFRouteType         string   `json:"ospf_route_type,omitempty"`
+	Metric                *int     `json:"metric,omitempty"`
 	RouteInterface        string   `json:"interface,omitempty"`
 	NextHopNode           string   `json:"next_hop_node,omitempty"`
 	NextHopAddr           string   `json:"next_hop_addr,omitempty"`
@@ -256,7 +258,7 @@ func NewModelPacketClassesCommand() *cobra.Command {
 func NewModelRIBCommand() *cobra.Command {
 	var opts modelInspectOptions
 	cmd := &cobra.Command{
-		Use:           "rib [bgp|connected|static|aggregate|blackhole]",
+		Use:           "rib [bgp|connected|static|ospf|aggregate|blackhole]",
 		Short:         "Inspect modeled RIB entries",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -607,10 +609,10 @@ func canonicalRouteProtocol(raw string) (model.RouteSourceKind, error) {
 	switch protocol {
 	case "":
 		return "", nil
-	case model.RouteSourceBGP, model.RouteSourceConnected, model.RouteSourceStatic, model.RouteSourceAggregate, model.RouteSourceBlackhole:
+	case model.RouteSourceBGP, model.RouteSourceConnected, model.RouteSourceStatic, model.RouteSourceOSPF, model.RouteSourceAggregate, model.RouteSourceBlackhole:
 		return protocol, nil
 	default:
-		return "", fmt.Errorf("protocol must be one of bgp, connected, static, aggregate, or blackhole")
+		return "", fmt.Errorf("protocol must be one of bgp, connected, static, ospf, aggregate, or blackhole")
 	}
 }
 
@@ -705,6 +707,7 @@ func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSo
 			Prefix:                route.NLRI.Prefix.String(),
 			SourceKind:            string(route.SourceKind),
 			ConnectedClass:        string(route.RouteSource.ConnectedClass),
+			OSPFRouteType:         route.RouteSource.OSPFRouteType,
 			RouteInterface:        route.RouteSource.Interface,
 			NextHopNode:           route.ForwardingNextHop.Node,
 			NextHopAddr:           route.ForwardingNextHop.Addr,
@@ -726,6 +729,9 @@ func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSo
 			last.MED = ptr(route.Attrs.MED)
 			last.LearnedIBGP = ptr(route.Attrs.LearnedIBGP)
 			last.Invalid = ptr(route.Attrs.Invalid)
+		}
+		if route.SourceKind == model.RouteSourceOSPF {
+			rows[len(rows)-1].Metric = ptr(route.RouteSource.Metric)
 		}
 	}
 	return rows
@@ -987,16 +993,18 @@ func writeRIBTable(out io.Writer, rows []ribInspectRow, showCond bool, protocol 
 func writeRouteSourceRIBTable(out io.Writer, rows []ribInspectRow, showCond bool) error {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	if showCond {
-		fmt.Fprintln(tw, "NODE\tPREFIX\tSOURCE\tCLASS\tNEXT-HOP\tIFACE\tORIGIN\tFROM\tPATH\tCONDITION\tSELECTED")
+		fmt.Fprintln(tw, "NODE\tPREFIX\tSOURCE\tCLASS\tOSPF-TYPE\tMETRIC\tNEXT-HOP\tIFACE\tORIGIN\tFROM\tPATH\tCONDITION\tSELECTED")
 	} else {
-		fmt.Fprintln(tw, "NODE\tPREFIX\tSOURCE\tCLASS\tNEXT-HOP\tIFACE\tORIGIN\tFROM\tPATH")
+		fmt.Fprintln(tw, "NODE\tPREFIX\tSOURCE\tCLASS\tOSPF-TYPE\tMETRIC\tNEXT-HOP\tIFACE\tORIGIN\tFROM\tPATH")
 	}
 	for _, row := range rows {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
 			row.Node,
 			row.Prefix,
 			row.SourceKind,
 			row.ConnectedClass,
+			row.OSPFRouteType,
+			formatIntPtr(row.Metric),
 			row.NextHopNode,
 			row.RouteInterface,
 			row.OriginNode,

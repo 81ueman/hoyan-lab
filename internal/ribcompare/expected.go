@@ -107,6 +107,9 @@ func expectedRouteProtocol(route sim.RIBEntry) string {
 	case model.RouteSourceStatic:
 		return "static"
 	case model.RouteSourceOSPF:
+		if route.RouteSource.OSPFRouteType == "inter-area" {
+			return "ospf-ia"
+		}
 		return "ospf"
 	case model.RouteSourceBlackhole:
 		return "blackhole"

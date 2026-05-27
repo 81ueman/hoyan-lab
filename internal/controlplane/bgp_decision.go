@@ -62,6 +62,9 @@ func (d defaultBGPDecisionProcess) Less(receiver model.Node, a, b RIBEntry) bool
 	a = a.Normalize()
 	b = b.Normalize()
 	if a.SourceKind == model.RouteSourceOSPF && b.SourceKind == model.RouteSourceOSPF {
+		if ospfRouteTypeRank(a.RouteSource.OSPFRouteType) != ospfRouteTypeRank(b.RouteSource.OSPFRouteType) {
+			return ospfRouteTypeRank(a.RouteSource.OSPFRouteType) < ospfRouteTypeRank(b.RouteSource.OSPFRouteType)
+		}
 		if a.RouteSource.Metric != b.RouteSource.Metric {
 			return a.RouteSource.Metric < b.RouteSource.Metric
 		}
@@ -100,7 +103,7 @@ func (d defaultBGPDecisionProcess) Equivalent(receiver model.Node, a, b RIBEntry
 	a = a.Normalize()
 	b = b.Normalize()
 	if a.SourceKind == model.RouteSourceOSPF || b.SourceKind == model.RouteSourceOSPF {
-		return a.SourceKind == b.SourceKind && a.RouteSource.Metric == b.RouteSource.Metric
+		return a.SourceKind == b.SourceKind && a.RouteSource.OSPFRouteType == b.RouteSource.OSPFRouteType && a.RouteSource.Metric == b.RouteSource.Metric
 	}
 	if a.LocalPref != b.LocalPref {
 		return false
@@ -118,6 +121,15 @@ func (d defaultBGPDecisionProcess) Equivalent(receiver model.Node, a, b RIBEntry
 		return false
 	}
 	return a.LearnedIBGP == b.LearnedIBGP
+}
+
+func ospfRouteTypeRank(routeType string) int {
+	switch routeType {
+	case ospfRouteTypeInterArea:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (d defaultBGPDecisionProcess) shouldCompareMED(a, b RIBEntry) bool {

@@ -160,6 +160,27 @@ func TestExpectedOSPFSuppressesNonFRRLocalRoutes(t *testing.T) {
 	}
 }
 
+func TestExpectedOSPFInterAreaRouteProtocol(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfExpectedAreaNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]string{"lo": "1", "eth1": "1"}),
+			ospfExpectedAreaNode("r2", "10.255.2.2/32", map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31"}, map[string]string{"lo": "0", "eth1": "1", "eth2": "0"}),
+			ospfExpectedAreaNode("r3", "10.255.3.3/32", map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.4/31"}, map[string]string{"lo": "0", "eth1": "0", "eth2": "2"}),
+			ospfExpectedAreaNode("r4", "10.255.4.4/32", map[string]string{"eth1": "198.51.100.5/31"}, map[string]string{"lo": "2", "eth1": "2"}),
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+			{Name: "r2-r3", A: "r2", AIntf: "eth2", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
+			{Name: "r3-r4", A: "r3", AIntf: "eth2", B: "r4", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.4/31"},
+		},
+	}
+	routes := Expected(topo)
+	route := routeByNodePrefixProtocol(routes, "r1", "10.255.4.4/32", "ospf-ia")
+	if route == nil || len(route.Paths) != 1 || route.Paths[0].NextHop != "198.51.100.1" {
+		t.Fatalf("r1 OSPF inter-area route to r4 loopback = %#v", route)
+	}
+}
+
 func ospfExpectedNode(name, loopback string, ifaces map[string]string, costs map[string]int) model.Node {
 	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
 	ospfIfaces := map[string]model.OSPFInterface{"lo": {Name: "lo", Area: "0", Passive: true}}
@@ -184,6 +205,79 @@ func ospfExpectedNode(name, loopback string, ifaces map[string]string, costs map
 	}
 }
 
+func ospfExpectedAreaNode(name, loopback string, ifaces map[string]string, areas map[string]string) model.Node {
+	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
+	ospfIfaces := map[string]model.OSPFInterface{"lo": {Name: "lo", Area: areas["lo"], Passive: true}}
+	networks := []model.OSPFNetwork{{Prefix: model.MustPrefix(loopback), Area: areas["lo"]}}
+	for name, addr := range ifaces {
+		interfaces = append(interfaces, model.Interface{Name: name, Address: addr})
+		ospfIfaces[name] = model.OSPFInterface{Name: name, Area: areas[name], Cost: 1}
+		networks = append(networks, model.OSPFNetwork{Prefix: model.MustPrefix(addr), Area: areas[name]})
+	}
+	return model.Node{
+		Name:       name,
+		Kind:       model.KindFRR,
+		Loopback:   loopback,
+		Prefixes:   model.MustPrefixes(loopback),
+		Interfaces: interfaces,
+		OSPF: model.OSPFProcess{
+			Enabled:           true,
+			Networks:          networks,
+			PassiveInterfaces: []string{"lo"},
+			Interfaces:        ospfIfaces,
+		},
+	}
+}
+
+func TestParseFRRRouteTableOSPFInterArea(t *testing.T) {
+	data := []byte(`{
+  "10.255.4.4/32": [
+    {
+      "prefix": "10.255.4.4/32",
+      "protocol": "ospf",
+      "routeType": "O IA",
+      "selected": true,
+      "nexthops": [{"ip": "198.51.100.1", "interfaceName": "eth1"}]
+    }
+  ]
+}`)
+	routes, err := ParseFRRRouteTable("r1", data)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTable() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].Protocol != "ospf-ia" || routes[0].Paths[0].NextHop != "198.51.100.1" {
+		t.Fatalf("routes = %#v, want OSPF inter-area route with next-hop", routes)
+	}
+}
+
+func TestParseFRRRouteTableUsesOSPFRouteTypes(t *testing.T) {
+	routeData := []byte(`{
+  "10.255.4.4/32": [
+    {
+      "prefix": "10.255.4.4/32",
+      "protocol": "ospf",
+      "selected": true,
+      "nexthops": [{"ip": "198.51.100.1", "interfaceName": "eth1"}]
+    }
+  ]
+}`)
+	ospfData := []byte(`{
+  "10.255.4.4/32": {
+    "routeType": "N IA",
+    "cost": 3,
+    "area": "0.0.0.1",
+    "nexthops": [{"ip": "198.51.100.1", "via": "eth1"}]
+  }
+}`)
+	routes, err := ParseFRRRouteTableWithOSPF("r1", routeData, ospfData)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTableWithOSPF() error = %v", err)
+	}
+	if len(routes) != 1 || routes[0].Protocol != "ospf-ia" {
+		t.Fatalf("routes = %#v, want OSPF inter-area protocol from OSPF table", routes)
+	}
+}
+
 func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
@@ -195,6 +289,8 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 			  "192.0.2.0/30":[{"protocol":"connected","interfaceName":"eth1"}],
 			  "203.0.113.0/24":[{"protocol":"static","nexthops":[{"ip":"192.0.2.2","interfaceName":"eth1"}]}]
 			}`), nil
+		case "docker exec -i r1 vtysh -c show ip ospf route json":
+			return []byte(`{}`), nil
 		default:
 			t.Fatalf("unexpected command: %s", cmd)
 			return nil, nil

@@ -18,6 +18,9 @@ func (d frrDecisionProcess) Less(receiver model.Node, a, b RIBEntry) bool {
 	a = a.Normalize()
 	b = b.Normalize()
 	if a.SourceKind == model.RouteSourceOSPF && b.SourceKind == model.RouteSourceOSPF {
+		if ospfRouteTypeRank(a.RouteSource.OSPFRouteType) != ospfRouteTypeRank(b.RouteSource.OSPFRouteType) {
+			return ospfRouteTypeRank(a.RouteSource.OSPFRouteType) < ospfRouteTypeRank(b.RouteSource.OSPFRouteType)
+		}
 		if a.RouteSource.Metric != b.RouteSource.Metric {
 			return a.RouteSource.Metric < b.RouteSource.Metric
 		}
