@@ -251,10 +251,35 @@ router ospf
 	}
 }
 
-func TestParseFRROSPFRedistributeWarns(t *testing.T) {
+func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frr.conf")
 	if err := os.WriteFile(path, []byte(`router ospf
+ area 1 stub
+ area 2 nssa default-information-originate
  redistribute connected
+ redistribute static
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cfg, err := ParseConfig(KindFRR, path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if cfg.OSPF.Areas["1"].Kind != OSPFAreaStub {
+		t.Fatalf("area 1 = %#v, want stub", cfg.OSPF.Areas["1"])
+	}
+	if area := cfg.OSPF.Areas["2"]; area.Kind != OSPFAreaNSSA || !area.DefaultInformationOriginate {
+		t.Fatalf("area 2 = %#v, want NSSA default-information-originate", area)
+	}
+	if len(cfg.OSPF.Redistribute) != 2 || cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected || cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic {
+		t.Fatalf("redistribute = %#v, want connected and static", cfg.OSPF.Redistribute)
+	}
+}
+
+func TestParseFRROSPFUnsupportedAreaOptionWarns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frr.conf")
+	if err := os.WriteFile(path, []byte(`router ospf
+ area 1 stub totally
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -262,8 +287,8 @@ func TestParseFRROSPFRedistributeWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
 	}
-	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0].Reason, "redistribute") {
-		t.Fatalf("warnings = %#v, want OSPF redistribute warning", result.Warnings)
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0].Reason, "unsupported FRR OSPF area option") {
+		t.Fatalf("warnings = %#v, want unsupported area option warning", result.Warnings)
 	}
 }
 
