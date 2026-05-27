@@ -138,9 +138,9 @@ func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.N
 	var out []NormalizedBgpRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip bgp | json")
+		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip bgp vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip bgp | json", err)
+			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip bgp vrf all | json", err)
 		}
 		routes, err := ParseCEOS(n.Name, data)
 		if err != nil {
@@ -175,24 +175,26 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 	var out []NormalizedBgpRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		summary, err := RunSRLinuxJSON(ctx, runner, containerName, "show", "network-instance", "default", "protocols", "bgp", "routes", "ipv4", "summary")
-		if err != nil {
-			return nil, fmt.Errorf("%s SR Linux BGP RIB summary collection: %w", n.Name, err)
-		}
-		prefixes, err := ParseSRLinuxSummary(summary)
-		if err != nil {
-			return nil, fmt.Errorf("%s SR Linux BGP RIB summary: %w", n.Name, err)
-		}
-		for _, prefix := range prefixes {
-			detail, err := RunSRLinuxJSON(ctx, runner, containerName, "show", "network-instance", "default", "protocols", "bgp", "routes", "ipv4", "prefix", prefix, "detail")
+		for _, ni := range model.NetworkInstancesForNode(n) {
+			summary, err := RunSRLinuxJSON(ctx, runner, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "summary")
 			if err != nil {
-				return nil, fmt.Errorf("%s SR Linux BGP RIB prefix %s detail collection: %w", n.Name, prefix, err)
+				return nil, fmt.Errorf("%s SR Linux BGP RIB summary collection network-instance %s: %w", n.Name, ni, err)
 			}
-			routes, err := ParseSRLinuxDetail(n.Name, prefix, detail)
+			prefixes, err := ParseSRLinuxSummary(summary)
 			if err != nil {
-				return nil, fmt.Errorf("%s SR Linux BGP RIB prefix %s detail: %w", n.Name, prefix, err)
+				return nil, fmt.Errorf("%s SR Linux BGP RIB summary network-instance %s: %w", n.Name, ni, err)
 			}
-			out = append(out, routes...)
+			for _, prefix := range prefixes {
+				detail, err := RunSRLinuxJSON(ctx, runner, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "prefix", prefix, "detail")
+				if err != nil {
+					return nil, fmt.Errorf("%s SR Linux BGP RIB network-instance %s prefix %s detail collection: %w", n.Name, ni, prefix, err)
+				}
+				routes, err := ParseSRLinuxDetailNetworkInstance(n.Name, ni, prefix, detail)
+				if err != nil {
+					return nil, fmt.Errorf("%s SR Linux BGP RIB network-instance %s prefix %s detail: %w", n.Name, ni, prefix, err)
+				}
+				out = append(out, routes...)
+			}
 		}
 	}
 	sortRoutes(out)

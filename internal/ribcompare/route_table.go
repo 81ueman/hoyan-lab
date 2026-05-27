@@ -43,9 +43,9 @@ func (ceosCollector) CollectRouteTables(ctx context.Context, runner Runner, node
 	var out []NormalizedBgpRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf default | json")
+		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf default | json", err)
+			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
 		}
 		routes, err := ParseCEOSRouteTable(n.Name, data)
 		if err != nil {
@@ -61,19 +61,46 @@ func (srlinuxCollector) CollectRouteTables(ctx context.Context, runner Runner, n
 	var out []NormalizedBgpRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		command := fmt.Sprintf("docker exec -it %s sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary", shellQuote(containerName))
-		data, err := runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
-		if err != nil {
-			return nil, fmt.Errorf("docker exec -it %s sr_cli route-table ipv4-unicast summary: %w", containerName, err)
+		for _, ni := range model.NetworkInstancesForNode(n) {
+			command := fmt.Sprintf("docker exec -it %s sr_cli --output-format json --pagination off -- show network-instance %s route-table ipv4-unicast summary", shellQuote(containerName), shellQuote(ni))
+			data, err := runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
+			if err != nil {
+				return nil, fmt.Errorf("docker exec -it %s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
+			}
+			routes, err := ParseSRLinuxRouteTableNetworkInstance(n.Name, ni, data)
+			if err != nil {
+				return nil, fmt.Errorf("%s SR Linux route table network-instance %s: %w", n.Name, ni, err)
+			}
+			normalizeSRLinuxStaticRouteNextHops(n, routes)
+			out = append(out, routes...)
 		}
-		routes, err := ParseSRLinuxRouteTable(n.Name, data)
-		if err != nil {
-			return nil, fmt.Errorf("%s SR Linux route table: %w", n.Name, err)
-		}
-		out = append(out, routes...)
 	}
 	sortRoutes(out)
 	return out, nil
+}
+
+func normalizeSRLinuxStaticRouteNextHops(node model.Node, routes []NormalizedBgpRoute) {
+	configured := map[string]string{}
+	for _, route := range node.Routes {
+		if route.Kind != model.RouteSourceStatic || route.NextHop == "" {
+			continue
+		}
+		vrf := string(model.NormalizeNetworkInstance(string(route.NetworkInstance)))
+		configured[vrf+"|"+route.Prefix.String()] = route.NextHop
+	}
+	for ri := range routes {
+		route := normalizeRoute(routes[ri])
+		if route.Protocol != "static" {
+			continue
+		}
+		nh := configured[routes[ri].NetworkInstance+"|"+routes[ri].Prefix]
+		if nh == "" {
+			continue
+		}
+		for pi := range routes[ri].Paths {
+			routes[ri].Paths[pi].NextHop = nh
+		}
+	}
 }
 
 func ParseFRRRouteTable(node string, data []byte) ([]NormalizedBgpRoute, error) {
@@ -198,28 +225,36 @@ func ParseCEOSRouteTable(node string, data []byte) ([]NormalizedBgpRoute, error)
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	vrfs := asMap(raw["vrfs"])
-	defaultVRF := asMap(vrfs["default"])
-	routes := asMap(defaultVRF["routes"])
 	var out []NormalizedBgpRoute
-	for prefix, value := range routes {
-		m := asMap(value)
-		protocol := normalizedRouteTableProtocol(firstString(m, "routeType", "sourceProtocol"))
-		if protocol == "" {
-			continue
+	vrfs := asMap(raw["vrfs"])
+	if len(vrfs) == 0 {
+		vrfs = map[string]any{"default": raw}
+	}
+	for ni, rawVRF := range vrfs {
+		routes := asMap(asMap(rawVRF)["routes"])
+		for prefix, value := range routes {
+			m := asMap(value)
+			protocol := normalizedRouteTableProtocol(firstString(m, "routeType", "sourceProtocol"))
+			if protocol == "" {
+				continue
+			}
+			hops := ceosRouteTableNextHops(m["vias"])
+			if discardRouteTableNextHops(hops) {
+				protocol = "blackhole"
+				hops = nil
+			}
+			out = append(out, nonBGPRoute(node, ni, "ipv4", prefix, protocol, hops))
 		}
-		hops := ceosRouteTableNextHops(m["vias"])
-		if discardRouteTableNextHops(hops) {
-			protocol = "blackhole"
-			hops = nil
-		}
-		out = append(out, nonBGPRoute(node, "default", "ipv4", prefix, protocol, hops))
 	}
 	sortRoutes(out)
 	return out, nil
 }
 
 func ParseSRLinuxRouteTable(node string, data []byte) ([]NormalizedBgpRoute, error) {
+	return ParseSRLinuxRouteTableNetworkInstance(node, "default", data)
+}
+
+func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedBgpRoute, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -248,7 +283,7 @@ func ParseSRLinuxRouteTable(node string, data []byte) ([]NormalizedBgpRoute, err
 				protocol = "blackhole"
 				hops = nil
 			}
-			out = append(out, nonBGPRoute(node, "default", "ipv4", prefix, protocol, hops))
+			out = append(out, nonBGPRoute(node, networkInstance, "ipv4", prefix, protocol, hops))
 		}
 	}
 	sortRoutes(out)

@@ -11,6 +11,10 @@ import (
 var srlinuxDetailNextHopRE = regexp.MustCompile(`(?m)(?:^|\s)(?:via\s+)?([0-9A-Fa-f:.]+)\s+\([^)]*\)\s+via\s+\[([^\]]+)\]`)
 
 func ParseSRLinuxRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
+	return ParseSRLinuxRoutesNetworkInstance(node, "default", data)
+}
+
+func ParseSRLinuxRoutesNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedFIBRoute, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -23,7 +27,7 @@ func ParseSRLinuxRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) 
 	for _, inst := range sliceValue(raw["instance"]) {
 		m := mapValue(inst)
 		for _, item := range sliceValue(m["ip route"]) {
-			route, ok := srlinuxRoute(node, mapValue(item))
+			route, ok := srlinuxRoute(node, networkInstance, mapValue(item))
 			if ok {
 				out = append(out, route)
 			}
@@ -34,6 +38,10 @@ func ParseSRLinuxRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) 
 }
 
 func ParseSRLinuxRouteDetails(node string, data []byte) ([]NormalizedFIBRoute, error) {
+	return ParseSRLinuxRouteDetailsNetworkInstance(node, "default", data)
+}
+
+func ParseSRLinuxRouteDetailsNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedFIBRoute, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -46,7 +54,7 @@ func ParseSRLinuxRouteDetails(node string, data []byte) ([]NormalizedFIBRoute, e
 	for _, inst := range sliceValue(raw["instance"]) {
 		m := mapValue(inst)
 		for _, item := range sliceValue(m["ip route"]) {
-			route, ok := srlinuxDetailRoute(node, mapValue(item))
+			route, ok := srlinuxDetailRoute(node, networkInstance, mapValue(item))
 			if ok {
 				out = append(out, route)
 			}
@@ -66,7 +74,7 @@ func jsonPayload(data []byte) ([]byte, error) {
 	return []byte(s[start : end+1]), nil
 }
 
-func srlinuxRoute(node string, m map[string]any) (NormalizedFIBRoute, bool) {
+func srlinuxRoute(node, networkInstance string, m map[string]any) (NormalizedFIBRoute, bool) {
 	if !boolString(m["Active"]) {
 		return NormalizedFIBRoute{}, false
 	}
@@ -77,7 +85,7 @@ func srlinuxRoute(node string, m map[string]any) (NormalizedFIBRoute, bool) {
 	protocol := canonicalProtocol(stringValue(m["Route Type"]))
 	route := NormalizedFIBRoute{
 		Node:       node,
-		VRF:        "default",
+		VRF:        networkInstance,
 		AFI:        "ipv4",
 		Prefix:     prefix,
 		Protocol:   protocol,
@@ -107,7 +115,7 @@ func srlinuxRoute(node string, m map[string]any) (NormalizedFIBRoute, bool) {
 	return route, true
 }
 
-func srlinuxDetailRoute(node string, m map[string]any) (NormalizedFIBRoute, bool) {
+func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (NormalizedFIBRoute, bool) {
 	if !boolValue(m["Active"]) {
 		return NormalizedFIBRoute{}, false
 	}
@@ -120,7 +128,7 @@ func srlinuxDetailRoute(node string, m map[string]any) (NormalizedFIBRoute, bool
 	}
 	route := NormalizedFIBRoute{
 		Node:       node,
-		VRF:        "default",
+		VRF:        networkInstance,
 		AFI:        "ipv4",
 		Prefix:     prefix,
 		Protocol:   canonicalProtocol(stringValue(m["Route Type"])),

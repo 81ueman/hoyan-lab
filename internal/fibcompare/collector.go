@@ -138,9 +138,9 @@ func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.N
 	var out []NormalizedFIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf default | json")
+		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf default | json", err)
+			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
 		}
 		routes, err := ParseCEOSRoutes(n.Name, data)
 		if err != nil {
@@ -156,31 +156,33 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 	var out []NormalizedFIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", "default", "route-table", "ipv4-unicast", "summary")
-		if err != nil {
-			return nil, fmt.Errorf("%s sr_cli route-table ipv4-unicast summary: %w", containerName, err)
-		}
-		routes, err := ParseSRLinuxRoutes(n.Name, data)
-		if err != nil {
-			return nil, fmt.Errorf("%s SR Linux installed FIB: %w", n.Name, err)
-		}
-		for i := range routes {
-			if !srlinuxNeedsRouteDetail(routes[i]) {
-				continue
-			}
-			detail, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", "default", "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+		for _, ni := range model.NetworkInstancesForNode(n) {
+			data, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 			if err != nil {
-				return nil, fmt.Errorf("%s sr_cli route-table ipv4-unicast prefix %s detail: %w", containerName, routes[i].Prefix, err)
+				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
 			}
-			detailRoutes, err := ParseSRLinuxRouteDetails(n.Name, detail)
+			routes, err := ParseSRLinuxRoutesNetworkInstance(n.Name, ni, data)
 			if err != nil {
-				return nil, fmt.Errorf("%s SR Linux installed FIB prefix %s detail: %w", n.Name, routes[i].Prefix, err)
+				return nil, fmt.Errorf("%s SR Linux installed FIB network-instance %s: %w", n.Name, ni, err)
 			}
-			if detailRoute, ok := srlinuxRouteDetailFor(routes[i], detailRoutes); ok && len(detailRoute.NextHops) > 0 {
-				routes[i].NextHops = detailRoute.NextHops
+			for i := range routes {
+				if !srlinuxNeedsRouteDetail(routes[i]) {
+					continue
+				}
+				detail, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+				if err != nil {
+					return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", containerName, ni, routes[i].Prefix, err)
+				}
+				detailRoutes, err := ParseSRLinuxRouteDetailsNetworkInstance(n.Name, ni, detail)
+				if err != nil {
+					return nil, fmt.Errorf("%s SR Linux installed FIB network-instance %s prefix %s detail: %w", n.Name, ni, routes[i].Prefix, err)
+				}
+				if detailRoute, ok := srlinuxRouteDetailFor(routes[i], detailRoutes); ok && len(detailRoute.NextHops) > 0 {
+					routes[i].NextHops = detailRoute.NextHops
+				}
 			}
+			out = append(out, routes...)
 		}
-		out = append(out, routes...)
 	}
 	sortRoutes(out)
 	return out, nil

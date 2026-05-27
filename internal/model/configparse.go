@@ -324,7 +324,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			}
 		case fields[0] == "interface" && len(fields) >= 2:
 			currentInterface = fields[1]
-			if kind == KindFRR && len(fields) >= 4 && fields[2] == "vrf" {
+			if supportsFRRLikeVRF(kind) && len(fields) >= 4 && fields[2] == "vrf" {
 				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[3])})
 			}
 			currentACL = ""
@@ -337,8 +337,13 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if strings.EqualFold(currentInterface, "lo") || strings.HasPrefix(strings.ToLower(currentInterface), "loopback") {
 				cfg.Loopback = addr
 			}
-		case kind == KindFRR && currentInterface != "" && len(fields) >= 3 && fields[0] == "vrf" && fields[1] == "forwarding":
-			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[2])})
+		case supportsFRRLikeVRF(kind) && currentInterface != "" && len(fields) >= 2 && fields[0] == "vrf":
+			switch {
+			case len(fields) >= 3 && fields[1] == "forwarding":
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[2])})
+			case kind == KindCEOS && len(fields) >= 2:
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[1])})
+			}
 		case currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "access-group":
 			stage, ok := aclStage(fields[3])
 			if ok {
@@ -537,6 +542,7 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 	neighborImportPolicy := map[string]string{}
 	neighborExportPolicy := map[string]string{}
 	neighborNextHopSelf := map[string]bool{}
+	staticNextHopGroups := map[string]string{}
 	prefixLists := map[string]*PrefixList{}
 	routePolicies := map[string]*RoutePolicy{}
 	srlACLs := map[string]map[int]*parsedACLRule{}
@@ -580,6 +586,12 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 			}
 		case containsSeq(fields, "system", "name", "host-name") && len(fields) > 0:
 			cfg.Hostname = fields[len(fields)-1]
+		case containsSeq(fields, "network-instance") && containsSeq(fields, "interface") && !containsSeq(fields, "protocols"):
+			ni := NormalizeNetworkInstance(fieldAfter(fields, "network-instance"))
+			iface := srlinuxConfigInterfaceName(fieldAfter(fields, "interface"))
+			if iface != "" {
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: iface, VRF: ni})
+			}
 		case containsSeq(fields, "interface") && containsSeq(fields, "ipv4", "address") && len(fields) > 0:
 			iface := fieldAfter(fields, "interface")
 			addr := fields[len(fields)-1]
@@ -587,8 +599,15 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 			if strings.HasPrefix(strings.ToLower(iface), "lo") {
 				cfg.Loopback = addr
 			}
+		case containsSeq(fields, "next-hop-groups", "group") && containsSeq(fields, "nexthop") && containsSeq(fields, "ip-address"):
+			ni := fieldAfter(fields, "network-instance")
+			group := fieldAfter(fields, "group")
+			addr := fieldAfter(fields, "ip-address")
+			if ni != "" && group != "" {
+				staticNextHopGroups[srlinuxNextHopGroupKey(ni, group)] = addr
+			}
 		case containsSeq(fields, "static-routes", "route"):
-			route, err := parseSRLinuxStaticRoute(path, lineNo, line, fields)
+			route, err := parseSRLinuxStaticRoute(path, lineNo, line, fields, staticNextHopGroups)
 			if err != nil {
 				if !collectWarnings {
 					return ParseResult{}, fmt.Errorf("%s: %w", line, err)
@@ -735,6 +754,10 @@ func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw strin
 	}
 	route.Interface = target
 	return route, nil
+}
+
+func supportsFRRLikeVRF(kind DeviceKind) bool {
+	return kind == KindFRR || kind == KindCEOS
 }
 
 func ospfInterface(cfg *ParsedConfig, name string) *OSPFInterface {
@@ -893,7 +916,7 @@ func parseFRRLikeRedistribution(kind DeviceKind, path string, lineNo int, raw st
 	return BGPRedistribution{}, fmt.Errorf("unsupported %s redistribute statement", routeMapVendorName(kind))
 }
 
-func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {
+func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []string, nextHopGroups map[string]string) (ConfiguredRoute, error) {
 	prefixText := fieldAfter(fields, "route")
 	if prefixText == "" {
 		return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route statement")
@@ -903,7 +926,7 @@ func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []strin
 		return ConfiguredRoute{}, err
 	}
 	route := ConfiguredRoute{
-		NetworkInstance: NetworkInstanceDefault,
+		NetworkInstance: NormalizeNetworkInstance(fieldAfter(fields, "network-instance")),
 		AFI:             AFIIPv4,
 		Prefix:          prefix,
 		Kind:            RouteSourceStatic,
@@ -916,6 +939,14 @@ func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []strin
 			return route, nil
 		}
 	}
+	if group := fieldAfter(fields, "next-hop-group"); group != "" {
+		nh := nextHopGroups[srlinuxNextHopGroupKey(string(route.NetworkInstance), group)]
+		if _, err := netip.ParseAddr(nh); err == nil {
+			route.NextHop = nh
+			return route, nil
+		}
+		return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop-group")
+	}
 	if iface := fieldAfter(fields, "interface"); iface != "" {
 		route.Interface = iface
 		return route, nil
@@ -925,6 +956,17 @@ func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []strin
 		return route, nil
 	}
 	return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop")
+}
+
+func srlinuxNextHopGroupKey(networkInstance, group string) string {
+	return string(NormalizeNetworkInstance(networkInstance)) + "\x00" + group
+}
+
+func srlinuxConfigInterfaceName(iface string) string {
+	if base, ok := strings.CutSuffix(iface, ".0"); ok && (strings.HasPrefix(base, "ethernet-1/") || strings.HasPrefix(base, "lo")) {
+		return base
+	}
+	return iface
 }
 
 func parseSRLinuxPrefixSet(prefixLists map[string]*PrefixList, fields []string) error {

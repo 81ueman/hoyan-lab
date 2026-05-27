@@ -376,7 +376,7 @@ func routeTablesByKind(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	case model.KindCEOS:
 		var out []ribcompare.NormalizedRoute
 		for _, n := range nodes {
-			data, err := runner.Run(ctx, "docker", "exec", "-i", n.RuntimeName(), "Cli", "-p", "15", "-c", "show ip route vrf default | json")
+			data, err := runner.Run(ctx, "docker", "exec", "-i", n.RuntimeName(), "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 			if err != nil {
 				return nil, err
 			}
@@ -390,15 +390,17 @@ func routeTablesByKind(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	case model.KindSRLinux:
 		var out []ribcompare.NormalizedRoute
 		for _, n := range nodes {
-			data, err := ribcompare.RunSRLinuxJSON(ctx, runner, n.RuntimeName(), "show", "network-instance", "default", "route-table", "ipv4-unicast", "summary")
-			if err != nil {
-				return nil, err
+			for _, ni := range model.NetworkInstancesForNode(n) {
+				data, err := ribcompare.RunSRLinuxJSON(ctx, runner, n.RuntimeName(), "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+				if err != nil {
+					return nil, err
+				}
+				routes, err := ribcompare.ParseSRLinuxRouteTableNetworkInstance(n.Name, ni, data)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, routes...)
 			}
-			routes, err := ribcompare.ParseSRLinuxRouteTable(n.Name, data)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, routes...)
 		}
 		return out, nil
 	default:

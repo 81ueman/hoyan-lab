@@ -8,33 +8,37 @@ func ParseCEOSRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
 		return nil, err
 	}
 	vrfs := mapValue(raw["vrfs"])
-	defaultVRF := mapValue(vrfs["default"])
-	routes := mapValue(defaultVRF["routes"])
-	out := make([]NormalizedFIBRoute, 0, len(routes))
-	for prefix, value := range routes {
-		m := mapValue(value)
-		if !boolValue(m["kernelProgrammed"]) && !boolValue(m["hardwareProgrammed"]) {
-			continue
+	if len(vrfs) == 0 {
+		vrfs = map[string]any{"default": raw}
+	}
+	var out []NormalizedFIBRoute
+	for ni, rawVRF := range vrfs {
+		routes := mapValue(mapValue(rawVRF)["routes"])
+		for prefix, value := range routes {
+			m := mapValue(value)
+			if !boolValue(m["kernelProgrammed"]) && !boolValue(m["hardwareProgrammed"]) {
+				continue
+			}
+			nextHops := ceosNextHops(m["vias"])
+			protocol := ceosProtocol(stringValue(m["routeType"]))
+			if discardNextHops(nextHops) {
+				protocol = "blackhole"
+				nextHops = nil
+			}
+			route := NormalizedFIBRoute{
+				Node:       node,
+				VRF:        ni,
+				AFI:        "ipv4",
+				Prefix:     prefix,
+				NextHops:   nextHops,
+				Protocol:   protocol,
+				Preference: intValue(m["preference"]),
+				Metric:     intValue(m["metric"]),
+				Installed:  true,
+			}
+			route.NextHops = dedupeNextHops(route.NextHops)
+			out = append(out, route)
 		}
-		nextHops := ceosNextHops(m["vias"])
-		protocol := ceosProtocol(stringValue(m["routeType"]))
-		if discardNextHops(nextHops) {
-			protocol = "blackhole"
-			nextHops = nil
-		}
-		route := NormalizedFIBRoute{
-			Node:       node,
-			VRF:        "default",
-			AFI:        "ipv4",
-			Prefix:     prefix,
-			NextHops:   nextHops,
-			Protocol:   protocol,
-			Preference: intValue(m["preference"]),
-			Metric:     intValue(m["metric"]),
-			Installed:  true,
-		}
-		route.NextHops = dedupeNextHops(route.NextHops)
-		out = append(out, route)
 	}
 	sortRoutes(out)
 	return out, nil
