@@ -3,7 +3,11 @@ package fibcompare
 import "strings"
 
 func canonicalProtocol(protocol string) string {
-	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	normalized := strings.ToLower(strings.TrimSpace(protocol))
+	if strings.Contains(normalized, "ospf") {
+		return "ospf"
+	}
+	switch normalized {
 	case "ebgp", "ibgp", "bgp":
 		return "bgp"
 	case "ospf", "188":

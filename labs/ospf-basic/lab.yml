@@ -1,7 +1,9 @@
 name: ospf-basic
-description: Four-router FRR OSPF lab with asymmetric interface costs.
+description: Four-router multi-vendor OSPF lab with asymmetric interface costs.
 nos:
   - frr
+  - ceos
+  - srlinux
 checks:
   - verify
   - live-check

@@ -142,6 +142,24 @@ func TestExpectedOSPFRoutesIncludeLocalAndSelectedRemoteRoutes(t *testing.T) {
 	}
 }
 
+func TestExpectedOSPFSuppressesNonFRRLocalRoutes(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfExpectedNode("r1", "10.255.1.1/32", map[string]string{"eth1": "198.51.100.0/31"}, map[string]int{"eth1": 1}),
+			ospfExpectedNode("r2", "10.255.2.2/32", map[string]string{"Ethernet1": "198.51.100.1/31"}, map[string]int{"Ethernet1": 1}),
+		},
+		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
+	}
+	topo.Nodes[1].Kind = model.KindCEOS
+	routes := Expected(topo)
+	if local := routeByNodePrefixProtocol(routes, "r2", "10.255.2.2/32", "ospf"); local != nil {
+		t.Fatalf("non-FRR local OSPF route should not be expected live: %#v", local)
+	}
+	if remote := routeByNodePrefixProtocol(routes, "r2", "10.255.1.1/32", "ospf"); remote == nil {
+		t.Fatalf("remote OSPF route missing from expected routes: %#v", routes)
+	}
+}
+
 func ospfExpectedNode(name, loopback string, ifaces map[string]string, costs map[string]int) model.Node {
 	interfaces := []model.Interface{{Name: "lo", Address: loopback}}
 	ospfIfaces := map[string]model.OSPFInterface{"lo": {Name: "lo", Area: "0", Passive: true}}
@@ -191,6 +209,30 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 	}
 	if routeByPrefixProtocol(routes, "203.0.113.0/24", "static") == nil {
 		t.Fatalf("static route missing from collected routes: %#v", routes)
+	}
+}
+
+func TestCollectSkipsBGPCommandsForNodesWithoutASN(t *testing.T) {
+	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		if strings.Contains(cmd, "show ip bgp") || strings.Contains(cmd, "protocols bgp") {
+			t.Fatalf("unexpected BGP collection command for OSPF-only node: %s", cmd)
+		}
+		switch cmd {
+		case "docker exec -i ceos1 Cli -p 15 -c show ip route vrf default | json":
+			return []byte(`{"vrfs":{"default":{"routes":{"10.255.2.2/32":{"routeType":"ospfInternal","vias":[{"nexthopAddr":"198.51.100.2","interface":"Ethernet2"}]}}}}}`), nil
+		default:
+			t.Fatalf("unexpected command: %s", cmd)
+			return nil, nil
+		}
+	})
+	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"}})
+	if err != nil {
+		t.Fatalf("Collect() error = %v", err)
+	}
+	ospf := routeByPrefixProtocol(routes, "10.255.2.2/32", "ospf")
+	if ospf == nil || len(ospf.Paths) != 1 || ospf.Paths[0].NextHop != "198.51.100.2" {
+		t.Fatalf("OSPF route = %#v in %#v", ospf, routes)
 	}
 }
 
@@ -247,6 +289,7 @@ func TestParseCEOSRouteTableStaticAndConnected(t *testing.T) {
 	    "192.0.2.0/30":{"routeType":"connected","vias":[{"interface":"Ethernet1"}]},
 	    "203.0.113.0/24":{"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]},
 	    "198.51.100.0/24":{"routeType":"static","vias":[{"interface":"Null0"}]},
+	    "10.255.2.2/32":{"routeType":"ospfInternal","vias":[{"nexthopAddr":"198.51.100.2","interface":"Ethernet2"}]},
 	    "10.0.0.0/24":{"routeType":"eBGP","vias":[{"nexthopAddr":"198.51.100.1"}]}
 	  }}}
 	}`)
@@ -268,6 +311,10 @@ func TestParseCEOSRouteTableStaticAndConnected(t *testing.T) {
 	if routeByPrefixProtocol(routes, "10.0.0.0/24", "bgp") != nil {
 		t.Fatalf("BGP route table entry should be excluded: %#v", routes)
 	}
+	ospf := routeByPrefixProtocol(routes, "10.255.2.2/32", "ospf")
+	if ospf == nil || len(ospf.Paths) != 1 || ospf.Paths[0].NextHop != "198.51.100.2" {
+		t.Fatalf("OSPF route = %#v", ospf)
+	}
 }
 
 func TestParseSRLinuxRouteTableStaticAndConnected(t *testing.T) {
@@ -276,6 +323,7 @@ func TestParseSRLinuxRouteTableStaticAndConnected(t *testing.T) {
 	  {"Prefix":"192.0.2.0/30","Route Type":"local","Active":"True","Next-hop Interface":"ethernet-1/1.0"},
 	  {"Prefix":"203.0.113.0/24","Route Type":"static","Active":"True","Next-hop (Type)":"192.0.2.2/32 (direct)","Next-hop Interface":"ethernet-1/1.0"},
 	  {"Prefix":"198.51.100.0/24","Route Type":"blackhole","Active":"True","Next-hop (Type)":"None"},
+	  {"Prefix":"10.255.2.2/32","Route Type":"ospf-internal","Active":"True","Next-hop (Type)":"198.51.100.2/32 (direct)","Next-hop Interface":"ethernet-1/2.0"},
 	  {"Prefix":"10.0.0.0/24","Route Type":"bgp","Active":"True","Next-hop (Type)":"198.51.100.1/32 (indirect)"}
 	]}]}`)
 	routes, err := ParseSRLinuxRouteTable("srl1", data)
@@ -295,6 +343,10 @@ func TestParseSRLinuxRouteTableStaticAndConnected(t *testing.T) {
 	}
 	if routeByPrefixProtocol(routes, "10.0.0.0/24", "bgp") != nil {
 		t.Fatalf("BGP route table entry should be excluded: %#v", routes)
+	}
+	ospf := routeByPrefixProtocol(routes, "10.255.2.2/32", "ospf")
+	if ospf == nil || len(ospf.Paths) != 1 || ospf.Paths[0].NextHop != "198.51.100.2" {
+		t.Fatalf("OSPF route = %#v", ospf)
 	}
 }
 

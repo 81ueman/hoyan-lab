@@ -38,7 +38,7 @@ func collectBGP(ctx context.Context, runner Runner, nodes []model.Node) ([]Norma
 	collectors := collectorsByKind()
 	for _, kind := range []model.DeviceKind{model.KindFRR, model.KindCEOS, model.KindSRLinux} {
 		collector := collectors[kind]
-		selected := NodesByKind(nodes, kind)
+		selected := bgpCollectionNodes(kind, NodesByKind(nodes, kind))
 		if len(selected) == 0 {
 			continue
 		}
@@ -82,6 +82,19 @@ func NodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
 	var out []model.Node
 	for _, n := range nodes {
 		if n.Kind == kind {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func bgpCollectionNodes(kind model.DeviceKind, nodes []model.Node) []model.Node {
+	if kind == model.KindFRR {
+		return nodes
+	}
+	var out []model.Node
+	for _, n := range nodes {
+		if n.ASN != 0 {
 			out = append(out, n)
 		}
 	}

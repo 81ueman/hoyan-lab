@@ -53,6 +53,9 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 			if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
 				continue
 			}
+			if n.Kind == model.KindSRLinux && entry.SourceKind == model.RouteSourceConnected && entry.ConnectedClass == model.ConnectedRouteClassLoopback {
+				continue
+			}
 			if entry.Condition == nil || !entry.Condition.Eval(ctx) {
 				continue
 			}

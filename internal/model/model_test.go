@@ -251,6 +251,35 @@ router ospf
 	}
 }
 
+func TestParseCEOSOSPFConfig(t *testing.T) {
+	cfg := parseCEOSConfigText(t, `
+hostname ceos1
+interface Loopback0
+   ip address 10.255.1.1/32
+interface Ethernet1
+   ip address 198.51.100.0/31
+   ip ospf area 0.0.0.0
+   ip ospf cost 20
+router ospf 1
+   router-id 10.255.1.1
+   passive-interface Loopback0
+   network 10.255.1.1/32 area 0.0.0.0
+   network 198.51.100.0/31 area 0.0.0.0
+`)
+	if !cfg.OSPF.Enabled || cfg.OSPF.RouterID != "10.255.1.1" {
+		t.Fatalf("OSPF = %#v, want enabled router-id", cfg.OSPF)
+	}
+	if len(cfg.OSPF.Networks) != 2 {
+		t.Fatalf("OSPF networks = %#v, want two", cfg.OSPF.Networks)
+	}
+	if got := cfg.OSPF.Interfaces["Ethernet1"]; got.Area != "0" || got.Cost != 20 {
+		t.Fatalf("Ethernet1 OSPF = %#v, want area 0 cost 20", got)
+	}
+	if got := cfg.OSPF.Interfaces["Loopback0"]; !got.Passive {
+		t.Fatalf("Loopback0 OSPF = %#v, want passive", got)
+	}
+}
+
 func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frr.conf")
 	if err := os.WriteFile(path, []byte(`router ospf
@@ -644,6 +673,9 @@ func TestParseConfigWithWarningsCurrentLabConfigs(t *testing.T) {
 		{kind: KindFRR, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "*", "frr.conf")},
 		{kind: KindCEOS, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "ceos", "*.cfg")},
 		{kind: KindSRLinux, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "srlinux", "*.cfg")},
+		{kind: KindFRR, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "frr", "*", "frr.conf")},
+		{kind: KindCEOS, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "ceos", "*.cfg")},
+		{kind: KindSRLinux, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "srlinux", "*.cfg")},
 	}
 	for _, tt := range tests {
 		paths, err := filepath.Glob(tt.glob)
@@ -661,6 +693,23 @@ func TestParseConfigWithWarningsCurrentLabConfigs(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
+	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "ospf-basic", "hoyan.clab.yml"))
+	if err != nil {
+		t.Fatalf("LoadLabTopology() error = %v", err)
+	}
+	kinds := map[string]DeviceKind{}
+	for _, node := range topo.Nodes {
+		kinds[node.Name] = node.Kind
+		if !node.OSPF.Enabled {
+			t.Fatalf("%s OSPF disabled: %#v", node.Name, node.OSPF)
+		}
+	}
+	if kinds["r2"] != KindCEOS || kinds["r3"] != KindSRLinux {
+		t.Fatalf("node kinds = %#v, want r2 cEOS and r3 SR Linux", kinds)
 	}
 }
 
@@ -1275,6 +1324,35 @@ func TestParseSRLinuxConfig(t *testing.T) {
 		if neighbor == nil || neighbor.ExportPolicy != "" {
 			t.Fatalf("neighbor %s = %#v, want no export policy", addr, neighbor)
 		}
+	}
+}
+
+func TestParseSRLinuxOSPFConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "srl.cfg")
+	if err := os.WriteFile(path, []byte(`
+set / system name host-name srl1
+set / interface ethernet-1/1 subinterface 0 ipv4 address 198.51.100.0/31
+set / interface lo0 subinterface 0 ipv4 address 10.255.1.1/32
+set / network-instance default protocols ospf instance default admin-state enable
+set / network-instance default protocols ospf instance default router-id 10.255.1.1
+set / network-instance default protocols ospf instance default area 0.0.0.0 interface ethernet-1/1.0 admin-state enable
+set / network-instance default protocols ospf instance default area 0.0.0.0 interface ethernet-1/1.0 metric 30
+set / network-instance default protocols ospf instance default area 0.0.0.0 interface lo0.0 passive true
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cfg, err := ParseConfig("srlinux", path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if !cfg.OSPF.Enabled || cfg.OSPF.RouterID != "10.255.1.1" {
+		t.Fatalf("OSPF = %#v, want enabled router-id", cfg.OSPF)
+	}
+	if got := cfg.OSPF.Interfaces["ethernet-1/1.0"]; got.Area != "0" || got.Cost != 30 {
+		t.Fatalf("ethernet-1/1.0 OSPF = %#v, want area 0 cost 30", got)
+	}
+	if got := cfg.OSPF.Interfaces["lo0.0"]; got.Area != "0" || !got.Passive {
+		t.Fatalf("lo0.0 OSPF = %#v, want passive area", got)
 	}
 }
 
