@@ -153,6 +153,39 @@ candidate element count, and maximum failure budget. With Z3:
 go run -tags z3 ./cmd/hoyan verify
 ```
 
+## Intent DSL and Fact Tables
+
+`hoyan intent` provides the first `version: hoyan/v1` intent DSL for modeled
+RIB/FIB checks. Intent files define snapshots, scenarios, variables, and
+assertions over deterministic fact rows:
+
+```bash
+go run ./cmd/hoyan intent validate --file testdata/intent/minimal.yml
+go run ./cmd/hoyan intent expand --file testdata/intent/forall.yml --format json
+go run ./cmd/hoyan intent verify --file testdata/intent/rib-fib-basic.yml --format json
+```
+
+The MVP supports scalar/list `vars`, `forall` expansion, `table: rib` and
+`table: fib`, simple `where` selectors such as `device`, `device_in`, `prefix`,
+`selected`, and `installed`, plus `exists` and `count` assertions. For example,
+`testdata/intent/rib-fib-basic.yml` checks that `10.4.0.0/16` is visible in the
+modeled RIB and installed in the modeled FIB on `bj-edge1`, `sh-edge1`, and
+`gz-edge1`. The JSON report uses `hoyan.intent.report/v1` with deterministic
+result ordering so CI can compare summary fields or individual result names.
+
+Use `hoyan facts` when you want the modeled RIB/FIB fact tables directly:
+
+```bash
+go run ./cmd/hoyan facts rib --lab labs/base-wan --format json
+go run ./cmd/hoyan facts fib --lab labs/base-wan --format json
+```
+
+These facts are built offline from the lab topology and startup configs via the
+same control-plane and data-plane model used by `hoyan model`. Live-device
+collection, pre/post comparisons, packet-reachability intents, failure
+scenarios, RCL-style grouping, and distinct aggregates are intentionally left
+for follow-up work.
+
 ## Compare Modeled BGP RIBs With Live Nodes
 
 ## Live Snapshots

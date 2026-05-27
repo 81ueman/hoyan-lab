@@ -1,0 +1,17 @@
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: missing-version
+    check:
+      table: rib
+      scenario: normal
+      where:
+        device: bj-edge1
+    assert:
+      exists: true

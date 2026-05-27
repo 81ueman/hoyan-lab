@@ -1,0 +1,20 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: bj-edge1-has-service-prefix
+    check:
+      table: rib
+      scenario: normal
+      where:
+        device: bj-edge1
+        prefix: 10.4.0.0/16
+    assert:
+      exists: true

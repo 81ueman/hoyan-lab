@@ -1,0 +1,19 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: undefined-var
+    check:
+      table: rib
+      scenario: normal
+      where:
+        device: ${missing_device}
+    assert:
+      exists: true

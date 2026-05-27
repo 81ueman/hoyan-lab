@@ -1,0 +1,39 @@
+version: hoyan/v1
+
+vars:
+  service_prefix: 10.4.0.0/16
+  edges: [bj-edge1, sh-edge1, gz-edge1]
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  - name: service-prefix-visible-on-edges
+    forall:
+      edge: ${edges}
+    check:
+      table: rib
+      scenario: normal
+      where:
+        device: ${edge}
+        prefix: ${service_prefix}
+    assert:
+      exists: true
+
+  - name: service-prefix-installed-on-edges
+    forall:
+      edge: ${edges}
+    check:
+      table: fib
+      scenario: normal
+      where:
+        device: ${edge}
+        prefix: ${service_prefix}
+    assert:
+      count:
+        gte: 1
