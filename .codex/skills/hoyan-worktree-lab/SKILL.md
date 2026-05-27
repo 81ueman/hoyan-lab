@@ -72,7 +72,18 @@ Base new work on the latest `main` by default. Fetch and fast-forward `main` bef
    - Name it with the worktree slug, for example `lab.<task-slug>.clab.yml`.
    - Change the top-level containerlab `name:` to include the slug, for example `<original-name>-<task-slug>`.
    - Keep relative config paths valid inside the worktree.
-   - Check for host resource conflicts such as fixed published ports, absolute bind mounts, bridge names, management subnets, or static container names. Adjust only what is needed for parallel operation.
+   - Always change the generated topology's management IPv4 subnet before deploying. Prefer a deterministic candidate range such as `172.86.100.0/24` through `172.86.250.0/24`.
+   - Choose the first candidate `/24` that is not currently used by Docker network IPAM. Check Docker with:
+
+     ```bash
+     docker network inspect $(docker network ls -q) \
+       --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' \
+       | sort -u
+     ```
+
+   - When changing `mgmt.ipv4-subnet`, rewrite every static node `mgmt-ipv4` address to the new subnet while preserving the host octet, for example `172.86.88.11` to `172.86.100.11`.
+   - Do not scan all worktrees for topology files unless Docker reports a subnet conflict or the user asks for a full audit. If `containerlab deploy` reports an address-pool or subnet conflict, regenerate the worktree topology with the next unused management subnet and retry.
+   - Check for other host resource conflicts such as fixed published ports, absolute bind mounts, bridge names, or static container names. Adjust only what is needed for parallel operation.
    - Prefer a structured YAML tool (`yq`, Ruby/Python YAML, or an existing repo script) over ad hoc string edits when changing the generated topology.
 
 7. Use the generated topology for containerlab commands:
