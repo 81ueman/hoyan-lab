@@ -82,6 +82,8 @@ func NewRootCommand() *cobra.Command {
 		NewRenderTopologyCommand(),
 		NewLabsCommand(),
 		NewModelCommand(),
+		NewIntentCommand(),
+		NewFactsCommand(),
 	)
 	return cmd
 }
