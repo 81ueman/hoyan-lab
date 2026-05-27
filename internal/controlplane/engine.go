@@ -174,6 +174,9 @@ func (r RIBEntry) Normalize() RIBEntry {
 	if r.RouteSource.Kind == "" {
 		r.RouteSource.Kind = r.SourceKind
 	}
+	if r.RouteSource.NetworkInstance == "" {
+		r.RouteSource.NetworkInstance = model.NetworkInstanceDefault
+	}
 	if r.RouteSource.Prefix.IsZero() {
 		r.RouteSource.Prefix = r.Prefix
 	}
@@ -181,12 +184,35 @@ func (r RIBEntry) Normalize() RIBEntry {
 }
 
 type Engine struct {
-	idx *model.TopologyIndex
-	rib map[string]map[string][]RIBEntry
+	idx       *model.TopologyIndex
+	rib       map[string]map[string]map[string][]RIBEntry
+	legacyRIB map[string]map[string][]RIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string][]RIBEntry) *Engine {
-	return &Engine{idx: idx, rib: rib}
+func NewEngine(idx *model.TopologyIndex, rib any) *Engine {
+	e := &Engine{idx: idx, rib: normalizeRIBMap(rib)}
+	if legacy, ok := rib.(map[string]map[string][]RIBEntry); ok {
+		e.legacyRIB = legacy
+	}
+	return e
+}
+
+func normalizeRIBMap(raw any) map[string]map[string]map[string][]RIBEntry {
+	switch rib := raw.(type) {
+	case map[string]map[string]map[string][]RIBEntry:
+		if rib == nil {
+			return map[string]map[string]map[string][]RIBEntry{}
+		}
+		return rib
+	case map[string]map[string][]RIBEntry:
+		out := map[string]map[string]map[string][]RIBEntry{}
+		for node, byPrefix := range rib {
+			out[node] = map[string]map[string][]RIBEntry{string(model.NetworkInstanceDefault): byPrefix}
+		}
+		return out
+	default:
+		return map[string]map[string]map[string][]RIBEntry{}
+	}
 }
 
 func (e *Engine) Simulate() {
@@ -247,7 +273,7 @@ func (e *Engine) connectedRoutes(node model.Node) []model.ConfiguredRoute {
 		prefix := model.PrefixFromNetIP(pfx.Masked())
 		out = append(out, model.ConfiguredRoute{
 			Node:            node.Name,
-			NetworkInstance: model.NetworkInstanceDefault,
+			NetworkInstance: model.NormalizeNetworkInstance(string(iface.VRF)),
 			AFI:             model.AFIIPv4,
 			Prefix:          prefix,
 			Interface:       iface.Name,
@@ -359,7 +385,7 @@ func (e *Engine) aggregateRoutes(node model.Node) []RIBEntry {
 		if route.AdminDistance == 0 {
 			route.AdminDistance = 200
 		}
-		cond, contributors, ok := e.aggregateContributorCond(node.Name, route.Prefix)
+		cond, contributors, ok := e.aggregateContributorCondVRF(node.Name, route.NetworkInstance, route.Prefix)
 		if !ok {
 			continue
 		}
@@ -379,9 +405,13 @@ func (e *Engine) aggregateRoutes(node model.Node) []RIBEntry {
 }
 
 func (e *Engine) aggregateContributorCond(node string, aggregate model.Prefix) (failure.Cond, []string, bool) {
+	return e.aggregateContributorCondVRF(node, model.NetworkInstanceDefault, aggregate)
+}
+
+func (e *Engine) aggregateContributorCondVRF(node string, vrf model.NetworkInstanceID, aggregate model.Prefix) (failure.Cond, []string, bool) {
 	var contributors []failure.Cond
 	contributorPrefixes := map[string]bool{}
-	for prefix, routes := range e.rib[node] {
+	for prefix, routes := range e.rib[node][string(model.NormalizeNetworkInstance(string(vrf)))] {
 		candidate, err := model.ParsePrefix(prefix)
 		if err != nil || !isMoreSpecificWithin(candidate, aggregate) {
 			continue
@@ -423,7 +453,13 @@ func (e *Engine) configuredRouteNextHop(node string, route model.ConfiguredRoute
 	if route.NextHop == "" {
 		return RouteNextHop{}
 	}
+	wantVRF := model.NormalizeNetworkInstance(string(route.NetworkInstance))
+	localNode, _ := e.idx.Node(node)
 	for _, adj := range e.idx.Adj[model.NodeID(node)] {
+		iface, ok := e.idx.InterfaceToPeer(node, string(adj.To))
+		if !ok || interfaceVRF(localNode, iface.ConfigName) != wantVRF {
+			continue
+		}
 		if addr, ok := e.idx.PeerAddress(node, string(adj.To)); ok && addr.String() == route.NextHop {
 			return RouteNextHop{Node: string(adj.To), Addr: route.NextHop}
 		}
@@ -431,37 +467,48 @@ func (e *Engine) configuredRouteNextHop(node string, route model.ConfiguredRoute
 	return RouteNextHop{Addr: route.NextHop}
 }
 
+func interfaceVRF(node model.Node, name string) model.NetworkInstanceID {
+	for _, iface := range node.Interfaces {
+		if model.EquivalentInterfaceName(node.Kind, iface.Name, name) {
+			return model.NormalizeNetworkInstance(string(iface.VRF))
+		}
+	}
+	return model.NetworkInstanceDefault
+}
+
 func (e *Engine) SelectRoutes() {
-	for node, byPrefix := range e.rib {
-		for prefix, routes := range byPrefix {
-			n, _ := e.idx.Node(node)
-			behavior := BehaviorFor(n.Kind)
-			routes = behavior.SelectRoutes(n, routes)
-			for i := range routes {
-				if !behavior.RouteValidForRIB(n, routes[i]) {
-					routes[i].SelectedCond = failure.False()
-					continue
-				}
-				selected := routes[i].Condition
-				var higherDistinct []failure.Cond
-				for j := 0; j < i; j++ {
-					if !behavior.RouteValidForRIB(n, routes[j]) {
+	for node, byVRF := range e.rib {
+		for vrf, byPrefix := range byVRF {
+			for prefix, routes := range byPrefix {
+				n, _ := e.idx.Node(node)
+				behavior := BehaviorFor(n.Kind)
+				routes = behavior.SelectRoutes(n, routes)
+				for i := range routes {
+					if !behavior.RouteValidForRIB(n, routes[i]) {
+						routes[i].SelectedCond = failure.False()
 						continue
 					}
-					if routeSelectionFamily(routes[j]) != routeSelectionFamily(routes[i]) {
-						continue
+					selected := routes[i].Condition
+					var higherDistinct []failure.Cond
+					for j := 0; j < i; j++ {
+						if !behavior.RouteValidForRIB(n, routes[j]) {
+							continue
+						}
+						if routeSelectionFamily(routes[j]) != routeSelectionFamily(routes[i]) {
+							continue
+						}
+						if behavior.DecisionProcess().Equivalent(n, routes[j], routes[i]) {
+							continue
+						}
+						higherDistinct = append(higherDistinct, routes[j].Condition)
 					}
-					if behavior.DecisionProcess().Equivalent(n, routes[j], routes[i]) {
-						continue
+					if len(higherDistinct) > 0 {
+						selected = failure.And(selected, failure.Not(failure.Or(higherDistinct...)))
 					}
-					higherDistinct = append(higherDistinct, routes[j].Condition)
+					routes[i].SelectedCond = selected
 				}
-				if len(higherDistinct) > 0 {
-					selected = failure.And(selected, failure.Not(failure.Or(higherDistinct...)))
-				}
-				routes[i].SelectedCond = selected
+				e.rib[node][vrf][prefix] = routes
 			}
-			e.rib[node][prefix] = routes
 		}
 	}
 }
@@ -479,38 +526,40 @@ func routeSelectionFamily(route RIBEntry) model.RouteSourceKind {
 
 func (e *Engine) ApplyAdvertisementConditions() bool {
 	changed := false
-	for node, byPrefix := range e.rib {
-		for prefix, routes := range byPrefix {
-			for i := range routes {
-				base := routes[i].BaseCond
-				if base == nil {
-					base = routes[i].Condition
-				}
-				nextCond := base
-				if routes[i].Normalize().SourceKind == model.RouteSourceOSPF {
-					routes[i].Condition = nextCond
-					continue
-				}
-				if len(routes[i].Nodes) > 1 {
-					if parent, ok := e.ParentRoute(routes[i]); ok {
-						parentSelected := parent.SelectedCond
-						if len(parent.Normalize().Nodes) == 1 && (parent.SourceKind == model.RouteSourceBGP || parent.SourceKind == model.RouteSourceAggregate) {
-							parentSelected = parent.Condition
+	for node, byVRF := range e.rib {
+		for vrf, byPrefix := range byVRF {
+			for prefix, routes := range byPrefix {
+				for i := range routes {
+					base := routes[i].BaseCond
+					if base == nil {
+						base = routes[i].Condition
+					}
+					nextCond := base
+					if routes[i].Normalize().SourceKind == model.RouteSourceOSPF {
+						routes[i].Condition = nextCond
+						continue
+					}
+					if len(routes[i].Nodes) > 1 {
+						if parent, ok := e.ParentRoute(routes[i]); ok {
+							parentSelected := parent.SelectedCond
+							if len(parent.Normalize().Nodes) == 1 && (parent.SourceKind == model.RouteSourceBGP || parent.SourceKind == model.RouteSourceAggregate) {
+								parentSelected = parent.Condition
+							}
+							if parentSelected == nil {
+								parentSelected = parent.Condition
+							}
+							nextCond = failure.And(base, parentSelected)
+						} else {
+							nextCond = failure.False()
 						}
-						if parentSelected == nil {
-							parentSelected = parent.Condition
-						}
-						nextCond = failure.And(base, parentSelected)
-					} else {
-						nextCond = failure.False()
+					}
+					if routes[i].Condition == nil || routes[i].Condition.Key() != nextCond.Key() {
+						routes[i].Condition = nextCond
+						changed = true
 					}
 				}
-				if routes[i].Condition == nil || routes[i].Condition.Key() != nextCond.Key() {
-					routes[i].Condition = nextCond
-					changed = true
-				}
+				e.rib[node][vrf][prefix] = routes
 			}
-			e.rib[node][prefix] = routes
 		}
 	}
 	return changed
@@ -532,11 +581,13 @@ func (e *Engine) ConvergeAdvertisementConditions() {
 
 func (e *Engine) MaxRouteDepth() int {
 	maxDepth := 0
-	for _, byPrefix := range e.rib {
-		for _, routes := range byPrefix {
-			for _, route := range routes {
-				if len(route.Nodes) > maxDepth {
-					maxDepth = len(route.Nodes)
+	for _, byVRF := range e.rib {
+		for _, byPrefix := range byVRF {
+			for _, routes := range byPrefix {
+				for _, route := range routes {
+					if len(route.Nodes) > maxDepth {
+						maxDepth = len(route.Nodes)
+					}
 				}
 			}
 		}
@@ -550,7 +601,7 @@ func (e *Engine) ParentRoute(route RIBEntry) (RIBEntry, bool) {
 		return RIBEntry{}, false
 	}
 	parentNodes := strings.Join(route.Nodes[:len(route.Nodes)-1], ">")
-	for _, candidate := range e.rib[route.From][route.Prefix.String()] {
+	for _, candidate := range e.rib[route.From][string(route.RouteSource.NetworkInstance)][route.Prefix.String()] {
 		candidate = candidate.Normalize()
 		if candidate.SourceKind != route.SourceKind {
 			continue
@@ -669,16 +720,27 @@ func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
 	if prefix.IsZero() {
 		prefix = entry.Prefix
 	}
+	vrf := model.NormalizeNetworkInstance(string(entry.RouteSource.NetworkInstance))
+	entry.RouteSource.NetworkInstance = vrf
 	if e.rib[node] == nil {
-		e.rib[node] = map[string][]RIBEntry{}
+		e.rib[node] = map[string]map[string][]RIBEntry{}
+	}
+	if e.rib[node][string(vrf)] == nil {
+		e.rib[node][string(vrf)] = map[string][]RIBEntry{}
 	}
 	key := prefix.String()
-	for _, existing := range e.rib[node][key] {
+	for _, existing := range e.rib[node][string(vrf)][key] {
 		if routeKey(existing) == routeKey(entry) {
 			return
 		}
 	}
-	e.rib[node][key] = append(e.rib[node][key], entry)
+	e.rib[node][string(vrf)][key] = append(e.rib[node][string(vrf)][key], entry)
+	if e.legacyRIB != nil && vrf == model.NetworkInstanceDefault {
+		if e.legacyRIB[node] == nil {
+			e.legacyRIB[node] = map[string][]RIBEntry{}
+		}
+		e.legacyRIB[node][key] = append(e.legacyRIB[node][key], entry)
+	}
 }
 
 func EquivalentInstalledRoute(decision BGPDecisionProcess, node model.Node, installed []RIBEntry, route RIBEntry) bool {
@@ -696,7 +758,7 @@ func routeKey(r RIBEntry) string {
 	if r.Invalid {
 		valid = "invalid"
 	}
-	return r.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Origin + "|" + r.NextHop + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Nodes, ">") + "|" + valid
+	return string(r.RouteSource.NetworkInstance) + "|" + r.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Origin + "|" + r.NextHop + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Nodes, ">") + "|" + valid
 }
 
 func containsString(xs []string, x string) bool {

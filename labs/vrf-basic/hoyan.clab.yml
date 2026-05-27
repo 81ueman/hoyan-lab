@@ -1,0 +1,66 @@
+name: hoyan-vrf-basic
+mgmt:
+    network: hoyan-vrf-basic
+    ipv4-subnet: 172.86.91.0/24
+topology:
+    kinds:
+        linux:
+            image: hoyan-frr-nftables:10.6.1
+    nodes:
+        r1:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.91.11
+            binds:
+                - configs/frr/r1/daemons:/etc/frr/daemons:ro
+                - configs/frr/r1/frr.conf:/etc/frr/frr.conf:ro
+                - configs/frr/common/vtysh.conf:/etc/frr/vtysh.conf:ro
+            exec:
+                - ip link add tenant-a type vrf table 1001
+                - ip link add tenant-b type vrf table 1002
+                - ip link set tenant-a up
+                - ip link set tenant-b up
+                - ip link set eth1 master tenant-a
+                - ip link set eth2 master tenant-b
+                - vtysh -b
+        r2:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.91.12
+            binds:
+                - configs/frr/r2/daemons:/etc/frr/daemons:ro
+                - configs/frr/r2/frr.conf:/etc/frr/frr.conf:ro
+                - configs/frr/common/vtysh.conf:/etc/frr/vtysh.conf:ro
+            exec:
+                - ip link add tenant-a type vrf table 1001
+                - ip link add a-svc type dummy
+                - ip link set tenant-a up
+                - ip link set eth1 master tenant-a
+                - ip link set a-svc master tenant-a
+                - ip addr replace 10.255.0.1/32 dev a-svc
+                - ip link set a-svc up
+                - vtysh -b
+        r3:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.91.13
+            binds:
+                - configs/frr/r3/daemons:/etc/frr/daemons:ro
+                - configs/frr/r3/frr.conf:/etc/frr/frr.conf:ro
+                - configs/frr/common/vtysh.conf:/etc/frr/vtysh.conf:ro
+            exec:
+                - ip link add tenant-b type vrf table 1002
+                - ip link add b-svc type dummy
+                - ip link add b-only type dummy
+                - ip link set tenant-b up
+                - ip link set eth1 master tenant-b
+                - ip link set b-svc master tenant-b
+                - ip link set b-only master tenant-b
+                - ip addr replace 10.255.0.1/32 dev b-svc
+                - ip addr replace 10.66.0.1/32 dev b-only
+                - ip link set b-svc up
+                - ip link set b-only up
+                - vtysh -b
+    links:
+        - endpoints: ["r1:eth1", "r2:eth1"]
+        - endpoints: ["r1:eth2", "r3:eth1"]

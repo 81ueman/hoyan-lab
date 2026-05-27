@@ -12,18 +12,20 @@ import (
 
 func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
 	prefix := model.MustPrefix("192.0.2.0/24")
-	graph := &Graph{rib: map[string]map[string][]RIBEntry{
+	graph := &Graph{rib: map[string]map[string]map[string][]RIBEntry{
 		"r1": {
-			prefix.String(): {{
-				NLRI:       controlplane.RouteNLRI{Prefix: prefix},
-				Provenance: controlplane.RouteProvenance{OriginNode: "origin"},
-			}},
+			"default": {
+				prefix.String(): {{
+					NLRI:       controlplane.RouteNLRI{Prefix: prefix},
+					Provenance: controlplane.RouteProvenance{OriginNode: "origin"},
+				}},
+			},
 		},
 	}}
 
 	predicates := CollectRIBPrefixPredicates(graph)
 	sources := predicateSources(predicates)
-	if got, want := sources, []string{"rib:r1:192.0.2.0/24:origin=origin"}; !reflect.DeepEqual(got, want) {
+	if got, want := sources, []string{"rib:r1:default:192.0.2.0/24:origin=origin"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("sources = %#v, want %#v", got, want)
 	}
 
@@ -38,18 +40,22 @@ func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
 
 func TestCollectFIBPrefixPredicatesIncludesModeledFIBOnlyPrefix(t *testing.T) {
 	prefix := model.MustPrefix("198.51.100.0/24")
-	graph := &Graph{fib: map[string][]FIBEntry{
-		"r1": {{
-			Prefix:    prefix.NetIP(),
-			NextHop:   "r2",
-			Condition: failure.True(),
-			GroupID:   "198.51.100.0/24#rank-0",
-		}},
+	graph := &Graph{fib: map[string]map[string][]FIBEntry{
+		"r1": {
+			"default": {
+				{
+					Prefix:    prefix.NetIP(),
+					NextHop:   "r2",
+					Condition: failure.True(),
+					GroupID:   "198.51.100.0/24#rank-0",
+				},
+			},
+		},
 	}}
 
 	predicates := CollectFIBPrefixPredicates(graph)
 	sources := predicateSources(predicates)
-	if got, want := sources, []string{"fib:r1:198.51.100.0/24:group=198.51.100.0/24#rank-0"}; !reflect.DeepEqual(got, want) {
+	if got, want := sources, []string{"fib:r1:default:198.51.100.0/24:group=198.51.100.0/24#rank-0"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("sources = %#v, want %#v", got, want)
 	}
 
@@ -65,18 +71,22 @@ func TestCollectFIBPrefixPredicatesIncludesModeledFIBOnlyPrefix(t *testing.T) {
 func TestRIBAndFIBPredicatesPreserveSourcesWithoutExtraClassBoundaries(t *testing.T) {
 	prefix := model.MustPrefix("203.0.113.0/24")
 	graph := &Graph{
-		rib: map[string]map[string][]RIBEntry{
+		rib: map[string]map[string]map[string][]RIBEntry{
 			"r1": {
-				prefix.String(): {{
-					NLRI:       controlplane.RouteNLRI{Prefix: prefix},
-					Provenance: controlplane.RouteProvenance{OriginNode: "dst"},
-				}},
+				"default": {
+					prefix.String(): {{
+						NLRI:       controlplane.RouteNLRI{Prefix: prefix},
+						Provenance: controlplane.RouteProvenance{OriginNode: "dst"},
+					}},
+				},
 			},
 		},
-		fib: map[string][]FIBEntry{
+		fib: map[string]map[string][]FIBEntry{
 			"r1": {
-				{Prefix: prefix.NetIP(), NextHop: "a", GroupID: "ecmp", Condition: failure.True()},
-				{Prefix: prefix.NetIP(), NextHop: "b", GroupID: "ecmp", Condition: failure.True()},
+				"default": {
+					{Prefix: prefix.NetIP(), NextHop: "a", GroupID: "ecmp", Condition: failure.True()},
+					{Prefix: prefix.NetIP(), NextHop: "b", GroupID: "ecmp", Condition: failure.True()},
+				},
 			},
 		},
 	}
@@ -98,8 +108,8 @@ func TestRIBAndFIBPredicatesPreserveSourcesWithoutExtraClassBoundaries(t *testin
 	class := universe.Classes[id]
 	sources := sourcesForClass(universe, class)
 	want := []string{
-		"fib:r1:203.0.113.0/24:group=ecmp",
-		"rib:r1:203.0.113.0/24:origin=dst",
+		"fib:r1:default:203.0.113.0/24:group=ecmp",
+		"rib:r1:default:203.0.113.0/24:origin=dst",
 		"route:dst",
 	}
 	if !reflect.DeepEqual(sources, want) {

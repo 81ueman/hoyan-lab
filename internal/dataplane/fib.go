@@ -26,6 +26,7 @@ const (
 
 type FIBEntry struct {
 	Prefix netip.Prefix
+	VRF    string
 	// NextHop is the resolved adjacent topology node used by modeled packet
 	// forwarding. It is not a raw BGP next-hop address.
 	NextHop          string
@@ -45,95 +46,145 @@ type FIBEntry struct {
 }
 
 type Engine struct {
-	idx *model.TopologyIndex
-	rib map[string]map[string][]controlplane.RIBEntry
-	fib map[string][]FIBEntry
+	idx       *model.TopologyIndex
+	rib       map[string]map[string]map[string][]controlplane.RIBEntry
+	fib       map[string]map[string][]FIBEntry
+	legacyFIB map[string][]FIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string][]controlplane.RIBEntry, fib map[string][]FIBEntry) *Engine {
-	return &Engine{idx: idx, rib: rib, fib: fib}
+func NewEngine(idx *model.TopologyIndex, rib any, fib any) *Engine {
+	e := &Engine{idx: idx, rib: normalizeRIBMap(rib), fib: normalizeFIBMap(fib)}
+	if legacy, ok := fib.(map[string][]FIBEntry); ok {
+		e.legacyFIB = legacy
+	}
+	return e
+}
+
+func normalizeRIBMap(raw any) map[string]map[string]map[string][]controlplane.RIBEntry {
+	switch rib := raw.(type) {
+	case map[string]map[string]map[string][]controlplane.RIBEntry:
+		if rib == nil {
+			return map[string]map[string]map[string][]controlplane.RIBEntry{}
+		}
+		return rib
+	case map[string]map[string][]controlplane.RIBEntry:
+		out := map[string]map[string]map[string][]controlplane.RIBEntry{}
+		for node, byPrefix := range rib {
+			out[node] = map[string]map[string][]controlplane.RIBEntry{string(model.NetworkInstanceDefault): byPrefix}
+		}
+		return out
+	default:
+		return map[string]map[string]map[string][]controlplane.RIBEntry{}
+	}
+}
+
+func normalizeFIBMap(raw any) map[string]map[string][]FIBEntry {
+	switch fib := raw.(type) {
+	case map[string]map[string][]FIBEntry:
+		if fib == nil {
+			return map[string]map[string][]FIBEntry{}
+		}
+		return fib
+	case map[string][]FIBEntry:
+		out := map[string]map[string][]FIBEntry{}
+		for node, entries := range fib {
+			out[node] = map[string][]FIBEntry{string(model.NetworkInstanceDefault): entries}
+		}
+		return out
+	default:
+		return map[string]map[string][]FIBEntry{}
+	}
 }
 
 func (e *Engine) DeriveFIB() {
-	for node, byPrefix := range e.rib {
-		var entries []FIBEntry
+	for node, byVRF := range e.rib {
 		n, _ := e.idx.Node(node)
 		behavior := controlplane.BehaviorFor(n.Kind)
-		for _, routes := range byPrefix {
-			routes = append([]controlplane.RIBEntry(nil), routes...)
-			sort.SliceStable(routes, func(i, j int) bool {
-				ai, aj := fibAdminDistance(routes[i]), fibAdminDistance(routes[j])
-				if ai == aj {
-					return routes[i].SourceKind < routes[j].SourceKind
-				}
-				return ai < aj
-			})
-			seenSelected := map[string]bool{}
-			var installed []controlplane.RIBEntry
-			var groups []fibRouteGroup
-			for _, route := range routes {
-				route = route.Normalize()
-				selectedKey := ""
-				if route.SelectedCond != nil {
-					selectedKey = route.SelectedCond.Key()
-				}
-				if seenSelected[selectedKey] {
-					continue
-				}
-				if !behavior.RouteInstallableInFIB(n, installed, route) {
-					continue
-				}
-				seenSelected[selectedKey] = true
-				group, newGroup := routeGroupFor(behavior.DecisionProcess(), n, groups, route)
-				installed = append(installed, route)
-				if newGroup {
-					groups = append(groups, group)
-				} else {
-					for i := range entries {
-						if entries[i].GroupID == group.id {
-							entries[i].Equivalent = true
+		if e.fib[node] == nil {
+			e.fib[node] = map[string][]FIBEntry{}
+		}
+		for vrf, byPrefix := range byVRF {
+			var entries []FIBEntry
+			for _, routes := range byPrefix {
+				routes = append([]controlplane.RIBEntry(nil), routes...)
+				sort.SliceStable(routes, func(i, j int) bool {
+					ai, aj := fibAdminDistance(routes[i]), fibAdminDistance(routes[j])
+					if ai == aj {
+						return routes[i].SourceKind < routes[j].SourceKind
+					}
+					return ai < aj
+				})
+				seenSelected := map[string]bool{}
+				var installed []controlplane.RIBEntry
+				var groups []fibRouteGroup
+				for _, route := range routes {
+					route = route.Normalize()
+					selectedKey := ""
+					if route.SelectedCond != nil {
+						selectedKey = route.SelectedCond.Key()
+					}
+					if seenSelected[selectedKey] {
+						continue
+					}
+					if !behavior.RouteInstallableInFIB(n, installed, route) {
+						continue
+					}
+					seenSelected[selectedKey] = true
+					group, newGroup := routeGroupFor(behavior.DecisionProcess(), n, groups, route)
+					installed = append(installed, route)
+					if newGroup {
+						groups = append(groups, group)
+					} else {
+						for i := range entries {
+							if entries[i].GroupID == group.id {
+								entries[i].Equivalent = true
+							}
 						}
 					}
+					resolvedNextHop := route.ForwardingNextHop.Node
+					if resolvedNextHop == "" && route.ForwardingNextHop.Addr == "" {
+						resolvedNextHop = route.NextHop
+					}
+					nextHopAddress := route.ForwardingNextHop.Addr
+					rawNextHop := route.NextHop
+					if rawNextHop == "" {
+						rawNextHop = nextHopAddress
+					}
+					resolutionStatus, resolutionReason := nextHopResolution(resolvedNextHop, nextHopAddress)
+					entries = append(entries, FIBEntry{
+						Prefix:           route.Prefix.NetIP(),
+						VRF:              vrf,
+						NextHop:          resolvedNextHop,
+						RawNextHop:       rawNextHop,
+						NextHopAddress:   nextHopAddress,
+						Interface:        route.RouteSource.Interface,
+						ResolutionStatus: resolutionStatus,
+						ResolutionReason: resolutionReason,
+						SourceKind:       route.SourceKind,
+						Discard:          route.SourceKind == model.RouteSourceBlackhole,
+						ConnectedClass:   route.RouteSource.ConnectedClass,
+						Path:             Path{Nodes: route.Nodes, Links: route.Links, Cost: e.idx.PathCost(route.Links)},
+						Condition:        route.SelectedCond,
+						Rank:             group.rank,
+						GroupID:          group.id,
+						Equivalent:       group.equivalent,
+					})
 				}
-				resolvedNextHop := route.ForwardingNextHop.Node
-				if resolvedNextHop == "" && route.ForwardingNextHop.Addr == "" {
-					resolvedNextHop = route.NextHop
+			}
+			sort.SliceStable(entries, func(i, j int) bool {
+				if entries[i].Prefix.Bits() == entries[j].Prefix.Bits() {
+					if entries[i].Rank == entries[j].Rank {
+						return entries[i].Prefix.String() < entries[j].Prefix.String()
+					}
+					return entries[i].Rank < entries[j].Rank
 				}
-				nextHopAddress := route.ForwardingNextHop.Addr
-				rawNextHop := route.NextHop
-				if rawNextHop == "" {
-					rawNextHop = nextHopAddress
-				}
-				resolutionStatus, resolutionReason := nextHopResolution(resolvedNextHop, nextHopAddress)
-				entries = append(entries, FIBEntry{
-					Prefix:           route.Prefix.NetIP(),
-					NextHop:          resolvedNextHop,
-					RawNextHop:       rawNextHop,
-					NextHopAddress:   nextHopAddress,
-					Interface:        route.RouteSource.Interface,
-					ResolutionStatus: resolutionStatus,
-					ResolutionReason: resolutionReason,
-					SourceKind:       route.SourceKind,
-					Discard:          route.SourceKind == model.RouteSourceBlackhole,
-					ConnectedClass:   route.RouteSource.ConnectedClass,
-					Path:             Path{Nodes: route.Nodes, Links: route.Links, Cost: e.idx.PathCost(route.Links)},
-					Condition:        route.SelectedCond,
-					Rank:             group.rank,
-					GroupID:          group.id,
-					Equivalent:       group.equivalent,
-				})
+				return entries[i].Prefix.Bits() > entries[j].Prefix.Bits()
+			})
+			e.fib[node][vrf] = entries
+			if e.legacyFIB != nil && vrf == string(model.NetworkInstanceDefault) {
+				e.legacyFIB[node] = entries
 			}
 		}
-		sort.SliceStable(entries, func(i, j int) bool {
-			if entries[i].Prefix.Bits() == entries[j].Prefix.Bits() {
-				if entries[i].Rank == entries[j].Rank {
-					return entries[i].Prefix.String() < entries[j].Prefix.String()
-				}
-				return entries[i].Rank < entries[j].Rank
-			}
-			return entries[i].Prefix.Bits() > entries[j].Prefix.Bits()
-		})
-		e.fib[node] = entries
 	}
 }
 
@@ -182,11 +233,15 @@ func routeGroupFor(decision controlplane.BGPDecisionProcess, node model.Node, gr
 }
 
 func (e *Engine) LookupFIB(node, dst string, ctx failure.Context) (FIBEntry, bool) {
+	return e.LookupFIBVRF(node, string(model.NetworkInstanceDefault), dst, ctx)
+}
+
+func (e *Engine) LookupFIBVRF(node, vrf, dst string, ctx failure.Context) (FIBEntry, bool) {
 	ip, err := netip.ParseAddr(dst)
 	if err != nil {
 		return FIBEntry{}, false
 	}
-	for _, rule := range e.fib[node] {
+	for _, rule := range e.fib[node][string(model.NormalizeNetworkInstance(vrf))] {
 		if rule.Prefix.Contains(ip) && rule.Condition.Eval(ctx) {
 			return rule, true
 		}

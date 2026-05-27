@@ -28,38 +28,43 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 		if !allowed[n.Name] || ctx.NodeFailed(model.NodeID(n.Name)) {
 			continue
 		}
-		suppressedBGP := bgpSuppressedByNonBGPFIB(graph.FIB(n.Name), ctx)
 		behavior := sim.BehaviorFor(n.Kind)
-		for _, rib := range graph.RIBTable(n.Name) {
-			for _, entry := range rib {
-				entry = entry.Normalize()
-				if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate && entry.SourceKind != model.RouteSourceOSPF {
-					continue
+		for vrf, table := range graph.RIBTables(n.Name) {
+			fib := graph.FIBVRF(n.Name, vrf)
+			suppressedBGP := bgpSuppressedByNonBGPFIB(fib, ctx)
+			for _, rib := range table {
+				for _, entry := range rib {
+					entry = entry.Normalize()
+					if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate && entry.SourceKind != model.RouteSourceOSPF {
+						continue
+					}
+					if suppressedBGP[entry.Prefix.String()] {
+						continue
+					}
+					if entry.SelectedCond == nil || !entry.SelectedCond.Eval(ctx) || !behavior.RouteValidForRIB(n, entry) {
+						continue
+					}
+					metric := idx.PathCost(entry.Links)
+					if entry.SourceKind == model.RouteSourceOSPF {
+						metric = entry.RouteSource.Metric
+					}
+					addExpectedRoute(byRoute, idx, fib, ctx, n.Name, vrf, entry.Prefix.String(), entry.NextHop, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
 				}
-				if suppressedBGP[entry.Prefix.String()] {
-					continue
-				}
-				if entry.SelectedCond == nil || !entry.SelectedCond.Eval(ctx) || !behavior.RouteValidForRIB(n, entry) {
-					continue
-				}
-				metric := idx.PathCost(entry.Links)
-				if entry.SourceKind == model.RouteSourceOSPF {
-					metric = entry.RouteSource.Metric
-				}
-				addExpectedRoute(byRoute, idx, graph.FIB(n.Name), ctx, n.Name, entry.Prefix.String(), entry.NextHop, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
 			}
 		}
-		for _, entry := range graph.FIB(n.Name) {
-			if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
-				continue
+		for vrf, fib := range graph.FIBTables(n.Name) {
+			for _, entry := range fib {
+				if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
+					continue
+				}
+				if n.Kind == model.KindSRLinux && entry.SourceKind == model.RouteSourceConnected && entry.ConnectedClass == model.ConnectedRouteClassLoopback {
+					continue
+				}
+				if entry.Condition == nil || !entry.Condition.Eval(ctx) {
+					continue
+				}
+				addExpectedRoute(byRoute, idx, nil, ctx, n.Name, vrf, entry.Prefix.String(), entry.NextHop, entry.Interface, entry.SourceKind, entry.ConnectedClass, entry.Path.Cost)
 			}
-			if n.Kind == model.KindSRLinux && entry.SourceKind == model.RouteSourceConnected && entry.ConnectedClass == model.ConnectedRouteClassLoopback {
-				continue
-			}
-			if entry.Condition == nil || !entry.Condition.Eval(ctx) {
-				continue
-			}
-			addExpectedRoute(byRoute, idx, nil, ctx, n.Name, entry.Prefix.String(), entry.NextHop, entry.Interface, entry.SourceKind, entry.ConnectedClass, entry.Path.Cost)
 		}
 	}
 	out := make([]NormalizedFIBRoute, 0, len(byRoute))
@@ -85,10 +90,10 @@ func bgpSuppressedByNonBGPFIB(entries []dataplane.FIBEntry, ctx sim.FailureConte
 	return out
 }
 
-func addExpectedRoute(byRoute map[string]NormalizedFIBRoute, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
+func addExpectedRoute(byRoute map[string]NormalizedFIBRoute, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, vrf, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
 	route := NormalizedFIBRoute{
 		Node:           node,
-		VRF:            "default",
+		VRF:            string(model.NormalizeNetworkInstance(vrf)),
 		AFI:            "ipv4",
 		Prefix:         prefix,
 		Protocol:       expectedProtocol(source, nextHop),

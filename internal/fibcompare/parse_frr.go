@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
+
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func ParseLinuxIPRoute(node string, data []byte) ([]NormalizedFIBRoute, error) {
+	return ParseLinuxIPRouteVRF(node, "default", data)
+}
+
+func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]NormalizedFIBRoute, error) {
 	var raw []map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -29,7 +35,7 @@ func ParseLinuxIPRoute(node string, data []byte) ([]NormalizedFIBRoute, error) {
 		}
 		route := NormalizedFIBRoute{
 			Node:       node,
-			VRF:        "default",
+			VRF:        string(model.NormalizeNetworkInstance(vrf)),
 			AFI:        "ipv4",
 			Prefix:     prefix,
 			NextHops:   nextHops,

@@ -2,6 +2,7 @@ package fibcompare
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -82,6 +83,10 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 	var out []NormalizedFIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
+		vrfs, err := collectLinuxVRFs(ctx, runner, containerName)
+		if err != nil {
+			return nil, fmt.Errorf("docker exec -i %s ip -j link show type vrf: %w", containerName, err)
+		}
 		for _, table := range []string{"main", "local"} {
 			data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "route", "show", "table", table)
 			if err != nil {
@@ -93,8 +98,39 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 			}
 			out = append(out, routes...)
 		}
+		for _, vrf := range vrfs {
+			data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "route", "show", "vrf", vrf)
+			if err != nil {
+				return nil, fmt.Errorf("docker exec -i %s ip -j route show vrf %s: %w", containerName, vrf, err)
+			}
+			routes, err := ParseLinuxIPRouteVRF(n.Name, vrf, data)
+			if err != nil {
+				return nil, fmt.Errorf("%s Linux kernel FIB vrf %s: %w", n.Name, vrf, err)
+			}
+			out = append(out, routes...)
+		}
 	}
 	sortRoutes(out)
+	return out, nil
+}
+
+func collectLinuxVRFs(ctx context.Context, runner Runner, containerName string) ([]string, error) {
+	data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "link", "show", "type", "vrf")
+	if err != nil {
+		return nil, err
+	}
+	var raw []map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, item := range raw {
+		name, _ := item["ifname"].(string)
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
 	return out, nil
 }
 

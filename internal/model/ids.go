@@ -20,6 +20,13 @@ const (
 	AFIIPv4                AFI               = "ipv4"
 )
 
+func NormalizeNetworkInstance(vrf string) NetworkInstanceID {
+	if vrf == "" {
+		return NetworkInstanceDefault
+	}
+	return NetworkInstanceID(vrf)
+}
+
 type NextHop struct {
 	Node NodeID
 	Addr netip.Addr

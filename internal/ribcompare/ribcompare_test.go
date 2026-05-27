@@ -284,7 +284,7 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 		switch cmd {
 		case "docker exec -i r1 vtysh -c show ip bgp json":
 			return []byte(`{}`), nil
-		case "docker exec -i r1 vtysh -c show ip route json":
+		case "docker exec -i r1 vtysh -c show ip route vrf all json":
 			return []byte(`{
 			  "192.0.2.0/30":[{"protocol":"connected","interfaceName":"eth1"}],
 			  "203.0.113.0/24":[{"protocol":"static","nexthops":[{"ip":"192.0.2.2","interfaceName":"eth1"}]}]

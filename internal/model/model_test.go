@@ -1289,6 +1289,50 @@ func TestParseUnsupportedStaticRouteWarningAndStrictError(t *testing.T) {
 	}
 }
 
+func TestParseFRRVRFInterfacesAndStaticRoutes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frr.conf")
+	config := strings.Join([]string{
+		"interface eth1 vrf tenant-a",
+		" ip address 192.0.2.1/30",
+		"!",
+		"interface eth2",
+		" vrf forwarding tenant-b",
+		" ip address 198.51.100.1/30",
+		"!",
+		"ip route 10.0.0.0/24 192.0.2.2 vrf tenant-a",
+		"ip route vrf tenant-b 10.1.0.0/24 198.51.100.2",
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseConfig(KindFRR, path)
+	if err != nil {
+		t.Fatalf("ParseConfig() error = %v", err)
+	}
+	if got := interfaceByName(cfg.Interfaces, "eth1").VRF; got != "tenant-a" {
+		t.Fatalf("eth1 VRF = %q, want tenant-a", got)
+	}
+	if got := interfaceByName(cfg.Interfaces, "eth2").VRF; got != "tenant-b" {
+		t.Fatalf("eth2 VRF = %q, want tenant-b", got)
+	}
+	if len(cfg.Routes) != 2 {
+		t.Fatalf("routes = %#v, want 2", cfg.Routes)
+	}
+	if cfg.Routes[0].NetworkInstance != "tenant-a" || cfg.Routes[1].NetworkInstance != "tenant-b" {
+		t.Fatalf("route VRFs = %q %q, want tenant-a tenant-b", cfg.Routes[0].NetworkInstance, cfg.Routes[1].NetworkInstance)
+	}
+}
+
+func interfaceByName(interfaces []Interface, name string) Interface {
+	for _, iface := range interfaces {
+		if iface.Name == name {
+			return iface
+		}
+	}
+	return Interface{}
+}
+
 func TestParseCEOSRouteMapRejectsUnsupportedMatch(t *testing.T) {
 	_, err := parseCEOSConfigTextResult(t, `
 route-map RM permit 10

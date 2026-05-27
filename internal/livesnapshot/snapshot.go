@@ -356,7 +356,7 @@ func routeTablesByKind(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	case model.KindFRR:
 		var out []ribcompare.NormalizedRoute
 		for _, n := range nodes {
-			data, err := runner.Run(ctx, "docker", "exec", "-i", n.RuntimeName(), "vtysh", "-c", "show ip route json")
+			data, err := runner.Run(ctx, "docker", "exec", "-i", n.RuntimeName(), "vtysh", "-c", "show ip route vrf all json")
 			if err != nil {
 				return nil, err
 			}

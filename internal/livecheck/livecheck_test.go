@@ -93,7 +93,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 			return []byte("true\n"), nil
 		case strings.Contains(cmd, "show ip bgp json"):
 			return []byte(`{"10.1.1.10/32":[{"valid":true,"bestpath":true,"nexthops":[{"ip":""}]}]}`), nil
-		case strings.Contains(cmd, "show ip route json"):
+		case strings.Contains(cmd, "show ip route vrf all json"):
 			return []byte(`{"10.255.1.1/32":[{"protocol":"connected","interfaceName":"lo"}],"10.1.1.10/32":[{"protocol":"static","nexthops":[{"interfaceName":"Null0"}]}]}`), nil
 		case strings.Contains(cmd, "show ip ospf route json"):
 			return []byte(`{}`), nil
@@ -101,6 +101,8 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 			return []byte(`[{"type":"blackhole","dst":"10.1.1.10/32","protocol":"static"},{"dst":"10.255.1.1","dev":"lo","protocol":"kernel"}]`), nil
 		case strings.Contains(cmd, "ip -j route show table local"):
 			return []byte(`[{"dst":"10.255.1.1","dev":"lo","protocol":"local"}]`), nil
+		case strings.Contains(cmd, "ip -j link show type vrf"):
+			return []byte(`[]`), nil
 		default:
 			return nil, errors.New("unexpected command: " + cmd)
 		}
@@ -195,7 +197,7 @@ func TestRunCheckFIBCollectsKernelRoutes(t *testing.T) {
 			return []byte("true\n"), nil
 		case strings.Contains(cmd, "show ip bgp json"):
 			return []byte(`{"10.1.1.10/32":[{"valid":true,"bestpath":true,"nexthops":[{"ip":""}]}]}`), nil
-		case strings.Contains(cmd, "show ip route json"):
+		case strings.Contains(cmd, "show ip route vrf all json"):
 			return []byte(`{"10.255.1.1/32":[{"protocol":"connected","interfaceName":"lo"}],"10.1.1.10/32":[{"protocol":"static","nexthops":[{"interfaceName":"Null0"}]}]}`), nil
 		case strings.Contains(cmd, "show ip ospf route json"):
 			return []byte(`{}`), nil
@@ -207,6 +209,8 @@ func TestRunCheckFIBCollectsKernelRoutes(t *testing.T) {
 			]`), nil
 		case strings.Contains(cmd, "ip -j route show table local"):
 			return []byte(`[{"dst":"10.255.1.1","dev":"lo","protocol":"local"}]`), nil
+		case strings.Contains(cmd, "ip -j link show type vrf"):
+			return []byte(`[]`), nil
 		default:
 			return nil, errors.New("unexpected command: " + cmd)
 		}

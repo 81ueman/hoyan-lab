@@ -57,8 +57,9 @@ type Link struct {
 }
 
 type Interface struct {
-	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
+	Name    string            `yaml:"name"`
+	Address string            `yaml:"address"`
+	VRF     NetworkInstanceID `yaml:"vrf,omitempty" json:"vrf,omitempty"`
 }
 
 type RouteSourceKind string
@@ -289,6 +290,7 @@ func (d FailureDomain) IsZero() bool {
 type RouteCheck struct {
 	Name          string        `yaml:"name"`
 	From          string        `yaml:"from"`
+	VRF           string        `yaml:"vrf,omitempty"`
 	Prefix        Prefix        `yaml:"prefix"`
 	MaxFailures   int           `yaml:"max_failures"`
 	FailureDomain FailureDomain `yaml:"failure_domain"`
@@ -297,6 +299,7 @@ type RouteCheck struct {
 type PacketCheck struct {
 	Name            string        `yaml:"name"`
 	From            string        `yaml:"from"`
+	VRF             string        `yaml:"vrf,omitempty"`
 	To              string        `yaml:"to"`
 	Protocol        string        `yaml:"protocol"`
 	DstPort         int           `yaml:"dst_port,omitempty"`
@@ -314,6 +317,7 @@ func (c PacketCheck) DstPortValues() []int {
 type FailureCheck struct {
 	Name            string        `yaml:"name"`
 	From            string        `yaml:"from"`
+	VRF             string        `yaml:"vrf,omitempty"`
 	To              string        `yaml:"to"`
 	Prefix          Prefix        `yaml:"prefix"`
 	Protocol        string        `yaml:"protocol"`
