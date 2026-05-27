@@ -68,14 +68,59 @@ func expandIntent(in Intent, vars map[string]any) ([]Intent, error) {
 
 func substituteIntent(in Intent, vars map[string]any, group map[string]string) Intent {
 	return Intent{
-		Name: in.Name,
-		Check: Check{
-			Table:    substituteString(in.Check.Table, vars, group),
-			Scenario: substituteString(in.Check.Scenario, vars, group),
-			Where:    substituteMap(in.Check.Where, vars, group),
-		},
-		Assert: in.Assert,
+		Name:   in.Name,
+		Check:  substituteCheck(in.Check, vars, group),
+		Assert: substituteAssertion(in.Assert, vars, group),
 	}
+}
+
+func substituteCheck(in Check, vars map[string]any, group map[string]string) Check {
+	out := Check{
+		Table:    substituteString(in.Table, vars, group),
+		Scenario: substituteString(in.Scenario, vars, group),
+		Where:    substituteMap(in.Where, vars, group),
+		GroupBy:  append([]string(nil), in.GroupBy...),
+		Assert:   substituteAssertion(in.Assert, vars, group),
+	}
+	if in.Compare != nil {
+		out.Compare = &CompareCheck{
+			Table:    substituteString(in.Compare.Table, vars, group),
+			Relation: substituteString(in.Compare.Relation, vars, group),
+			Left: CompareSide{
+				Snapshot: substituteString(in.Compare.Left.Snapshot, vars, group),
+				Where:    substituteMap(in.Compare.Left.Where, vars, group),
+			},
+			Right: CompareSide{
+				Snapshot: substituteString(in.Compare.Right.Snapshot, vars, group),
+				Where:    substituteMap(in.Compare.Right.Where, vars, group),
+			},
+		}
+	}
+	return out
+}
+
+func substituteAssertion(in Assertion, vars map[string]any, group map[string]string) Assertion {
+	out := in
+	if in.DistinctValues != nil {
+		out.DistinctValues = &DistinctValuesCheck{
+			Field:  substituteString(in.DistinctValues.Field, vars, group),
+			Equals: substituteAnySlice(in.DistinctValues.Equals, vars, group),
+		}
+	}
+	if in.DistinctCount != nil {
+		cp := *in.DistinctCount
+		cp.Field = substituteString(cp.Field, vars, group)
+		out.DistinctCount = &cp
+	}
+	return out
+}
+
+func substituteAnySlice(in []any, vars map[string]any, group map[string]string) []any {
+	out := make([]any, 0, len(in))
+	for _, item := range in {
+		out = append(out, substituteAny(item, vars, group))
+	}
+	return out
 }
 
 func substituteMap(in map[string]any, vars map[string]any, group map[string]string) map[string]any {

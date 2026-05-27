@@ -1,0 +1,72 @@
+version: hoyan/v1
+
+vars:
+  changed_prefix: 10.4.0.0/16
+  edges: [bj-edge1, sh-edge1, gz-edge1]
+
+snapshots:
+  pre:
+    lab: labs/intent-change-before
+  post:
+    lab: labs/intent-change-after
+
+scenarios:
+  post:
+    snapshot: post
+
+intents:
+  - name: unrelated-routes-unchanged
+    check:
+      compare:
+        table: rib
+        left:
+          snapshot: pre
+          where:
+            not:
+              prefix: ${changed_prefix}
+        right:
+          snapshot: post
+          where:
+            not:
+              prefix: ${changed_prefix}
+        relation: equal
+
+  - name: changed-prefix-has-routes-on-each-edge
+    forall:
+      edge: ${edges}
+    check:
+      table: rib
+      scenario: post
+      where:
+        device: ${edge}
+        prefix: ${changed_prefix}
+        selected: true
+      assert:
+        exists: true
+
+  - name: changed-prefix-nexthop-diversity
+    check:
+      table: rib
+      scenario: post
+      where:
+        prefix: ${changed_prefix}
+        device_in: ${edges}
+        selected: true
+      group_by: [device]
+      assert:
+        distinct_count:
+          field: nexthop
+          gte: 1
+
+  - name: changed-prefix-local-pref-default
+    check:
+      table: rib
+      scenario: post
+      where:
+        prefix: ${changed_prefix}
+        device_in: ${edges}
+        selected: true
+      assert:
+        distinct_values:
+          field: local_pref
+          equals: [0]
