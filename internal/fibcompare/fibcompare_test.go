@@ -305,6 +305,60 @@ func TestExpectedForNodesNormalizesModeledFIB(t *testing.T) {
 	}
 }
 
+func TestExpectedForNodesResolvesAddressOnlyRecursiveBGPNextHop(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			{
+				Name:       "hz-edge1",
+				Kind:       model.KindFRR,
+				ASN:        65004,
+				Interfaces: []model.Interface{{Name: "eth2", Address: "198.18.2.6/31"}},
+				Routes: []model.ConfiguredRoute{{
+					Prefix:  model.MustPrefix("10.119.2.2/32"),
+					NextHop: "198.18.2.7",
+					Kind:    model.RouteSourceStatic,
+				}},
+				Neighbors: []model.BGPNeighbor{{
+					PeerNode:  "hz-edge2",
+					RemoteAS:  65004,
+					Activated: true,
+				}},
+			},
+			{
+				Name:       "hz-edge2",
+				Kind:       model.KindFRR,
+				ASN:        65004,
+				Prefixes:   model.MustPrefixes("10.119.0.0/24"),
+				Interfaces: []model.Interface{{Name: "eth1", Address: "198.18.2.7/31"}},
+				Neighbors: []model.BGPNeighbor{{
+					PeerNode:     "hz-edge1",
+					RemoteAS:     65004,
+					Activated:    true,
+					ExportPolicy: "SET-RECURSIVE-NH",
+				}},
+				RoutePolicies: []model.RoutePolicy{{
+					Name: "SET-RECURSIVE-NH",
+					Rules: []model.RoutePolicyRule{{
+						Seq:        10,
+						Action:     "permit",
+						SetNextHop: "10.119.2.2",
+					}},
+				}},
+			},
+		},
+		Links: []model.Link{{Name: "hz1-hz2", A: "hz-edge1", B: "hz-edge2", AIntf: "eth2", BIntf: "eth1", Subnet: "198.18.2.6/31"}},
+	}
+	routes := ExpectedForNodes(topo, []model.Node{topo.Nodes[0]})
+	route := routeByPrefix(routes, "10.119.0.0/24")
+	if route == nil {
+		t.Fatalf("routes = %#v, want recursive BGP route", routes)
+	}
+	wantHop := NormalizedFIBNextHop{Address: "198.18.2.7", Interface: "eth2"}
+	if !reflect.DeepEqual(route.NextHops, []NormalizedFIBNextHop{wantHop}) {
+		t.Fatalf("next-hops = %#v, want %#v; routes = %#v", route.NextHops, []NormalizedFIBNextHop{wantHop}, routes)
+	}
+}
+
 func TestExpectedForNodesSuppressesSRLinuxLoopbackConnectedFIB(t *testing.T) {
 	topo := &model.Topology{
 		Nodes: []model.Node{{

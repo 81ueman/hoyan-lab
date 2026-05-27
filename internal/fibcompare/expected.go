@@ -48,7 +48,7 @@ func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []NormalizedFIBR
 					if entry.SourceKind == model.RouteSourceOSPF {
 						metric = entry.RouteSource.Metric
 					}
-					addExpectedRoute(byRoute, idx, fib, ctx, n.Name, vrf, entry.NLRI.Prefix.String(), entry.ForwardingNextHop.Node, entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
+					addExpectedRoute(byRoute, idx, fib, ctx, n.Name, vrf, entry.NLRI.Prefix.String(), forwardingNextHop(entry), entry.RouteSource.Interface, entry.SourceKind, entry.RouteSource.ConnectedClass, metric)
 				}
 			}
 		}
@@ -131,6 +131,14 @@ func expectedProtocol(source model.RouteSourceKind, nextHop string) string {
 		return "ospf"
 	}
 	return "bgp"
+}
+
+func forwardingNextHop(entry sim.RIBEntry) string {
+	entry = entry.Normalize()
+	if entry.ForwardingNextHop.Node != "" {
+		return entry.ForwardingNextHop.Node
+	}
+	return entry.ForwardingNextHop.Addr
 }
 
 func expectedNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, routePrefix, nextHop string) NormalizedFIBNextHop {

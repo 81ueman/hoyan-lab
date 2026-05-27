@@ -47,6 +47,30 @@ type UnsupportedConfigError struct {
 	Warnings []UnsupportedStatement
 }
 
+// Config parser entrypoints are intentionally per device. FRR and cEOS share
+// syntax helpers through the FRR-like helper below, but vendor semantics live in
+// the concrete parser/dialect instead of in ParseConfig or a kind-switching loop.
+type FRRParser struct{}
+type CEOSParser struct{}
+type SRLinuxParser struct{}
+
+type frrLikeDialect interface {
+	Kind() DeviceKind
+	VendorName() string
+	SupportsRouteMapPolicy() bool
+	SupportsOSPFConfig() bool
+	SupportsVRF() bool
+	SupportsFlatAccessList() bool
+	SupportsBGPStringLists() bool
+	SupportsAdvancedRouteMapPolicy() bool
+	InterfaceVRF(fields []string) (NetworkInstanceID, bool)
+	OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID
+	DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction
+}
+
+type frrDialect struct{}
+type ceosDialect struct{}
+
 type aclBinding struct {
 	Name      string
 	Interface string
@@ -117,8 +141,10 @@ func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResul
 		return ParseResult{}, fmt.Errorf("unsupported config kind %q", kind)
 	}
 	switch kind {
-	case KindFRR, KindCEOS:
-		return parseFRRLike(kind, path, string(data), collectWarnings)
+	case KindFRR:
+		return parseFRR(path, string(data), collectWarnings)
+	case KindCEOS:
+		return parseCEOS(path, string(data), collectWarnings)
 	case KindSRLinux:
 		return parseSRLinux(path, string(data), collectWarnings)
 	default:
@@ -126,11 +152,109 @@ func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResul
 	}
 }
 
-func isOSPFConfigKind(kind DeviceKind) bool {
-	return ProfileFor(kind).ConfigProfile().SupportsOSPFConfig()
+func parseFRR(path, text string, collectWarnings bool) (ParseResult, error) {
+	return FRRParser{}.Parse(path, text, collectWarnings)
 }
 
-func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (ParseResult, error) {
+func parseCEOS(path, text string, collectWarnings bool) (ParseResult, error) {
+	return CEOSParser{}.Parse(path, text, collectWarnings)
+}
+
+func (FRRParser) Parse(path, text string, collectWarnings bool) (ParseResult, error) {
+	return parseFRRLike(frrDialect{}, path, text, collectWarnings)
+}
+
+func (CEOSParser) Parse(path, text string, collectWarnings bool) (ParseResult, error) {
+	return parseFRRLike(ceosDialect{}, path, text, collectWarnings)
+}
+
+func (SRLinuxParser) Parse(path, text string, collectWarnings bool) (ParseResult, error) {
+	return parseSRLinuxConfig(path, text, collectWarnings)
+}
+
+func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) {
+	return SRLinuxParser{}.Parse(path, text, collectWarnings)
+}
+
+func (frrDialect) Kind() DeviceKind { return KindFRR }
+
+func (frrDialect) VendorName() string {
+	return ProfileFor(KindFRR).ConfigProfile().RouteMapVendorName()
+}
+
+func (frrDialect) SupportsRouteMapPolicy() bool {
+	return ProfileFor(KindFRR).ConfigProfile().SupportsRouteMapPolicy()
+}
+
+func (frrDialect) SupportsOSPFConfig() bool {
+	return ProfileFor(KindFRR).ConfigProfile().SupportsOSPFConfig()
+}
+
+func (frrDialect) SupportsVRF() bool { return true }
+
+func (frrDialect) SupportsFlatAccessList() bool { return true }
+
+func (frrDialect) SupportsBGPStringLists() bool { return true }
+
+func (frrDialect) SupportsAdvancedRouteMapPolicy() bool { return true }
+
+func (frrDialect) InterfaceVRF(fields []string) (NetworkInstanceID, bool) {
+	if len(fields) >= 3 && fields[1] == "forwarding" {
+		return NormalizeNetworkInstance(fields[2]), true
+	}
+	return "", false
+}
+
+func (frrDialect) OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID {
+	return ProfileFor(KindFRR).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
+}
+
+func (frrDialect) DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction {
+	return ProfileFor(KindFRR).ACLProfile().DefaultACLAction(fallback)
+}
+
+func (ceosDialect) Kind() DeviceKind { return KindCEOS }
+
+func (ceosDialect) VendorName() string {
+	return ProfileFor(KindCEOS).ConfigProfile().RouteMapVendorName()
+}
+
+func (ceosDialect) SupportsRouteMapPolicy() bool {
+	return ProfileFor(KindCEOS).ConfigProfile().SupportsRouteMapPolicy()
+}
+
+func (ceosDialect) SupportsOSPFConfig() bool {
+	return ProfileFor(KindCEOS).ConfigProfile().SupportsOSPFConfig()
+}
+
+func (ceosDialect) SupportsVRF() bool { return true }
+
+func (ceosDialect) SupportsFlatAccessList() bool { return false }
+
+func (ceosDialect) SupportsBGPStringLists() bool { return false }
+
+func (ceosDialect) SupportsAdvancedRouteMapPolicy() bool { return false }
+
+func (ceosDialect) InterfaceVRF(fields []string) (NetworkInstanceID, bool) {
+	if len(fields) >= 3 && fields[1] == "forwarding" {
+		return NormalizeNetworkInstance(fields[2]), true
+	}
+	if len(fields) >= 2 {
+		return NormalizeNetworkInstance(fields[1]), true
+	}
+	return "", false
+}
+
+func (ceosDialect) OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID {
+	return ProfileFor(KindCEOS).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
+}
+
+func (ceosDialect) DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction {
+	return ProfileFor(KindCEOS).ACLProfile().DefaultACLAction(fallback)
+}
+
+func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings bool) (ParseResult, error) {
+	kind := dialect.Kind()
 	var cfg ParsedConfig
 	var warnings []UnsupportedStatement
 	neighbors := map[string]*BGPNeighbor{}
@@ -198,7 +322,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if ok {
 				aclPolicies[currentACL] = append(aclPolicies[currentACL], pol)
 			}
-		case kind == KindFRR && len(fields) >= 5 && fields[0] == "access-list" && (fields[2] == "permit" || fields[2] == "deny"):
+		case dialect.SupportsFlatAccessList() && len(fields) >= 5 && fields[0] == "access-list" && (fields[2] == "permit" || fields[2] == "deny"):
 			pol, ok, err := parseACLRule(kind, path, lineNo, line, fields[1], fields[2:])
 			if err != nil {
 				if !collectWarnings {
@@ -210,13 +334,13 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if ok {
 				aclPolicies[fields[1]] = append(aclPolicies[fields[1]], pol)
 			}
-		case isRouteMapPolicyKind(kind) && len(fields) >= 5 && fields[0] == "ip" && fields[1] == "prefix-list" && (fields[3] == "permit" || fields[3] == "deny"):
+		case dialect.SupportsRouteMapPolicy() && len(fields) >= 5 && fields[0] == "ip" && fields[1] == "prefix-list" && (fields[3] == "permit" || fields[3] == "deny"):
 			rule, err := parsePrefixListRule(0, fields[3], fields[4], fields[5:])
 			if err != nil {
 				return ParseResult{}, fmt.Errorf("%s: %w", line, err)
 			}
 			addPrefixListRule(prefixLists, fields[2], rule)
-		case isRouteMapPolicyKind(kind) && len(fields) >= 7 && fields[0] == "ip" && fields[1] == "prefix-list" && fields[3] == "seq" && (fields[5] == "permit" || fields[5] == "deny"):
+		case dialect.SupportsRouteMapPolicy() && len(fields) >= 7 && fields[0] == "ip" && fields[1] == "prefix-list" && fields[3] == "seq" && (fields[5] == "permit" || fields[5] == "deny"):
 			seq, err := strconv.Atoi(fields[4])
 			if err != nil {
 				return ParseResult{}, err
@@ -226,11 +350,11 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				return ParseResult{}, fmt.Errorf("%s: %w", line, err)
 			}
 			addPrefixListRule(prefixLists, fields[2], rule)
-		case kind == KindFRR && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "as-path" && fields[2] == "access-list" && (fields[4] == "permit" || fields[4] == "deny"):
+		case dialect.SupportsBGPStringLists() && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "as-path" && fields[2] == "access-list" && (fields[4] == "permit" || fields[4] == "deny"):
 			addStringListRule(asPathLists, fields[3], StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
-		case kind == KindFRR && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "community-list" && fields[2] == "standard" && (fields[4] == "permit" || fields[4] == "deny"):
+		case dialect.SupportsBGPStringLists() && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "community-list" && fields[2] == "standard" && (fields[4] == "permit" || fields[4] == "deny"):
 			addCommunityListRule(communityLists, fields[3], StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
-		case isRouteMapPolicyKind(kind) && len(fields) >= 4 && fields[0] == "route-map" && (fields[2] == "permit" || fields[2] == "deny"):
+		case dialect.SupportsRouteMapPolicy() && len(fields) >= 4 && fields[0] == "route-map" && (fields[2] == "permit" || fields[2] == "deny"):
 			seq := 0
 			if len(fields) >= 4 {
 				var err error
@@ -243,13 +367,13 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			currentInterface = ""
 			inBGP = false
 			inAF = false
-		case isRouteMapPolicyKind(kind) && currentRouteRule != nil && len(fields) >= 5 && fields[0] == "match" && fields[1] == "ip" && fields[2] == "address" && fields[3] == "prefix-list":
+		case dialect.SupportsRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 5 && fields[0] == "match" && fields[1] == "ip" && fields[2] == "address" && fields[3] == "prefix-list":
 			currentRouteRule.MatchPrefixList = fields[4]
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 5 && fields[0] == "match" && fields[1] == "ip" && fields[2] == "next-hop" && fields[3] == "prefix-list":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 5 && fields[0] == "match" && fields[1] == "ip" && fields[2] == "next-hop" && fields[3] == "prefix-list":
 			currentRouteRule.MatchNextHopPrefixList = fields[4]
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "match" && fields[1] == "as-path":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "match" && fields[1] == "as-path":
 			currentRouteRule.MatchASPathList = fields[2]
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "match" && fields[1] == "community":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "match" && fields[1] == "community":
 			currentRouteRule.MatchCommunityList = fields[2]
 			if len(fields) >= 4 {
 				switch fields[3] {
@@ -258,17 +382,17 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				case "any":
 				default:
 					if !collectWarnings {
-						return ParseResult{}, fmt.Errorf("unsupported FRR route-map match statement %q", line)
+						return ParseResult{}, fmt.Errorf("unsupported %s route-map match statement %q", dialect.VendorName(), line)
 					}
-					warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR route-map match statement"))
+					warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map match statement", dialect.VendorName())))
 				}
 			}
-		case isRouteMapPolicyKind(kind) && currentRouteRule != nil && len(fields) >= 1 && fields[0] == "match":
+		case dialect.SupportsRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 1 && fields[0] == "match":
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported %s route-map match statement %q", routeMapVendorName(kind), line)
+				return ParseResult{}, fmt.Errorf("unsupported %s route-map match statement %q", dialect.VendorName(), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map match statement", routeMapVendorName(kind))))
-		case isRouteMapPolicyKind(kind) && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "local-preference":
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map match statement", dialect.VendorName())))
+		case dialect.SupportsRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "local-preference":
 			v, delta, err := parseRouteMapInt(fields[2])
 			if err != nil {
 				return ParseResult{}, err
@@ -278,7 +402,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			} else {
 				currentRouteRule.SetLocalPref = intPtr(v)
 			}
-		case isRouteMapPolicyKind(kind) && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "metric":
+		case dialect.SupportsRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "metric":
 			v, delta, err := parseRouteMapInt(fields[2])
 			if err != nil {
 				return ParseResult{}, err
@@ -288,50 +412,50 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			} else {
 				currentRouteRule.SetMED = intPtr(v)
 			}
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 4 && fields[0] == "set" && fields[1] == "as-path" && fields[2] == "prepend":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 4 && fields[0] == "set" && fields[1] == "as-path" && fields[2] == "prepend":
 			path, err := parseASPathFields(fields[3:])
 			if err != nil {
 				return ParseResult{}, err
 			}
 			currentRouteRule.SetASPathPrepend = path
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "community":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "community":
 			communities := append([]string(nil), fields[2:]...)
 			if len(communities) > 0 && communities[len(communities)-1] == "additive" {
 				currentRouteRule.SetCommunityAdditive = true
 				communities = communities[:len(communities)-1]
 			}
 			currentRouteRule.SetCommunities = communities
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "origin":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "origin":
 			switch fields[2] {
 			case "igp", "egp", "incomplete":
 				currentRouteRule.SetOriginCode = fields[2]
 			default:
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported FRR route-map origin %q", line)
+					return ParseResult{}, fmt.Errorf("unsupported %s route-map origin %q", dialect.VendorName(), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR route-map origin"))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map origin", dialect.VendorName())))
 			}
-		case kind == KindFRR && currentRouteRule != nil && len(fields) >= 4 && fields[0] == "set" && fields[1] == "ip" && fields[2] == "next-hop":
+		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 4 && fields[0] == "set" && fields[1] == "ip" && fields[2] == "next-hop":
 			if _, err := netip.ParseAddr(fields[3]); err != nil {
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported FRR route-map next-hop %q", line)
+					return ParseResult{}, fmt.Errorf("unsupported %s route-map next-hop %q", dialect.VendorName(), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR route-map next-hop"))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map next-hop", dialect.VendorName())))
 				continue
 			}
 			currentRouteRule.SetNextHop = fields[3]
-		case isRouteMapPolicyKind(kind) && currentRouteRule != nil && len(fields) >= 1 && (fields[0] == "set" || fields[0] == "call" || fields[0] == "continue" || fields[0] == "on-match"):
+		case dialect.SupportsRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 1 && (fields[0] == "set" || fields[0] == "call" || fields[0] == "continue" || fields[0] == "on-match"):
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported %s route-map statement %q", routeMapVendorName(kind), line)
+				return ParseResult{}, fmt.Errorf("unsupported %s route-map statement %q", dialect.VendorName(), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map statement", routeMapVendorName(kind))))
-		case isRouteMapPolicyKind(kind) && currentRoutePolicy != nil:
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map statement", dialect.VendorName())))
+		case dialect.SupportsRouteMapPolicy() && currentRoutePolicy != nil:
 			if collectWarnings {
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map statement", routeMapVendorName(kind))))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s route-map statement", dialect.VendorName())))
 			}
 		case fields[0] == "interface" && len(fields) >= 2:
 			currentInterface = fields[1]
-			if supportsFRRLikeVRF(kind) && len(fields) >= 4 && fields[2] == "vrf" {
+			if dialect.SupportsVRF() && len(fields) >= 4 && fields[2] == "vrf" {
 				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[3])})
 			}
 			currentACL = ""
@@ -344,59 +468,56 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if strings.EqualFold(currentInterface, "lo") || strings.HasPrefix(strings.ToLower(currentInterface), "loopback") {
 				cfg.Loopback = addr
 			}
-		case supportsFRRLikeVRF(kind) && currentInterface != "" && len(fields) >= 2 && fields[0] == "vrf":
-			switch {
-			case len(fields) >= 3 && fields[1] == "forwarding":
-				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[2])})
-			case kind == KindCEOS && len(fields) >= 2:
-				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[1])})
+		case dialect.SupportsVRF() && currentInterface != "" && len(fields) >= 2 && fields[0] == "vrf":
+			if vrf, ok := dialect.InterfaceVRF(fields); ok {
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: vrf})
 			}
 		case currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "access-group":
 			stage, ok := aclStage(fields[3])
 			if ok {
 				aclBindings = append(aclBindings, aclBinding{Name: fields[2], Interface: currentInterface, Stage: stage, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
 			}
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
-			vrf := ospfInterfaceVRF(kind, cfg.Interfaces, currentInterface)
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
+			vrf := dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.Area = normalizeOSPFAreaID(fields[3])
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
 			cost, err := strconv.Atoi(fields[3])
 			if err != nil || cost <= 0 {
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface cost %q", routeMapVendorName(kind), line)
+					return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface cost %q", dialect.VendorName(), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface cost", routeMapVendorName(kind))))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface cost", dialect.VendorName())))
 				continue
 			}
-			vrf := ospfInterfaceVRF(kind, cfg.Interfaces, currentInterface)
+			vrf := dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.Cost = cost
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && isSupportedOSPFNetworkType(fields[3]):
-			vrf := ospfInterfaceVRF(kind, cfg.Interfaces, currentInterface)
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && isSupportedOSPFNetworkType(fields[3]):
+			vrf := dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.NetworkType = normalizeOSPFNetworkType(fields[3])
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
-			ospfProcess(&cfg, ospfInterfaceVRF(kind, cfg.Interfaces, currentInterface)).Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "mtu-ignore":
-			ospfProcess(&cfg, ospfInterfaceVRF(kind, cfg.Interfaces, currentInterface)).Enabled = true
-		case isOSPFConfigKind(kind) && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf":
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
+			ospfProcess(&cfg, dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)).Enabled = true
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "mtu-ignore":
+			ospfProcess(&cfg, dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)).Enabled = true
+		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "ospf":
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface statement %q", routeMapVendorName(kind), line)
+				return ParseResult{}, fmt.Errorf("unsupported %s OSPF interface statement %q", dialect.VendorName(), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface statement", routeMapVendorName(kind))))
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF interface statement", dialect.VendorName())))
 		case len(fields) >= 4 && fields[0] == "ip" && fields[1] == "route":
 			route, err := parseFRRLikeStaticRoute(kind, path, lineNo, line, fields)
 			if err != nil {
@@ -421,7 +542,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			inAF = false
 			inOSPF = false
 			currentInterface = ""
-		case isOSPFConfigKind(kind) && len(fields) >= 2 && fields[0] == "router" && fields[1] == "ospf":
+		case dialect.SupportsOSPFConfig() && len(fields) >= 2 && fields[0] == "router" && fields[1] == "ospf":
 			currentOSPFVRF = parseFRRLikeOSPFVRF(fields)
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
 			ospf.Enabled = true
@@ -429,22 +550,22 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			inBGP = false
 			inAF = false
 			currentInterface = ""
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 3 && fields[0] == "ospf" && fields[1] == "router-id":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 3 && fields[0] == "ospf" && fields[1] == "router-id":
 			ospfProcess(&cfg, currentOSPFVRF).RouterID = fields[2]
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
 			ospfProcess(&cfg, currentOSPFVRF).RouterID = fields[1]
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
 			prefix, err := ParsePrefix(fields[1])
 			if err != nil {
 				if !collectWarnings {
-					return ParseResult{}, fmt.Errorf("unsupported %s OSPF network %q", routeMapVendorName(kind), line)
+					return ParseResult{}, fmt.Errorf("unsupported %s OSPF network %q", dialect.VendorName(), line)
 				}
-				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF network", routeMapVendorName(kind))))
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF network", dialect.VendorName())))
 				continue
 			}
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
 			ospf.Networks = append(ospf.Networks, OSPFNetwork{Prefix: prefix, Area: normalizeOSPFAreaID(fields[3]), Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 3 && fields[0] == "area":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 3 && fields[0] == "area":
 			area, err := parseFRRLikeOSPFArea(kind, path, lineNo, line, fields)
 			if err != nil {
 				if !collectWarnings {
@@ -455,14 +576,14 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			}
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
 			ospf.Areas[area.ID] = area
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
 			ospf.PassiveInterfaces = appendUnique(ospf.PassiveInterfaces, fields[1])
 			oi := ospfInterface(ospf, fields[1])
 			oi.Passive = true
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[fields[1]] = *oi
-		case isOSPFConfigKind(kind) && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
+		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
 			redist, err := parseFRRLikeOSPFRedistribution(kind, path, lineNo, line, fields)
 			if err != nil {
 				if !collectWarnings {
@@ -473,11 +594,11 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			}
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
 			ospf.Redistribute = append(ospf.Redistribute, redist)
-		case isOSPFConfigKind(kind) && inOSPF:
+		case dialect.SupportsOSPFConfig() && inOSPF:
 			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported %s OSPF statement %q", routeMapVendorName(kind), line)
+				return ParseResult{}, fmt.Errorf("unsupported %s OSPF statement %q", dialect.VendorName(), line)
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF statement", routeMapVendorName(kind))))
+			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, fmt.Sprintf("unsupported %s OSPF statement", dialect.VendorName())))
 		case inBGP && len(fields) >= 3 && (fields[0] == "bgp" || fields[0] == "router-id") && fields[len(fields)-2] == "router-id":
 			cfg.RouterID = fields[len(fields)-1]
 		case inBGP && len(fields) >= 2 && fields[0] == "router-id":
@@ -536,7 +657,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			getNeighbor(neighbors, bgpVRF, fields[1]).Activated = true
 		case inBGP && inAF && len(fields) >= 3 && fields[0] == "neighbor" && fields[2] == "next-hop-self":
 			getNeighbor(neighbors, bgpVRF, fields[1]).NextHopSelf = true
-		case isRouteMapPolicyKind(kind) && inBGP && inAF && len(fields) >= 5 && fields[0] == "neighbor" && fields[2] == "route-map":
+		case dialect.SupportsRouteMapPolicy() && inBGP && inAF && len(fields) >= 5 && fields[0] == "neighbor" && fields[2] == "route-map":
 			n := getNeighbor(neighbors, bgpVRF, fields[1])
 			switch fields[4] {
 			case "in":
@@ -550,7 +671,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 		return ParseResult{}, err
 	}
 	for _, n := range neighbors {
-		if n.Activated || kind == KindSRLinux {
+		if n.Activated {
 			cfg.Neighbors = append(cfg.Neighbors, *n)
 		}
 	}
@@ -558,7 +679,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 	cfg.ASPathLists = sortedASPathLists(asPathLists)
 	cfg.CommunityLists = sortedCommunityLists(communityLists)
 	cfg.RoutePolicies = sortedRoutePolicies(routePolicies)
-	cfg.ACLs = normalizedACLs(kind, aclPolicies, defaultACLAction(kind, ACLDefaultDeny))
+	cfg.ACLs = normalizedACLs(kind, aclPolicies, dialect.DefaultACLAction(ACLDefaultDeny))
 	cfg.ACLBindings = normalizedACLBindings(aclBindings)
 	cfg.OSPFProcesses = compactOSPFProcesses(cfg.OSPFProcesses)
 	if cfg.Loopback == "" && cfg.RouterID != "" {
@@ -567,7 +688,7 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 	return ParseResult{Config: cfg, Warnings: warnings}, nil
 }
 
-func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) {
+func parseSRLinuxConfig(path, text string, collectWarnings bool) (ParseResult, error) {
 	var cfg ParsedConfig
 	var warnings []UnsupportedStatement
 	groupAS := map[string]uint32{}
@@ -790,10 +911,6 @@ func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw strin
 	}
 	route.Interface = target
 	return route, nil
-}
-
-func supportsFRRLikeVRF(kind DeviceKind) bool {
-	return kind == KindFRR || kind == KindCEOS
 }
 
 func ospfProcess(cfg *ParsedConfig, vrf NetworkInstanceID) *OSPFProcess {
@@ -1861,10 +1978,6 @@ func srLinuxRoutingPolicyKind(fields []string) string {
 		}
 	}
 	return ""
-}
-
-func isRouteMapPolicyKind(kind DeviceKind) bool {
-	return ProfileFor(kind).ConfigProfile().SupportsRouteMapPolicy()
 }
 
 func routeMapVendorName(kind DeviceKind) string {

@@ -1503,6 +1503,51 @@ func TestParseCEOSVRFInterfacesAndStaticRoutes(t *testing.T) {
 	}
 }
 
+func TestDeviceParserEntrypoints(t *testing.T) {
+	frr, err := FRRParser{}.Parse("frr.conf", `
+hostname frr1
+interface eth1
+ ip address 192.0.2.1/30
+!
+router bgp 65001
+ neighbor 192.0.2.2 remote-as 65002
+ address-family ipv4 unicast
+  neighbor 192.0.2.2 activate
+ exit-address-family
+`, false)
+	if err != nil {
+		t.Fatalf("FRRParser.Parse() error = %v", err)
+	}
+	if frr.Config.Hostname != "frr1" || len(frr.Config.Neighbors) != 1 {
+		t.Fatalf("FRR parser result = %#v", frr.Config)
+	}
+
+	ceos, err := CEOSParser{}.Parse("ceos.cfg", `
+hostname ceos1
+interface Ethernet1
+   vrf tenant-a
+   ip address 192.0.2.1/30
+`, false)
+	if err != nil {
+		t.Fatalf("CEOSParser.Parse() error = %v", err)
+	}
+	if ceos.Config.Hostname != "ceos1" || interfaceByName(ceos.Config.Interfaces, "Ethernet1").VRF != "tenant-a" {
+		t.Fatalf("cEOS parser result = %#v", ceos.Config)
+	}
+
+	srl, err := SRLinuxParser{}.Parse("srl.cfg", `
+set / system name host-name srl1
+set / interface ethernet-1/1 subinterface 0 ipv4 address 192.0.2.1/30
+set / network-instance tenant-a interface ethernet-1/1.0
+`, false)
+	if err != nil {
+		t.Fatalf("SRLinuxParser.Parse() error = %v", err)
+	}
+	if srl.Config.Hostname != "srl1" || interfaceByName(srl.Config.Interfaces, "ethernet-1/1").VRF != "tenant-a" {
+		t.Fatalf("SR Linux parser result = %#v", srl.Config)
+	}
+}
+
 func TestParseSRLinuxNetworkInstanceInterfacesAndStaticRoutes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "srl.cfg")
 	config := strings.Join([]string{
