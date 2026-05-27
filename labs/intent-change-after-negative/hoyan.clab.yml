@@ -1,0 +1,38 @@
+name: hoyan-intent-change-after-negative
+mgmt:
+  network: hoyan-intent-change-after-negative
+  ipv4-subnet: 172.86.98.0/24
+topology:
+  nodes:
+    bj-edge1:
+      kind: linux
+      group: edge
+      binds:
+        - configs/frr/bj-edge1/frr.conf:/etc/frr/frr.conf:ro
+    sh-edge1:
+      kind: linux
+      group: edge
+      binds:
+        - configs/frr/sh-edge1/frr.conf:/etc/frr/frr.conf:ro
+    gz-edge1:
+      kind: linux
+      group: edge
+      binds:
+        - configs/frr/gz-edge1/frr.conf:/etc/frr/frr.conf:ro
+    transit-a:
+      kind: linux
+      group: transit
+      binds:
+        - configs/frr/transit-a/frr.conf:/etc/frr/frr.conf:ro
+    transit-b:
+      kind: linux
+      group: transit
+      binds:
+        - configs/frr/transit-b/frr.conf:/etc/frr/frr.conf:ro
+  links:
+    - endpoints: [bj-edge1:eth1, transit-a:eth1]
+    - endpoints: [bj-edge1:eth2, transit-b:eth1]
+    - endpoints: [sh-edge1:eth1, transit-a:eth2]
+    - endpoints: [sh-edge1:eth2, transit-b:eth2]
+    - endpoints: [gz-edge1:eth1, transit-a:eth3]
+    - endpoints: [gz-edge1:eth2, transit-b:eth3]

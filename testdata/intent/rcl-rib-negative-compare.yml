@@ -1,0 +1,27 @@
+version: hoyan/v1
+
+vars:
+  changed_prefix: 10.4.0.0/16
+
+snapshots:
+  pre:
+    lab: labs/intent-change-before
+  post:
+    lab: labs/intent-change-after-negative
+
+intents:
+  - name: unrelated-routes-unchanged
+    check:
+      compare:
+        table: rib
+        left:
+          snapshot: pre
+          where:
+            not:
+              prefix: ${changed_prefix}
+        right:
+          snapshot: post
+          where:
+            not:
+              prefix: ${changed_prefix}
+        relation: equal

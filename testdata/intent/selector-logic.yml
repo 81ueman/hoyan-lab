@@ -1,0 +1,65 @@
+version: hoyan/v1
+
+vars:
+  changed_prefix: 10.4.0.0/16
+  edges: [bj-edge1, sh-edge1, gz-edge1]
+
+snapshots:
+  post:
+    lab: labs/intent-change-after
+
+scenarios:
+  post:
+    snapshot: post
+
+intents:
+  - name: logical-and-selects-edge-routes
+    check:
+      table: rib
+      scenario: post
+      where:
+        and:
+          - device_in: ${edges}
+          - prefix: ${changed_prefix}
+          - selected: true
+      assert:
+        count:
+          equals: 3
+
+  - name: logical-or-selects-static-and-connected
+    check:
+      table: rib
+      scenario: post
+      where:
+        and:
+          - device: bj-edge1
+          - or:
+              - protocol: static
+              - protocol: connected
+      assert:
+        count:
+          gte: 1
+
+  - name: logical-not-excludes-changed-prefix
+    check:
+      table: rib
+      scenario: post
+      where:
+        and:
+          - device_in: ${edges}
+          - not:
+              prefix: ${changed_prefix}
+      assert:
+        count:
+          gte: 3
+
+  - name: prefix-within-matches-child-space
+    check:
+      table: rib
+      scenario: post
+      where:
+        prefix_within: 10.4.0.0/16
+        device_in: ${edges}
+      assert:
+        count:
+          equals: 3

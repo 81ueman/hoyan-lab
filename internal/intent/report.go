@@ -25,7 +25,12 @@ type Result struct {
 }
 
 type Actual struct {
-	Count  int      `json:"count"`
-	Reason string   `json:"reason,omitempty"`
-	Rows   []string `json:"rows,omitempty"`
+	Count         int      `json:"count"`
+	DistinctCount int      `json:"distinct_count,omitempty"`
+	Values        []any    `json:"values,omitempty"`
+	Reason        string   `json:"reason,omitempty"`
+	Rows          []string `json:"rows,omitempty"`
+	AddedRows     []any    `json:"added_rows,omitempty"`
+	RemovedRows   []any    `json:"removed_rows,omitempty"`
+	ChangedRows   []any    `json:"changed_rows,omitempty"`
 }
