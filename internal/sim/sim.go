@@ -38,8 +38,8 @@ type DeviceBehavior = controlplane.DeviceBehavior
 type Graph struct {
 	topo      *model.Topology
 	topoIndex *model.TopologyIndex
-	rib       map[string]map[string][]RIBEntry
-	fib       map[string][]FIBEntry
+	rib       map[string]map[string]map[string][]RIBEntry
+	fib       map[string]map[string][]FIBEntry
 }
 
 func NoFailures() FailureSet { return failure.None() }
@@ -111,8 +111,8 @@ func NewGraph(topo *model.Topology) *Graph {
 	g := &Graph{
 		topo:      topo,
 		topoIndex: idx,
-		rib:       map[string]map[string][]RIBEntry{},
-		fib:       map[string][]FIBEntry{},
+		rib:       map[string]map[string]map[string][]RIBEntry{},
+		fib:       map[string]map[string][]FIBEntry{},
 	}
 	controlplane.NewEngine(idx, g.rib).Simulate()
 	dataplane.NewEngine(idx, g.rib, g.fib).DeriveFIB()
@@ -120,19 +120,50 @@ func NewGraph(topo *model.Topology) *Graph {
 }
 
 func (g *Graph) RIB(node, prefix string) []RIBEntry {
-	return append([]RIBEntry(nil), g.rib[node][prefix]...)
+	return g.RIBVRF(node, string(model.NetworkInstanceDefault), prefix)
+}
+
+func (g *Graph) RIBVRF(node, vrf, prefix string) []RIBEntry {
+	return append([]RIBEntry(nil), g.rib[node][string(model.NormalizeNetworkInstance(vrf))][prefix]...)
 }
 
 func (g *Graph) RIBTable(node string) map[string][]RIBEntry {
+	return g.RIBTableVRF(node, string(model.NetworkInstanceDefault))
+}
+
+func (g *Graph) RIBTableVRF(node, vrf string) map[string][]RIBEntry {
 	out := map[string][]RIBEntry{}
-	for prefix, routes := range g.rib[node] {
+	for prefix, routes := range g.rib[node][string(model.NormalizeNetworkInstance(vrf))] {
 		out[prefix] = append([]RIBEntry(nil), routes...)
 	}
 	return out
 }
 
+func (g *Graph) RIBTables(node string) map[string]map[string][]RIBEntry {
+	out := map[string]map[string][]RIBEntry{}
+	for vrf, byPrefix := range g.rib[node] {
+		out[vrf] = map[string][]RIBEntry{}
+		for prefix, routes := range byPrefix {
+			out[vrf][prefix] = append([]RIBEntry(nil), routes...)
+		}
+	}
+	return out
+}
+
 func (g *Graph) FIB(node string) []FIBEntry {
-	return append([]FIBEntry(nil), g.fib[node]...)
+	return g.FIBVRF(node, string(model.NetworkInstanceDefault))
+}
+
+func (g *Graph) FIBVRF(node, vrf string) []FIBEntry {
+	return append([]FIBEntry(nil), g.fib[node][string(model.NormalizeNetworkInstance(vrf))]...)
+}
+
+func (g *Graph) FIBTables(node string) map[string][]FIBEntry {
+	out := map[string][]FIBEntry{}
+	for vrf, entries := range g.fib[node] {
+		out[vrf] = append([]FIBEntry(nil), entries...)
+	}
+	return out
 }
 
 func (g *Graph) FailureContext(failures FailureSet) FailureContext {
@@ -143,8 +174,16 @@ func (g *Graph) RouteReachable(from, prefix string, failures FailureSet) (Path, 
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).RouteReachable(from, prefix, failures)
 }
 
+func (g *Graph) RouteReachableVRF(from, vrf, prefix string, failures FailureSet) (Path, bool) {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).RouteReachableVRF(from, vrf, prefix, failures)
+}
+
 func (g *Graph) RouteReachableForPrefixSet(from string, dst model.PrefixSet, failures FailureSet) (Path, bool) {
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).RouteReachableForPrefixSet(from, dst, failures)
+}
+
+func (g *Graph) RouteReachableForPrefixSetVRF(from, vrf string, dst model.PrefixSet, failures FailureSet) (Path, bool) {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).RouteReachableForPrefixSetVRF(from, vrf, dst, failures)
 }
 
 func (g *Graph) PacketReachable(from, to, protocol string, failures FailureSet) (Path, bool, string) {
@@ -155,6 +194,10 @@ func (g *Graph) PacketReachableSpec(from, to string, spec model.PacketSpec, fail
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).PacketReachableSpec(from, to, spec, failures)
 }
 
+func (g *Graph) PacketReachableSpecVRF(from, vrf, to string, spec model.PacketSpec, failures FailureSet) (Path, bool, string) {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).PacketReachableSpecVRF(from, vrf, to, spec, failures)
+}
+
 func (g *Graph) SymbolicPacketReachability(from, to, protocol string) SymbolicReachabilityResult {
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachability(from, to, protocol)
 }
@@ -163,12 +206,20 @@ func (g *Graph) SymbolicPacketReachabilitySpec(from, to string, spec model.Packe
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachabilitySpec(from, to, spec)
 }
 
+func (g *Graph) SymbolicPacketReachabilitySpecVRF(from, vrf, to string, spec model.PacketSpec) SymbolicReachabilityResult {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachabilitySpecVRF(from, vrf, to, spec)
+}
+
 func (g *Graph) SymbolicPacketReachabilityForPrefixSet(from string, dst model.PrefixSet, protocol string) SymbolicReachabilityResult {
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachabilityForPrefixSet(from, dst, protocol)
 }
 
 func (g *Graph) SymbolicPacketReachabilityForPrefixSetSpec(from string, dst model.PrefixSet, spec model.PacketSpec) SymbolicReachabilityResult {
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachabilityForPrefixSetSpec(from, dst, spec)
+}
+
+func (g *Graph) SymbolicPacketReachabilityForPrefixSetSpecVRF(from, vrf string, dst model.PrefixSet, spec model.PacketSpec) SymbolicReachabilityResult {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicPacketReachabilityForPrefixSetSpecVRF(from, vrf, dst, spec)
 }
 
 func (g *Graph) SymbolicPacketReachabilityForClass(from string, universe model.PrefixUniverse, classID model.PrefixClassID, protocol string) SymbolicReachabilityResult {
@@ -185,6 +236,14 @@ func (g *Graph) SymbolicRouteReachability(from, prefix string) SymbolicRouteReac
 
 func (g *Graph) SymbolicRouteReachabilityForPrefixSet(from string, dst model.PrefixSet) SymbolicRouteReachabilityResult {
 	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicRouteReachabilityForPrefixSet(from, dst)
+}
+
+func (g *Graph) SymbolicRouteReachabilityForPrefixSetVRF(from, vrf string, dst model.PrefixSet) SymbolicRouteReachabilityResult {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicRouteReachabilityForPrefixSetVRF(from, vrf, dst)
+}
+
+func (g *Graph) SymbolicRouteReachabilityVRF(from, vrf, prefix string) SymbolicRouteReachabilityResult {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicRouteReachabilityVRF(from, vrf, prefix)
 }
 
 func (g *Graph) SymbolicRouteReachabilityForClass(from string, universe model.PrefixUniverse, classID model.PrefixClassID) SymbolicRouteReachabilityResult {
@@ -323,21 +382,23 @@ func (t PrefixTarget) SymbolicResult(g *Graph, from string) SymbolicTargetResult
 
 type RoutePrefixSetTarget struct {
 	Space model.PrefixSet
+	VRF   string
 }
 
 func (t RoutePrefixSetTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
-	_, ok := g.RouteReachableForPrefixSet(from, t.Space, failures)
+	_, ok := g.RouteReachableForPrefixSetVRF(from, t.VRF, t.Space, failures)
 	return ok
 }
 
 func (t RoutePrefixSetTarget) SymbolicResult(g *Graph, from string) SymbolicTargetResult {
-	result := g.SymbolicRouteReachabilityForPrefixSet(from, t.Space)
+	result := g.SymbolicRouteReachabilityForPrefixSetVRF(from, t.VRF, t.Space)
 	return routeSymbolicTargetResult(result)
 }
 
 type RouteClassTarget struct {
 	Universe model.PrefixUniverse
 	ClassID  model.PrefixClassID
+	VRF      string
 }
 
 func (t RouteClassTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
@@ -346,7 +407,7 @@ func (t RouteClassTarget) Reachable(g *Graph, from string, failures FailureSet) 
 }
 
 func (t RouteClassTarget) symbolicReachability(g *Graph, from string) SymbolicRouteReachabilityResult {
-	return g.SymbolicRouteReachabilityForClass(from, t.Universe, t.ClassID)
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib).SymbolicRouteReachabilityForClassVRF(from, t.VRF, t.Universe, t.ClassID)
 }
 
 func (t RouteClassTarget) SymbolicResult(g *Graph, from string) SymbolicTargetResult {
@@ -358,10 +419,11 @@ type PacketTarget struct {
 	To       string
 	Protocol string
 	DstPort  int
+	VRF      string
 }
 
 func (t PacketTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
-	_, ok, _ := g.PacketReachableSpec(from, t.To, t.Spec(), failures)
+	_, ok, _ := g.PacketReachableSpecVRF(from, t.VRF, t.To, t.Spec(), failures)
 	return ok
 }
 
@@ -370,7 +432,7 @@ func (t PacketTarget) Spec() model.PacketSpec {
 }
 
 func (t PacketTarget) SymbolicResult(g *Graph, from string) SymbolicTargetResult {
-	result := g.SymbolicPacketReachabilitySpec(from, t.To, t.Spec())
+	result := g.SymbolicPacketReachabilitySpecVRF(from, t.VRF, t.To, t.Spec())
 	return packetSymbolicTargetResult(result)
 }
 
@@ -378,13 +440,14 @@ type PacketPrefixTarget struct {
 	Prefix   model.Prefix
 	Protocol string
 	DstPort  int
+	VRF      string
 }
 
 func (t PacketPrefixTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
 	if t.Prefix.IsZero() {
 		return false
 	}
-	_, ok, _ := g.PacketReachableSpec(from, t.Prefix.Addr().String(), t.Spec(), failures)
+	_, ok, _ := g.PacketReachableSpecVRF(from, t.VRF, t.Prefix.Addr().String(), t.Spec(), failures)
 	return ok
 }
 
@@ -393,7 +456,7 @@ func (t PacketPrefixTarget) Spec() model.PacketSpec {
 }
 
 func (t PacketPrefixTarget) SymbolicResult(g *Graph, from string) SymbolicTargetResult {
-	result := g.SymbolicPacketReachabilityForPrefixSetSpec(from, model.ExactPrefixSet{Prefix: t.Prefix}, t.Spec())
+	result := g.SymbolicPacketReachabilityForPrefixSetSpecVRF(from, t.VRF, model.ExactPrefixSet{Prefix: t.Prefix}, t.Spec())
 	return packetSymbolicTargetResult(result)
 }
 
@@ -402,6 +465,7 @@ type PacketClassTarget struct {
 	ClassID  model.PrefixClassID
 	Protocol string
 	DstPort  int
+	VRF      string
 }
 
 func (t PacketClassTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
@@ -416,7 +480,7 @@ func (t PacketClassTarget) Spec() model.PacketSpec {
 func (t PacketClassTarget) symbolicReachability(g *Graph, from string) SymbolicReachabilityResult {
 	for _, class := range t.Universe.Classes {
 		if class.ID == t.ClassID {
-			return g.SymbolicPacketReachabilityForPrefixSetSpec(from, class.Space, t.Spec())
+			return g.SymbolicPacketReachabilityForPrefixSetSpecVRF(from, t.VRF, class.Space, t.Spec())
 		}
 	}
 	return SymbolicReachabilityResult{

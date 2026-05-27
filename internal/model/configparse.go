@@ -324,6 +324,9 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			}
 		case fields[0] == "interface" && len(fields) >= 2:
 			currentInterface = fields[1]
+			if kind == KindFRR && len(fields) >= 4 && fields[2] == "vrf" {
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[3])})
+			}
 			currentACL = ""
 			inBGP = false
 			inAF = false
@@ -334,6 +337,8 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if strings.EqualFold(currentInterface, "lo") || strings.HasPrefix(strings.ToLower(currentInterface), "loopback") {
 				cfg.Loopback = addr
 			}
+		case kind == KindFRR && currentInterface != "" && len(fields) >= 3 && fields[0] == "vrf" && fields[1] == "forwarding":
+			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[2])})
 		case currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "access-group":
 			stage, ok := aclStage(fields[3])
 			if ok {
@@ -694,6 +699,15 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 }
 
 func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {
+	vrf := NetworkInstanceDefault
+	if len(fields) >= 5 && fields[2] == "vrf" {
+		vrf = NormalizeNetworkInstance(fields[3])
+		fields = append([]string{fields[0], fields[1]}, fields[4:]...)
+	}
+	if len(fields) == 6 && fields[4] == "vrf" {
+		vrf = NormalizeNetworkInstance(fields[5])
+		fields = fields[:4]
+	}
 	if len(fields) != 4 {
 		return ConfiguredRoute{}, fmt.Errorf("unsupported %s static route statement", routeMapVendorName(kind))
 	}
@@ -702,7 +716,7 @@ func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw strin
 		return ConfiguredRoute{}, err
 	}
 	route := ConfiguredRoute{
-		NetworkInstance: NetworkInstanceDefault,
+		NetworkInstance: vrf,
 		AFI:             AFIIPv4,
 		Prefix:          prefix,
 		Kind:            RouteSourceStatic,
@@ -1825,7 +1839,12 @@ func intPtr(v int) *int {
 func upsertInterface(xs []Interface, iface Interface) []Interface {
 	for i := range xs {
 		if xs[i].Name == iface.Name {
-			xs[i] = iface
+			if iface.Address != "" {
+				xs[i].Address = iface.Address
+			}
+			if iface.VRF != "" {
+				xs[i].VRF = iface.VRF
+			}
 			return xs
 		}
 	}

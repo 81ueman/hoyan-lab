@@ -19,9 +19,9 @@ func (frrCollector) CollectRouteTables(ctx context.Context, runner Runner, nodes
 	var out []NormalizedBgpRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip route json")
+		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip route vrf all json")
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip route json", err)
+			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip route vrf all json", err)
 		}
 		ospfData, ospfErr := runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip ospf route json")
 		if ospfErr != nil && strings.Contains(string(ospfData), "ospfd is not running") {
@@ -85,6 +85,31 @@ func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]Normalize
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
+	if vrfs := asMap(raw["vrfs"]); len(vrfs) > 0 {
+		var out []NormalizedBgpRoute
+		for vrf, value := range vrfs {
+			vrfMap := asMap(value)
+			routesMap := vrfMap
+			if nested := asMap(vrfMap["routes"]); nested != nil {
+				routesMap = nested
+			}
+			out = append(out, parseFRRRouteTableMap(node, vrf, routesMap, nil)...)
+		}
+		sortRoutes(out)
+		return out, nil
+	}
+	if looksLikeFRRVRFRouteMap(raw) {
+		var out []NormalizedBgpRoute
+		for vrf, value := range raw {
+			routesMap := asMap(value)
+			if routesMap == nil {
+				continue
+			}
+			out = append(out, parseFRRRouteTableMap(node, vrf, routesMap, nil)...)
+		}
+		sortRoutes(out)
+		return out, nil
+	}
 	routesMap := raw
 	if nested := asMap(raw["routes"]); nested != nil {
 		routesMap = nested
@@ -93,6 +118,27 @@ func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]Normalize
 	if err != nil {
 		return nil, err
 	}
+	out := parseFRRRouteTableMap(node, "default", routesMap, ospfRouteTypes)
+	sortRoutes(out)
+	return out, nil
+}
+
+func looksLikeFRRVRFRouteMap(raw map[string]any) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	for key, value := range raw {
+		if _, err := netip.ParsePrefix(key); err == nil {
+			return false
+		}
+		if asMap(value) == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func parseFRRRouteTableMap(node, vrf string, routesMap map[string]any, ospfRouteTypes map[string]string) []NormalizedBgpRoute {
 	var out []NormalizedBgpRoute
 	for prefix, value := range routesMap {
 		if _, err := netip.ParsePrefix(prefix); err != nil {
@@ -114,14 +160,13 @@ func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]Normalize
 				protocol = "blackhole"
 				hops = nil
 			}
-			route := nonBGPRoute(node, "default", "ipv4", prefix, protocol, hops)
+			route := nonBGPRoute(node, vrf, "ipv4", prefix, protocol, hops)
 			if len(route.Paths) > 0 {
 				out = append(out, route)
 			}
 		}
 	}
-	sortRoutes(out)
-	return out, nil
+	return out
 }
 
 func parseFRROSPFRouteTypes(data []byte) (map[string]string, error) {

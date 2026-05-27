@@ -9,6 +9,10 @@ import (
 )
 
 func (e *Engine) RouteReachable(from, prefix string, failures failure.Set) (Path, bool) {
+	return e.RouteReachableVRF(from, string(model.NetworkInstanceDefault), prefix, failures)
+}
+
+func (e *Engine) RouteReachableVRF(from, vrf, prefix string, failures failure.Set) (Path, bool) {
 	pfx, err := model.ParsePrefix(prefix)
 	if err != nil {
 		return Path{}, false
@@ -18,7 +22,7 @@ func (e *Engine) RouteReachable(from, prefix string, failures failure.Set) (Path
 		return Path{}, false
 	}
 	var best *controlplane.RIBEntry
-	for _, r := range e.rib[from][pfx.String()] {
+	for _, r := range e.rib[from][string(model.NormalizeNetworkInstance(vrf))][pfx.String()] {
 		r = r.Normalize()
 		if r.SelectedCond != nil && r.SelectedCond.Eval(ctx) {
 			cp := r
@@ -33,7 +37,11 @@ func (e *Engine) RouteReachable(from, prefix string, failures failure.Set) (Path
 }
 
 func (e *Engine) RouteReachableForPrefixSet(from string, dst model.PrefixSet, failures failure.Set) (Path, bool) {
-	result := e.SymbolicRouteReachabilityForPrefixSet(from, dst)
+	return e.RouteReachableForPrefixSetVRF(from, string(model.NetworkInstanceDefault), dst, failures)
+}
+
+func (e *Engine) RouteReachableForPrefixSetVRF(from, vrf string, dst model.PrefixSet, failures failure.Set) (Path, bool) {
+	result := e.SymbolicRouteReachabilityForPrefixSetVRF(from, vrf, dst)
 	ctx := e.FailureContext(failures)
 	for _, path := range result.Paths {
 		if path.Cond.Eval(ctx) {
@@ -48,8 +56,12 @@ func (e *Engine) PacketReachable(from, to, protocol string, failures failure.Set
 }
 
 func (e *Engine) PacketReachableSpec(from, to string, spec model.PacketSpec, failures failure.Set) (Path, bool, string) {
+	return e.PacketReachableSpecVRF(from, string(model.NetworkInstanceDefault), to, spec, failures)
+}
+
+func (e *Engine) PacketReachableSpecVRF(from, vrf, to string, spec model.PacketSpec, failures failure.Set) (Path, bool, string) {
 	ctx := e.FailureContext(failures)
-	dstNode, dstPrefix, ok := e.idx.OriginForIP(to)
+	dstNode, dstPrefix, ok := e.originForIPVRF(to, vrf)
 	if !ok {
 		return Path{}, false, "destination prefix not advertised"
 	}
@@ -61,6 +73,7 @@ func (e *Engine) PacketReachableSpec(from, to string, spec model.PacketSpec, fai
 	}
 	return e.packetReachableFrom(packetReachableState{
 		current:   from,
+		vrf:       string(model.NormalizeNetworkInstance(vrf)),
 		to:        to,
 		spec:      spec,
 		dstPrefix: dstPrefix.NetIP(),
@@ -72,6 +85,7 @@ func (e *Engine) PacketReachableSpec(from, to string, spec model.PacketSpec, fai
 
 type packetReachableState struct {
 	current          string
+	vrf              string
 	to               string
 	spec             model.PacketSpec
 	dstPrefix        netip.Prefix
@@ -88,7 +102,7 @@ func (e *Engine) packetReachableFrom(state packetReachableState) (Path, bool, st
 	if state.visited[state.current] {
 		return state.full, false, "forwarding loop"
 	}
-	if e.originates(state.current, state.dstPrefix) {
+	if e.originatesVRF(state.current, state.vrf, state.dstPrefix) {
 		return state.full, true, ""
 	}
 	currentNode, _ := e.idx.Node(state.current)
@@ -99,7 +113,7 @@ func (e *Engine) packetReachableFrom(state packetReachableState) (Path, bool, st
 	if decision := e.dataACLDecision(currentNode, packet, "ingress"); decision.Denied {
 		return state.full, false, decision.Reason
 	}
-	candidates := e.SymbolicLookupFIB(state.current, state.to)
+	candidates := e.SymbolicLookupFIBVRF(state.current, state.vrf, state.to)
 	if len(candidates) == 0 {
 		return state.full, false, "no forwarding route"
 	}
@@ -159,6 +173,7 @@ func (e *Engine) tryPacketCandidate(state packetReachableState, nextVisited map[
 	}
 	return e.packetReachableFrom(packetReachableState{
 		current:          rule.NextHop,
+		vrf:              state.vrf,
 		to:               state.to,
 		spec:             state.spec,
 		dstPrefix:        state.dstPrefix,
@@ -188,11 +203,15 @@ func (e *Engine) FailureContext(failures failure.Set) failure.Context {
 }
 
 func (e *Engine) originates(node string, prefix netip.Prefix) bool {
+	return e.originatesVRF(node, string(model.NetworkInstanceDefault), prefix)
+}
+
+func (e *Engine) originatesVRF(node, vrf string, prefix netip.Prefix) bool {
 	n, ok := e.idx.Node(node)
 	if !ok {
 		return false
 	}
-	for _, raw := range n.Prefixes {
+	for _, raw := range e.nodePrefixesVRF(n, vrf) {
 		if raw.NetIP() == prefix {
 			return true
 		}
@@ -201,11 +220,15 @@ func (e *Engine) originates(node string, prefix netip.Prefix) bool {
 }
 
 func (e *Engine) originatesPrefixSet(node string, dst model.PrefixSet) bool {
+	return e.originatesPrefixSetVRF(node, string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) originatesPrefixSetVRF(node, vrf string, dst model.PrefixSet) bool {
 	n, ok := e.idx.Node(node)
 	if !ok || dst == nil {
 		return false
 	}
-	for _, raw := range n.Prefixes {
+	for _, raw := range e.nodePrefixesVRF(n, vrf) {
 		if !raw.IsZero() && model.AddressSpaceOverlaps(model.ExactPrefixSet{Prefix: raw}, dst) {
 			return true
 		}
@@ -214,17 +237,58 @@ func (e *Engine) originatesPrefixSet(node string, dst model.PrefixSet) bool {
 }
 
 func (e *Engine) hasOriginForPrefixSet(dst model.PrefixSet) bool {
+	return e.hasOriginForPrefixSetVRF(string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) hasOriginForPrefixSetVRF(vrf string, dst model.PrefixSet) bool {
 	if e == nil || e.idx == nil || dst == nil {
 		return false
 	}
 	for _, node := range e.idx.NodesByName {
-		for _, raw := range node.Prefixes {
+		for _, raw := range e.nodePrefixesVRF(node, vrf) {
 			if !raw.IsZero() && model.AddressSpaceOverlaps(model.ExactPrefixSet{Prefix: raw}, dst) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func (e *Engine) originForIPVRF(addr, vrf string) (string, model.Prefix, bool) {
+	if e == nil || e.idx == nil {
+		return "", model.Prefix{}, false
+	}
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
+		return "", model.Prefix{}, false
+	}
+	for _, node := range e.idx.NodesByName {
+		for _, prefix := range e.nodePrefixesVRF(node, vrf) {
+			if prefix.NetIP().Contains(ip) {
+				return node.Name, prefix, true
+			}
+		}
+	}
+	return "", model.Prefix{}, false
+}
+
+func (e *Engine) nodePrefixesVRF(node model.Node, vrf string) []model.Prefix {
+	want := model.NormalizeNetworkInstance(vrf)
+	var out []model.Prefix
+	if want == model.NetworkInstanceDefault {
+		out = append(out, node.Prefixes...)
+	}
+	for _, iface := range node.Interfaces {
+		if model.NormalizeNetworkInstance(string(iface.VRF)) != want {
+			continue
+		}
+		pfx, err := netip.ParsePrefix(iface.Address)
+		if err != nil {
+			continue
+		}
+		out = append(out, model.PrefixFromNetIP(pfx.Masked()))
+	}
+	return out
 }
 
 func reverse[T any](xs []T) {

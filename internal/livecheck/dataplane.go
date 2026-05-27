@@ -38,8 +38,9 @@ func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *mod
 			checkForPort := check
 			checkForPort.DstPort = port
 			checkName := packetCheckName(check.Name, port, len(ports))
+			vrf := string(model.NormalizeNetworkInstance(check.VRF))
 			spec := model.PacketSpec{Protocol: check.Protocol, DstPort: model.ExactPort(port)}
-			_, modeled, reason := graph.PacketReachableSpec(check.From, check.To, spec, failure.None())
+			_, modeled, reason := graph.PacketReachableSpecVRF(check.From, vrf, check.To, spec, failure.None())
 			live, err := runPacketProbe(ctx, runner, topo, checkForPort)
 			if err != nil {
 				return fmt.Errorf("%s live dataplane probe: %w", checkName, err)
@@ -66,7 +67,7 @@ func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.T
 	}
 	switch strings.ToLower(check.Protocol) {
 	case "icmp":
-		out, err := runDockerExecTTY(ctx, runner, src.RuntimeName(), "ping", "-c", "3", "-W", "1", check.To)
+		out, err := runProbeCommand(ctx, runner, src.RuntimeName(), check.VRF, "ping", "-c", "3", "-W", "1", check.To)
 		if err != nil {
 			return false, err
 		}
@@ -78,7 +79,7 @@ func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.T
 		if err := ensureTCPListener(ctx, runner, topo, check.To, check.DstPort); err != nil {
 			return false, err
 		}
-		out, err := runDockerExecTTY(ctx, runner, src.RuntimeName(), "nc", "-z", "-v", "-w", "2", check.To, strconv.Itoa(check.DstPort))
+		out, err := runProbeCommand(ctx, runner, src.RuntimeName(), check.VRF, "nc", "-z", "-v", "-w", "2", check.To, strconv.Itoa(check.DstPort))
 		if err != nil {
 			return false, err
 		}
@@ -86,6 +87,14 @@ func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.T
 	default:
 		return false, fmt.Errorf("unsupported live packet protocol %q", check.Protocol)
 	}
+}
+
+func runProbeCommand(ctx context.Context, runner ribcompare.Runner, container, vrf string, args ...string) ([]byte, error) {
+	if model.NormalizeNetworkInstance(vrf) == model.NetworkInstanceDefault {
+		return runDockerExecTTY(ctx, runner, container, args...)
+	}
+	wrapped := append([]string{"ip", "vrf", "exec", vrf}, args...)
+	return runDockerExecTTY(ctx, runner, container, wrapped...)
 }
 
 func packetCheckName(name string, port int, portCount int) string {
@@ -105,7 +114,7 @@ func runDockerExecTTY(ctx context.Context, runner ribcompare.Runner, container s
 
 func pingSucceeded(out string) bool {
 	out = strings.ReplaceAll(out, "\x00", "")
-	return strings.Contains(out, " 0% packet loss") || strings.Contains(out, "0% packet loss") || strings.Contains(out, " 3 packets received")
+	return strings.Contains(out, " 0% packet loss") || strings.Contains(out, "0% packet loss") || strings.Contains(out, " 3 packets received") || strings.Contains(out, " bytes from ")
 }
 
 func tcpConnectSucceeded(out string) bool {

@@ -40,40 +40,42 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 		if ctx.NodeFailed(model.NodeID(n.Name)) {
 			continue
 		}
-		for prefix, rib := range g.RIBTable(n.Name) {
-			pathsByProtocol := map[string][]NormalizedBgpPath{}
-			for _, route := range rib {
-				route = route.Normalize()
-				if route.Condition == nil || !route.Condition.Eval(ctx) {
-					continue
+		for vrf, table := range g.RIBTables(n.Name) {
+			for prefix, rib := range table {
+				pathsByProtocol := map[string][]NormalizedBgpPath{}
+				for _, route := range rib {
+					route = route.Normalize()
+					if route.Condition == nil || !route.Condition.Eval(ctx) {
+						continue
+					}
+					// OSPF keeps alternate remote paths so failure checks can prove
+					// fallback reachability. FRR's route table is a point-in-time SPF
+					// result, so only selected remote OSPF routes are expected live.
+					if route.SourceKind == model.RouteSourceOSPF && route.Provenance.OriginNode != n.Name && (route.SelectedCond == nil || !route.SelectedCond.Eval(ctx)) {
+						continue
+					}
+					if !routeComparableInLiveRIB(idx, n.Name, route) {
+						continue
+					}
+					protocol := expectedRouteProtocol(route)
+					pathsByProtocol[protocol] = append(pathsByProtocol[protocol], expectedPath(idx, n, route, ctx))
 				}
-				// OSPF keeps alternate remote paths so failure checks can prove
-				// fallback reachability. FRR's route table is a point-in-time SPF
-				// result, so only selected remote OSPF routes are expected live.
-				if route.SourceKind == model.RouteSourceOSPF && route.Provenance.OriginNode != n.Name && (route.SelectedCond == nil || !route.SelectedCond.Eval(ctx)) {
-					continue
+				for _, protocol := range sortedProtocolKeys(pathsByProtocol) {
+					paths := pathsByProtocol[protocol]
+					if len(paths) == 0 {
+						continue
+					}
+					sortPaths(paths, DefaultBgpRibCompareOptions())
+					out = append(out, NormalizedBgpRoute{
+						Node:            n.Name,
+						NetworkInstance: vrf,
+						AFI:             "ipv4",
+						Prefix:          prefix,
+						Protocol:        protocol,
+						ConnectedClass:  connectedClassForProtocol(protocol, rib),
+						Paths:           paths,
+					})
 				}
-				if !routeComparableInLiveRIB(idx, n.Name, route) {
-					continue
-				}
-				protocol := expectedRouteProtocol(route)
-				pathsByProtocol[protocol] = append(pathsByProtocol[protocol], expectedPath(idx, n, route, ctx))
-			}
-			for _, protocol := range sortedProtocolKeys(pathsByProtocol) {
-				paths := pathsByProtocol[protocol]
-				if len(paths) == 0 {
-					continue
-				}
-				sortPaths(paths, DefaultBgpRibCompareOptions())
-				out = append(out, NormalizedBgpRoute{
-					Node:            n.Name,
-					NetworkInstance: "default",
-					AFI:             "ipv4",
-					Prefix:          prefix,
-					Protocol:        protocol,
-					ConnectedClass:  connectedClassForProtocol(protocol, rib),
-					Paths:           paths,
-				})
 			}
 		}
 	}

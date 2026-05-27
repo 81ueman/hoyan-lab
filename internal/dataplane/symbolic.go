@@ -98,16 +98,24 @@ type SymbolicRouteReachabilityResult struct {
 }
 
 func (e *Engine) SymbolicLookupFIB(node, dst string) []SymbolicFIBCandidate {
+	return e.SymbolicLookupFIBVRF(node, string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) SymbolicLookupFIBVRF(node, vrf, dst string) []SymbolicFIBCandidate {
 	ip, err := netip.ParseAddr(dst)
 	if err != nil {
 		return nil
 	}
-	entries := matchingFIBEntries(e.fib[node], ip)
+	entries := matchingFIBEntries(e.fib[node][string(model.NormalizeNetworkInstance(vrf))], ip)
 	return e.symbolicLookupFIBEntries(entries)
 }
 
 func (e *Engine) SymbolicLookupFIBForPrefixSet(node string, dst model.PrefixSet) []SymbolicFIBCandidate {
-	entries := matchingFIBEntriesForPrefixSet(e.fib[node], dst)
+	return e.SymbolicLookupFIBForPrefixSetVRF(node, string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) SymbolicLookupFIBForPrefixSetVRF(node, vrf string, dst model.PrefixSet) []SymbolicFIBCandidate {
+	entries := matchingFIBEntriesForPrefixSet(e.fib[node][string(model.NormalizeNetworkInstance(vrf))], dst)
 	return e.symbolicLookupFIBEntries(entries)
 }
 
@@ -149,6 +157,10 @@ func fibCandidateGroupKey(entry FIBEntry, ordinal int) string {
 }
 
 func (e *Engine) SymbolicRouteReachability(from, prefix string) SymbolicRouteReachabilityResult {
+	return e.SymbolicRouteReachabilityVRF(from, string(model.NetworkInstanceDefault), prefix)
+}
+
+func (e *Engine) SymbolicRouteReachabilityVRF(from, vrf, prefix string) SymbolicRouteReachabilityResult {
 	reachable := failure.False()
 	result := SymbolicRouteReachabilityResult{Reachable: reachable, Unreachable: failure.True()}
 	if e == nil || e.idx == nil {
@@ -164,7 +176,7 @@ func (e *Engine) SymbolicRouteReachability(from, prefix string) SymbolicRouteRea
 		result.Reason = "source node not found"
 		return result
 	}
-	routes := e.rib[from][pfx.String()]
+	routes := e.rib[from][string(model.NormalizeNetworkInstance(vrf))][pfx.String()]
 	paths := make([]SymbolicRoutePath, 0, len(routes))
 	conds := make([]failure.Cond, 0, len(routes))
 	for _, route := range routes {
@@ -186,6 +198,10 @@ func (e *Engine) SymbolicRouteReachability(from, prefix string) SymbolicRouteRea
 }
 
 func (e *Engine) SymbolicRouteReachabilityForPrefixSet(from string, dst model.PrefixSet) SymbolicRouteReachabilityResult {
+	return e.SymbolicRouteReachabilityForPrefixSetVRF(from, string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) SymbolicRouteReachabilityForPrefixSetVRF(from, vrf string, dst model.PrefixSet) SymbolicRouteReachabilityResult {
 	reachable := failure.False()
 	result := SymbolicRouteReachabilityResult{Reachable: reachable, Unreachable: failure.True()}
 	if e == nil || e.idx == nil {
@@ -200,7 +216,7 @@ func (e *Engine) SymbolicRouteReachabilityForPrefixSet(from string, dst model.Pr
 		result.Reason = "source node not found"
 		return result
 	}
-	candidates := e.SymbolicLookupFIBForPrefixSet(from, dst)
+	candidates := e.SymbolicLookupFIBForPrefixSetVRF(from, vrf, dst)
 	paths := make([]SymbolicRoutePath, 0, len(candidates))
 	conds := make([]failure.Cond, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -221,9 +237,13 @@ func (e *Engine) SymbolicRouteReachabilityForPrefixSet(from string, dst model.Pr
 }
 
 func (e *Engine) SymbolicRouteReachabilityForClass(from string, universe model.PrefixUniverse, classID model.PrefixClassID) SymbolicRouteReachabilityResult {
+	return e.SymbolicRouteReachabilityForClassVRF(from, string(model.NetworkInstanceDefault), universe, classID)
+}
+
+func (e *Engine) SymbolicRouteReachabilityForClassVRF(from, vrf string, universe model.PrefixUniverse, classID model.PrefixClassID) SymbolicRouteReachabilityResult {
 	for _, class := range universe.Classes {
 		if class.ID == classID {
-			return e.SymbolicRouteReachabilityForPrefixSet(from, class.Space)
+			return e.SymbolicRouteReachabilityForPrefixSetVRF(from, vrf, class.Space)
 		}
 	}
 	return SymbolicRouteReachabilityResult{
@@ -238,13 +258,17 @@ func (e *Engine) SymbolicPacketReachability(from, to, protocol string) SymbolicR
 }
 
 func (e *Engine) SymbolicPacketReachabilitySpec(from, to string, spec model.PacketSpec) SymbolicReachabilityResult {
+	return e.SymbolicPacketReachabilitySpecVRF(from, string(model.NetworkInstanceDefault), to, spec)
+}
+
+func (e *Engine) SymbolicPacketReachabilitySpecVRF(from, vrf, to string, spec model.PacketSpec) SymbolicReachabilityResult {
 	reachable := failure.False()
 	result := SymbolicReachabilityResult{Reachable: reachable, Unreachable: failure.True()}
 	if e == nil || e.idx == nil {
 		result.Reason = "topology index is unavailable"
 		return result
 	}
-	dstNode, dstPrefix, ok := e.idx.OriginForIP(to)
+	dstNode, dstPrefix, ok := e.originForIPVRF(to, vrf)
 	if !ok {
 		result.Reason = "destination prefix not advertised"
 		result.UnreachableReasons = []SymbolicUnreachableReason{{
@@ -259,7 +283,7 @@ func (e *Engine) SymbolicPacketReachabilitySpec(from, to string, spec model.Pack
 		return result
 	}
 	dstSet := model.ExactPrefixSet{Prefix: dstPrefix}
-	return e.symbolicPacketReachabilityForPrefixSet(from, dstSet, dstPrefix.NetIP(), spec, failure.And(failure.NodeVar(from), failure.NodeVar(dstNode)))
+	return e.symbolicPacketReachabilityForPrefixSet(from, string(model.NormalizeNetworkInstance(vrf)), dstSet, dstPrefix.NetIP(), spec, failure.And(failure.NodeVar(from), failure.NodeVar(dstNode)))
 }
 
 func (e *Engine) SymbolicPacketReachabilityForPrefixSet(from string, dst model.PrefixSet, protocol string) SymbolicReachabilityResult {
@@ -267,6 +291,10 @@ func (e *Engine) SymbolicPacketReachabilityForPrefixSet(from string, dst model.P
 }
 
 func (e *Engine) SymbolicPacketReachabilityForPrefixSetSpec(from string, dst model.PrefixSet, spec model.PacketSpec) SymbolicReachabilityResult {
+	return e.SymbolicPacketReachabilityForPrefixSetSpecVRF(from, string(model.NetworkInstanceDefault), dst, spec)
+}
+
+func (e *Engine) SymbolicPacketReachabilityForPrefixSetSpecVRF(from, vrf string, dst model.PrefixSet, spec model.PacketSpec) SymbolicReachabilityResult {
 	result := SymbolicReachabilityResult{Reachable: failure.False(), Unreachable: failure.True()}
 	if e == nil || e.idx == nil {
 		result.Reason = "topology index is unavailable"
@@ -285,17 +313,21 @@ func (e *Engine) SymbolicPacketReachabilityForPrefixSetSpec(from string, dst mod
 		result.Reason = "destination prefix set is unsupported"
 		return result
 	}
-	if !e.hasOriginForPrefixSet(dst) {
+	if !e.hasOriginForPrefixSetVRF(vrf, dst) {
 		result.Reason = "destination prefix not advertised"
 		return result
 	}
-	return e.symbolicPacketReachabilityForPrefixSet(from, dst, rep.NetIP(), spec, failure.NodeVar(from))
+	return e.symbolicPacketReachabilityForPrefixSet(from, string(model.NormalizeNetworkInstance(vrf)), dst, rep.NetIP(), spec, failure.NodeVar(from))
 }
 
 func (e *Engine) SymbolicPacketReachabilityForClass(from string, universe model.PrefixUniverse, classID model.PrefixClassID, protocol string) SymbolicReachabilityResult {
+	return e.SymbolicPacketReachabilityForClassVRF(from, string(model.NetworkInstanceDefault), universe, classID, protocol)
+}
+
+func (e *Engine) SymbolicPacketReachabilityForClassVRF(from, vrf string, universe model.PrefixUniverse, classID model.PrefixClassID, protocol string) SymbolicReachabilityResult {
 	for _, class := range universe.Classes {
 		if class.ID == classID {
-			return e.SymbolicPacketReachabilityForPrefixSet(from, class.Space, protocol)
+			return e.SymbolicPacketReachabilityForPrefixSetSpecVRF(from, vrf, class.Space, model.PacketSpec{Protocol: protocol})
 		}
 	}
 	return SymbolicReachabilityResult{
@@ -316,7 +348,7 @@ func (e *Engine) SymbolicPacketReachabilityForPacketClass(from string, class mod
 	return e.SymbolicPacketReachabilityForPrefixSetSpec(from, class.DstSet, class.Spec())
 }
 
-func (e *Engine) symbolicPacketReachabilityForPrefixSet(from string, dst model.PrefixSet, packetPrefix netip.Prefix, spec model.PacketSpec, initialCond failure.Cond) SymbolicReachabilityResult {
+func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst model.PrefixSet, packetPrefix netip.Prefix, spec model.PacketSpec, initialCond failure.Cond) SymbolicReachabilityResult {
 	maxHops := len(e.idx.NodesByName)
 	if maxHops == 0 {
 		maxHops = len(e.fib) + 1
@@ -332,7 +364,7 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from string, dst model.P
 		Path:    Path{Nodes: []string{from}},
 		Message: "source node is down",
 	})
-	for _, dstNode := range e.originNodesForPrefixSet(dst) {
+	for _, dstNode := range e.originNodesForPrefixSetVRF(vrf, dst) {
 		if dstNode == from {
 			continue
 		}
@@ -352,7 +384,7 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from string, dst model.P
 	}
 	var paths []SymbolicPacketPath
 	var blocked []SymbolicPacketBlockedPath
-	e.symbolicForward(initial, dst, packetPrefix, maxHops, map[string]bool{}, nil, &paths, &blocked, &reasons)
+	e.symbolicForward(initial, vrf, dst, packetPrefix, maxHops, map[string]bool{}, nil, &paths, &blocked, &reasons)
 	conds := make([]failure.Cond, 0, len(paths))
 	for _, path := range paths {
 		conds = append(conds, path.Cond)
@@ -376,7 +408,7 @@ func routePath(idx *model.TopologyIndex, route controlplane.RIBEntry) Path {
 	return Path{Nodes: nodes, Links: links, Cost: idx.PathCost(route.Links)}
 }
 
-func (e *Engine) symbolicForward(state SymbolicPacketState, dst model.PrefixSet, packetPrefix netip.Prefix, maxHops int, visited map[string]bool, states []SymbolicPacketState, paths *[]SymbolicPacketPath, blocked *[]SymbolicPacketBlockedPath, reasons *[]SymbolicUnreachableReason) {
+func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst model.PrefixSet, packetPrefix netip.Prefix, maxHops int, visited map[string]bool, states []SymbolicPacketState, paths *[]SymbolicPacketPath, blocked *[]SymbolicPacketBlockedPath, reasons *[]SymbolicUnreachableReason) {
 	if isFalseCond(state.Cond) {
 		return
 	}
@@ -391,7 +423,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, dst model.PrefixSet,
 		return
 	}
 	states = append(states, state)
-	if e.originatesPrefixSet(state.Node, dst) {
+	if e.originatesPrefixSetVRF(state.Node, vrf, dst) {
 		cond := failure.And(condOrTrue(state.Cond), failure.NodeVar(state.Node))
 		*paths = append(*paths, SymbolicPacketPath{Path: state.Path, Cond: cond, States: append([]SymbolicPacketState(nil), states...)})
 		return
@@ -428,7 +460,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, dst model.PrefixSet,
 	}
 	nextVisited := copyVisited(visited)
 	nextVisited[state.Node] = true
-	candidates := e.SymbolicLookupFIBForPrefixSet(state.Node, dst)
+	candidates := e.SymbolicLookupFIBForPrefixSetVRF(state.Node, vrf, dst)
 	candidateConds := make([]failure.Cond, 0, len(candidates))
 	for _, candidate := range candidates {
 		candidateConds = append(candidateConds, candidate.Cond)
@@ -549,7 +581,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, dst model.PrefixSet,
 			Cond:             nextCond,
 			Path:             nextPath,
 		}
-		e.symbolicForward(nextState, dst, packetPrefix, maxHops, nextVisited, states, paths, blocked, reasons)
+		e.symbolicForward(nextState, vrf, dst, packetPrefix, maxHops, nextVisited, states, paths, blocked, reasons)
 	}
 }
 
@@ -652,12 +684,16 @@ func representativePrefixForSet(set model.PrefixSet) (model.Prefix, bool) {
 }
 
 func (e *Engine) originNodesForPrefixSet(dst model.PrefixSet) []string {
+	return e.originNodesForPrefixSetVRF(string(model.NetworkInstanceDefault), dst)
+}
+
+func (e *Engine) originNodesForPrefixSetVRF(vrf string, dst model.PrefixSet) []string {
 	if e == nil || e.idx == nil || dst == nil {
 		return nil
 	}
 	var out []string
 	for _, node := range e.idx.NodesByName {
-		for _, raw := range node.Prefixes {
+		for _, raw := range e.nodePrefixesVRF(node, vrf) {
 			if !raw.IsZero() && model.AddressSpaceOverlaps(model.ExactPrefixSet{Prefix: raw}, dst) {
 				out = append(out, node.Name)
 				break

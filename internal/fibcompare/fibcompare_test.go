@@ -423,6 +423,8 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		got := name + " " + strings.Join(args, " ")
 		switch got {
+		case "docker exec -i clab-test-r1 ip -j link show type vrf":
+			return []byte(`[]`), nil
 		case "docker exec -i clab-test-r1 ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
 		case "docker exec -i clab-test-r1 ip -j route show table local":
@@ -444,6 +446,8 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch {
+		case cmd == "docker exec -i frr1 ip -j link show type vrf":
+			return []byte(`[]`), nil
 		case cmd == "docker exec -i frr1 ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
 		case cmd == "docker exec -i frr1 ip -j route show table local":
