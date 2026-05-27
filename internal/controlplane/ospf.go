@@ -19,15 +19,19 @@ type ospfInterfaceState struct {
 }
 
 type ospfAdvertisement struct {
-	Node   string
-	Prefix model.Prefix
-	Cost   int
+	Node         string
+	Prefix       model.Prefix
+	Cost         int
+	External     bool
+	ExternalArea string
+	DefaultArea  string
 }
 
 type ospfPath struct {
 	Cost  int
 	Nodes []string
 	Links []string
+	Areas []string
 }
 
 const ospfMaxPathsPerDestination = 8
@@ -45,11 +49,17 @@ func (e *Engine) installOSPFRoutes() {
 		paths := e.ospfCandidatePaths(src.Name, states)
 		for _, adv := range advertisements {
 			if adv.Node == src.Name {
+				if adv.External || adv.DefaultArea != "" {
+					continue
+				}
 				e.installLocalOSPFRoute(src, adv, states[src.Name])
 				continue
 			}
 			for _, path := range paths[adv.Node] {
 				if len(path.Nodes) < 2 {
+					continue
+				}
+				if !ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
 					continue
 				}
 				metric := path.Cost + adv.Cost
@@ -195,6 +205,27 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 			out = append(out, ospfAdvertisement{Node: node, Prefix: prefix, Cost: state.Cost})
 		}
 	}
+	for _, node := range e.idx.Topology.Nodes {
+		if !node.OSPF.Enabled {
+			continue
+		}
+		for _, route := range ospfRedistributedRoutes(node, e.connectedRoutes(node)) {
+			area := ospfExternalArea(node, states[node.Name])
+			out = append(out, ospfAdvertisement{Node: node.Name, Prefix: route.Prefix, Cost: route.Metric, External: true, ExternalArea: area})
+		}
+		for _, area := range node.OSPF.Areas {
+			if area.Kind == model.OSPFAreaStub && !ospfNodeAttachedToOtherArea(states[node.Name], area.ID) {
+				continue
+			}
+			if area.Kind != model.OSPFAreaStub && !(area.Kind == model.OSPFAreaNSSA && area.DefaultInformationOriginate) {
+				continue
+			}
+			if !ospfNodeAttachedToArea(states[node.Name], area.ID) {
+				continue
+			}
+			out = append(out, ospfAdvertisement{Node: node.Name, Prefix: model.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Node == out[j].Node {
 			return out[i].Prefix.String() < out[j].Prefix.String()
@@ -202,6 +233,124 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 		return out[i].Node < out[j].Node
 	})
 	return out
+}
+
+func ospfRedistributedRoutes(node model.Node, connected []model.ConfiguredRoute) []model.ConfiguredRoute {
+	enabled := map[model.RouteSourceKind]bool{}
+	for _, redist := range node.OSPF.Redistribute {
+		enabled[redist.Kind] = true
+	}
+	if len(enabled) == 0 {
+		return nil
+	}
+	var out []model.ConfiguredRoute
+	if enabled[model.RouteSourceConnected] {
+		for _, route := range connected {
+			if route.ConnectedClass == model.ConnectedRouteClassLink {
+				continue
+			}
+			route.Metric = 20
+			out = append(out, route)
+		}
+	}
+	if enabled[model.RouteSourceStatic] {
+		for _, route := range node.Routes {
+			if route.Kind != model.RouteSourceStatic && route.Kind != model.RouteSourceBlackhole {
+				continue
+			}
+			if route.Metric == 0 {
+				route.Metric = 20
+			}
+			out = append(out, route)
+		}
+	}
+	return out
+}
+
+func ospfExternalArea(node model.Node, states map[string]ospfInterfaceState) string {
+	for _, state := range states {
+		if area := node.OSPF.Areas[state.Area]; area.Kind == model.OSPFAreaNSSA {
+			return state.Area
+		}
+	}
+	return ""
+}
+
+func ospfNodeAttachedToArea(states map[string]ospfInterfaceState, area string) bool {
+	for _, state := range states {
+		if state.Area == area {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfNodeAttachedToOtherArea(states map[string]ospfInterfaceState, area string) bool {
+	for _, state := range states {
+		if state.Area != "" && state.Area != area {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPath, topo *model.Topology) bool {
+	if adv.DefaultArea != "" {
+		return pathUsesOnlyArea(path, adv.DefaultArea)
+	}
+	if !adv.External {
+		return true
+	}
+	for _, areaID := range path.Areas {
+		area := ospfAreaForPathArea(topo, path, areaID)
+		switch area.Kind {
+		case model.OSPFAreaStub:
+			return false
+		case model.OSPFAreaNSSA:
+			if adv.ExternalArea != areaID {
+				return false
+			}
+		}
+	}
+	if adv.ExternalArea != "" {
+		return true
+	}
+	return !ospfNodeInStubOrNSSA(src)
+}
+
+func pathUsesOnlyArea(path ospfPath, area string) bool {
+	if len(path.Areas) == 0 {
+		return false
+	}
+	for _, pathArea := range path.Areas {
+		if pathArea != area {
+			return false
+		}
+	}
+	return true
+}
+
+func ospfNodeInStubOrNSSA(node model.Node) bool {
+	for _, area := range node.OSPF.Areas {
+		if area.Kind == model.OSPFAreaStub || area.Kind == model.OSPFAreaNSSA {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfAreaForPathArea(topo *model.Topology, path ospfPath, areaID string) model.OSPFArea {
+	for _, nodeName := range path.Nodes {
+		node, ok := topo.Node(nodeName)
+		if !ok {
+			continue
+		}
+		area := node.OSPF.Areas[areaID]
+		if area.Kind != "" {
+			return area
+		}
+	}
+	return model.OSPFArea{ID: areaID, Kind: model.OSPFAreaNormal}
 }
 
 func (e *Engine) ospfCandidatePaths(src string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
@@ -226,6 +375,7 @@ func (e *Engine) ospfCandidatePaths(src string, states map[string]map[string]osp
 				Cost:  path.Cost + cost,
 				Nodes: append(append([]string(nil), path.Nodes...), next),
 				Links: append(append([]string(nil), path.Links...), edge.Link.Name),
+				Areas: append(append([]string(nil), path.Areas...), ospfAdjacencyArea(e.idx, current, next, edge.Link, states)),
 			})
 			delete(visited, next)
 		}
@@ -244,6 +394,26 @@ func (e *Engine) ospfCandidatePaths(src string, states map[string]map[string]osp
 		out[node] = paths
 	}
 	return out
+}
+
+func ospfAdjacencyArea(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState) string {
+	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
+	if !ok {
+		return ""
+	}
+	toRef, ok := idx.InterfaceOnLink(to, link.Name)
+	if !ok {
+		return ""
+	}
+	fromState, ok := states[from][fromRef.ConfigName]
+	if !ok {
+		return ""
+	}
+	toState, ok := states[to][toRef.ConfigName]
+	if !ok || fromState.Area != toState.Area {
+		return ""
+	}
+	return fromState.Area
 }
 
 func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState) (int, bool) {

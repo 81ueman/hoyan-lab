@@ -1,0 +1,15 @@
+name: ospf-stub-nssa
+description: FRR OSPF lab covering stub and NSSA area route behavior.
+nos:
+  - frr
+checks:
+  - verify
+  - live-check
+  - rib-compare
+  - fib-compare
+features:
+  - ospf
+  - ospf-stub
+  - ospf-nssa
+  - route-reachability
+  - rib-fib-compare

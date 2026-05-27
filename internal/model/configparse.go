@@ -389,6 +389,9 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			if cfg.OSPF.Interfaces == nil {
 				cfg.OSPF.Interfaces = map[string]OSPFInterface{}
 			}
+			if cfg.OSPF.Areas == nil {
+				cfg.OSPF.Areas = map[string]OSPFArea{}
+			}
 			inOSPF = true
 			inBGP = false
 			inAF = false
@@ -407,6 +410,19 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 				continue
 			}
 			cfg.OSPF.Networks = append(cfg.OSPF.Networks, OSPFNetwork{Prefix: prefix, Area: fields[3], Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
+		case kind == KindFRR && inOSPF && len(fields) >= 3 && fields[0] == "area":
+			area, err := parseFRROSPFArea(path, lineNo, line, fields)
+			if err != nil {
+				if !collectWarnings {
+					return ParseResult{}, err
+				}
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, err.Error()))
+				continue
+			}
+			if cfg.OSPF.Areas == nil {
+				cfg.OSPF.Areas = map[string]OSPFArea{}
+			}
+			cfg.OSPF.Areas[area.ID] = area
 		case kind == KindFRR && inOSPF && len(fields) >= 2 && fields[0] == "passive-interface":
 			cfg.OSPF.PassiveInterfaces = appendUnique(cfg.OSPF.PassiveInterfaces, fields[1])
 			oi := ospfInterface(&cfg, fields[1])
@@ -414,10 +430,15 @@ func parseFRRLike(kind DeviceKind, path, text string, collectWarnings bool) (Par
 			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			cfg.OSPF.Interfaces[fields[1]] = *oi
 		case kind == KindFRR && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
-			if !collectWarnings {
-				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF redistribute statement %q", line)
+			redist, err := parseFRROSPFRedistribution(path, lineNo, line, fields)
+			if err != nil {
+				if !collectWarnings {
+					return ParseResult{}, err
+				}
+				warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, err.Error()))
+				continue
 			}
-			warnings = append(warnings, unsupportedStatement(string(kind), path, lineNo, line, "unsupported FRR OSPF redistribute statement"))
+			cfg.OSPF.Redistribute = append(cfg.OSPF.Redistribute, redist)
 		case kind == KindFRR && inOSPF:
 			if !collectWarnings {
 				return ParseResult{}, fmt.Errorf("unsupported FRR OSPF statement %q", line)
@@ -696,6 +717,48 @@ func ospfInterface(cfg *ParsedConfig, name string) *OSPFInterface {
 	}
 	cfg.OSPF.Interfaces[name] = oi
 	return &oi
+}
+
+func parseFRROSPFArea(path string, lineNo int, raw string, fields []string) (OSPFArea, error) {
+	area := OSPFArea{ID: fields[1], Source: ConfigSource{Vendor: string(KindFRR), File: path, Line: lineNo, Raw: raw}}
+	switch fields[2] {
+	case "stub":
+		area.Kind = OSPFAreaStub
+	case "nssa":
+		area.Kind = OSPFAreaNSSA
+	default:
+		return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area statement")
+	}
+	for _, opt := range fields[3:] {
+		switch opt {
+		case "no-summary":
+			area.NoSummary = true
+		case "default-information-originate":
+			if area.Kind != OSPFAreaNSSA {
+				return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area option %q", opt)
+			}
+			area.DefaultInformationOriginate = true
+		default:
+			return OSPFArea{}, fmt.Errorf("unsupported FRR OSPF area option %q", opt)
+		}
+	}
+	return area, nil
+}
+
+func parseFRROSPFRedistribution(path string, lineNo int, raw string, fields []string) (OSPFRedistribution, error) {
+	if len(fields) != 2 {
+		return OSPFRedistribution{}, fmt.Errorf("unsupported FRR OSPF redistribute statement")
+	}
+	redist := OSPFRedistribution{Source: ConfigSource{Vendor: string(KindFRR), File: path, Line: lineNo, Raw: raw}}
+	switch fields[1] {
+	case "connected":
+		redist.Kind = RouteSourceConnected
+	case "static":
+		redist.Kind = RouteSourceStatic
+	default:
+		return OSPFRedistribution{}, fmt.Errorf("unsupported FRR OSPF redistribute source %q", fields[1])
+	}
+	return redist, nil
 }
 
 func parseAggregateRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {

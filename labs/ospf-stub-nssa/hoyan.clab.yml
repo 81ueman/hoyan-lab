@@ -1,0 +1,37 @@
+name: hoyan-ospf-stub-nssa
+mgmt:
+    network: hoyan-ospf-stub-nssa
+    ipv4-subnet: 172.86.89.0/24
+topology:
+    kinds:
+        linux:
+            image: hoyan-frr-nftables:10.6.1
+    nodes:
+        r1:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.89.11
+            binds:
+                - configs/frr/r1:/etc/frr:ro
+        r2:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.89.12
+            binds:
+                - configs/frr/r2:/etc/frr:ro
+        r3:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.89.13
+            binds:
+                - configs/frr/r3:/etc/frr:ro
+        r4:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.89.14
+            binds:
+                - configs/frr/r4:/etc/frr:ro
+    links:
+        - endpoints: ["r1:eth1", "r2:eth1"]
+        - endpoints: ["r2:eth2", "r3:eth1"]
+        - endpoints: ["r2:eth3", "r4:eth1"]
