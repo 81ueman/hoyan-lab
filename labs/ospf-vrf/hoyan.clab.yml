@@ -1,0 +1,54 @@
+name: hoyan-ospf-vrf
+mgmt:
+    network: hoyan-ospf-vrf
+    ipv4-subnet: 172.86.92.0/24
+topology:
+    kinds:
+        linux:
+            image: hoyan-frr-nftables:10.6.1
+    nodes:
+        r1:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.92.11
+            binds:
+                - configs/frr/r1:/etc/frr:ro
+            exec:
+                - ip link add tenant-a type vrf table 1001
+                - ip link add tenant-b type vrf table 1002
+                - ip link set tenant-a up
+                - ip link set tenant-b up
+                - ip link set eth1 master tenant-a
+                - ip link set eth2 master tenant-b
+                - vtysh -b
+        r2:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.92.12
+            binds:
+                - configs/frr/r2:/etc/frr:ro
+            exec:
+                - ip link add tenant-a type vrf table 1001
+                - ip link add a-svc type dummy
+                - ip link set tenant-a up
+                - ip link set eth1 master tenant-a
+                - ip link set a-svc master tenant-a
+                - ip link set a-svc up
+                - vtysh -b
+        r3:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.92.13
+            binds:
+                - configs/frr/r3:/etc/frr:ro
+            exec:
+                - ip link add tenant-b type vrf table 1002
+                - ip link add b-svc type dummy
+                - ip link set tenant-b up
+                - ip link set eth1 master tenant-b
+                - ip link set b-svc master tenant-b
+                - ip link set b-svc up
+                - vtysh -b
+    links:
+        - endpoints: ["r1:eth1", "r2:eth1"]
+        - endpoints: ["r1:eth2", "r3:eth1"]

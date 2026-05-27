@@ -89,7 +89,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	engine := NewEngine(idx, map[string]map[string][]RIBEntry{})
-	states := engine.ospfInterfaceStates()
+	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
 	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState ospfInterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
 			return "", false
@@ -264,6 +264,38 @@ func testIntPtr(v int) *int {
 	return &v
 }
 
+func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfVRFNode("r1", map[string]model.NetworkInstanceID{"eth1": "tenant-a", "eth2": "tenant-b"}, map[string]string{"eth1": "192.0.2.1/30", "eth2": "198.51.100.1/30"}, nil),
+			ospfVRFNode("r2", map[string]model.NetworkInstanceID{"eth1": "tenant-a", "a-svc": "tenant-a"}, map[string]string{"eth1": "192.0.2.2/30", "a-svc": "10.10.0.1/32"}, map[string]bool{"a-svc": true}),
+			ospfVRFNode("r3", map[string]model.NetworkInstanceID{"eth1": "tenant-b", "b-svc": "tenant-b"}, map[string]string{"eth1": "198.51.100.2/30", "b-svc": "10.20.0.1/32"}, map[string]bool{"b-svc": true}),
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/30"},
+			{Name: "r1-r3", A: "r1", AIntf: "eth2", B: "r3", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/30"},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	rib := map[string]map[string]map[string][]RIBEntry{}
+	NewEngine(idx, rib).Simulate()
+	if routes := rib["r1"]["tenant-a"]["10.10.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+		t.Fatalf("r1 tenant-a route to 10.10.0.1/32 = %#v, want OSPF", routes)
+	}
+	if routes := rib["r1"]["tenant-a"]["10.20.0.1/32"]; len(routes) != 0 {
+		t.Fatalf("r1 tenant-a leaked tenant-b service route: %#v", routes)
+	}
+	if routes := rib["r1"]["tenant-b"]["10.20.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+		t.Fatalf("r1 tenant-b route to 10.20.0.1/32 = %#v, want OSPF", routes)
+	}
+	if routes := rib["r1"]["tenant-b"]["10.10.0.1/32"]; len(routes) != 0 {
+		t.Fatalf("r1 tenant-b leaked tenant-a service route: %#v", routes)
+	}
+}
+
 func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[string][]RIBEntry {
 	t.Helper()
 	idx, err := model.BuildTopologyIndex(topo)
@@ -372,6 +404,37 @@ func ospfBroadcastNode(name, loopback, shared string, cost int) model.Node {
 	iface.NetworkType = "broadcast"
 	node.OSPF.Interfaces["eth1"] = iface
 	return node
+}
+
+func ospfVRFNode(name string, vrfs map[string]model.NetworkInstanceID, addrs map[string]string, passive map[string]bool) model.Node {
+	var interfaces []model.Interface
+	byVRF := map[model.NetworkInstanceID]model.OSPFProcess{}
+	for ifName, addr := range addrs {
+		vrf := model.NormalizeNetworkInstance(string(vrfs[ifName]))
+		interfaces = append(interfaces, model.Interface{Name: ifName, Address: addr, VRF: vrf})
+		process := byVRF[vrf]
+		process.Enabled = true
+		process.NetworkInstance = vrf
+		if process.Interfaces == nil {
+			process.Interfaces = map[string]model.OSPFInterface{}
+		}
+		process.Interfaces[ifName] = model.OSPFInterface{Name: ifName, Area: "0", Cost: 1, Passive: passive[ifName]}
+		process.Networks = append(process.Networks, model.OSPFNetwork{Prefix: model.MustPrefix(addr), Area: "0"})
+		if passive[ifName] {
+			process.PassiveInterfaces = append(process.PassiveInterfaces, ifName)
+		}
+		byVRF[vrf] = process
+	}
+	var processes []model.OSPFProcess
+	for _, process := range byVRF {
+		processes = append(processes, process)
+	}
+	return model.Node{
+		Name:          name,
+		Kind:          model.KindFRR,
+		Interfaces:    interfaces,
+		OSPFProcesses: processes,
+	}
 }
 
 func denseOSPFTopology(n int) *model.Topology {

@@ -12,25 +12,27 @@ import (
 )
 
 type ospfInterfaceState struct {
-	Node        string
-	Name        string
-	Prefix      netip.Prefix
-	Area        string
-	Cost        int
-	Passive     bool
-	NetworkType string
+	Node            string
+	Name            string
+	NetworkInstance model.NetworkInstanceID
+	Prefix          netip.Prefix
+	Area            string
+	Cost            int
+	Passive         bool
+	NetworkType     string
 }
 
 type ospfAdvertisement struct {
-	Node         string
-	Prefix       model.Prefix
-	Cost         int
-	Area         string
-	External     bool
-	MetricType   int
-	ExternalArea string
-	DefaultArea  string
-	Source       RIBEntry
+	Node            string
+	NetworkInstance model.NetworkInstanceID
+	Prefix          model.Prefix
+	Cost            int
+	Area            string
+	External        bool
+	MetricType      int
+	ExternalArea    string
+	DefaultArea     string
+	Source          RIBEntry
 }
 
 type ospfPath struct {
@@ -80,15 +82,22 @@ const (
 )
 
 func (e *Engine) installOSPFRoutes() {
-	states := e.ospfInterfaceStates()
-	advertisements := e.ospfAdvertisements(states)
+	for _, vrf := range e.ospfVRFs() {
+		e.installOSPFRoutesVRF(vrf)
+	}
+}
+
+func (e *Engine) installOSPFRoutesVRF(vrf model.NetworkInstanceID) {
+	processes := e.ospfProcesses(vrf)
+	states := e.ospfInterfaceStates(vrf, processes)
+	advertisements := e.ospfAdvertisements(states, processes)
 	if len(advertisements) == 0 {
 		return
 	}
 	areas := ospfNodeAreas(states)
 	abrs := ospfABRs(areas)
 	for _, src := range e.idx.Topology.Nodes {
-		if !src.OSPF.Enabled {
+		if _, ok := processes[src.Name]; !ok {
 			continue
 		}
 		anyPaths := e.ospfCandidatePathsAnyArea(src.Name, states)
@@ -106,7 +115,7 @@ func (e *Engine) installOSPFRoutes() {
 			}
 			if adv.External || adv.DefaultArea != "" {
 				for _, path := range anyPaths[adv.Node] {
-					if !ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+					if !ospfAdvertisementAllowed(src, adv, path, processes) {
 						continue
 					}
 					e.installRemoteOSPFRoute(src.Name, adv, path, "")
@@ -114,17 +123,68 @@ func (e *Engine) installOSPFRoutes() {
 				continue
 			}
 			for _, path := range areaPaths[adv.Area][adv.Node] {
-				if ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+				if ospfAdvertisementAllowed(src, adv, path, processes) {
 					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeIntraArea)
 				}
 			}
 			for _, path := range e.ospfInterAreaPaths(src.Name, adv, states, areas, abrs) {
-				if ospfAdvertisementAllowed(src, adv, path, e.idx.Topology) {
+				if ospfAdvertisementAllowed(src, adv, path, processes) {
 					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeInterArea)
 				}
 			}
 		}
 	}
+}
+
+func (e *Engine) ospfVRFs() []model.NetworkInstanceID {
+	seen := map[model.NetworkInstanceID]bool{}
+	for _, node := range e.idx.Topology.Nodes {
+		for _, process := range ospfProcessesForNode(node) {
+			if !process.Enabled {
+				continue
+			}
+			vrf := model.NormalizeNetworkInstance(string(process.NetworkInstance))
+			seen[vrf] = true
+		}
+	}
+	out := make([]model.NetworkInstanceID, 0, len(seen))
+	for vrf := range seen {
+		out = append(out, vrf)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (e *Engine) ospfProcesses(vrf model.NetworkInstanceID) map[string]model.OSPFProcess {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
+	out := map[string]model.OSPFProcess{}
+	for _, node := range e.idx.Topology.Nodes {
+		for _, process := range ospfProcessesForNode(node) {
+			if !process.Enabled || model.NormalizeNetworkInstance(string(process.NetworkInstance)) != vrf {
+				continue
+			}
+			process.NetworkInstance = vrf
+			out[node.Name] = process
+		}
+	}
+	return out
+}
+
+func ospfProcessesForNode(node model.Node) []model.OSPFProcess {
+	var out []model.OSPFProcess
+	if node.OSPF.Enabled {
+		process := node.OSPF
+		process.NetworkInstance = model.NormalizeNetworkInstance(string(process.NetworkInstance))
+		out = append(out, process)
+	}
+	for _, process := range node.OSPFProcesses {
+		if !process.Enabled {
+			continue
+		}
+		process.NetworkInstance = model.NormalizeNetworkInstance(string(process.NetworkInstance))
+		out = append(out, process)
+	}
+	return out
 }
 
 func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path ospfPath, routeType string) {
@@ -154,7 +214,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 	}
 	route := model.ConfiguredRoute{
 		Node:            src,
-		NetworkInstance: model.NetworkInstanceDefault,
+		NetworkInstance: adv.NetworkInstance,
 		AFI:             model.AFIIPv4,
 		Prefix:          adv.Prefix,
 		Kind:            model.RouteSourceOSPF,
@@ -178,7 +238,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, states map[string]ospfInterfaceState) {
 	route := model.ConfiguredRoute{
 		Node:            node.Name,
-		NetworkInstance: model.NetworkInstanceDefault,
+		NetworkInstance: adv.NetworkInstance,
 		AFI:             model.AFIIPv4,
 		Prefix:          adv.Prefix,
 		Kind:            model.RouteSourceOSPF,
@@ -209,10 +269,11 @@ func ospfInterfaceForPrefix(states map[string]ospfInterfaceState, prefix model.P
 	return ""
 }
 
-func (e *Engine) ospfInterfaceStates() map[string]map[string]ospfInterfaceState {
+func (e *Engine) ospfInterfaceStates(vrf model.NetworkInstanceID, processes map[string]model.OSPFProcess) map[string]map[string]ospfInterfaceState {
 	out := map[string]map[string]ospfInterfaceState{}
 	for _, node := range e.idx.Topology.Nodes {
-		if !node.OSPF.Enabled {
+		process, ok := processes[node.Name]
+		if !ok {
 			continue
 		}
 		for _, iface := range node.Interfaces {
@@ -220,7 +281,7 @@ func (e *Engine) ospfInterfaceStates() map[string]map[string]ospfInterfaceState 
 			if err != nil || !pfx.Addr().Is4() {
 				continue
 			}
-			ifState, ok := ospfInterfaceFor(node, iface, pfx)
+			ifState, ok := ospfInterfaceFor(node, process, vrf, iface, pfx)
 			if !ok {
 				continue
 			}
@@ -233,9 +294,13 @@ func (e *Engine) ospfInterfaceStates() map[string]map[string]ospfInterfaceState 
 	return out
 }
 
-func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) (ospfInterfaceState, bool) {
-	state := ospfInterfaceState{Node: node.Name, Name: iface.Name, Prefix: pfx.Masked(), Cost: 1}
-	for _, configured := range node.OSPF.Interfaces {
+func ospfInterfaceFor(node model.Node, process model.OSPFProcess, vrf model.NetworkInstanceID, iface model.Interface, pfx netip.Prefix) (ospfInterfaceState, bool) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
+	if model.NormalizeNetworkInstance(string(iface.VRF)) != vrf {
+		return ospfInterfaceState{}, false
+	}
+	state := ospfInterfaceState{Node: node.Name, Name: iface.Name, NetworkInstance: vrf, Prefix: pfx.Masked(), Cost: 1}
+	for _, configured := range process.Interfaces {
 		if !model.EquivalentInterfaceName(node.Kind, configured.Name, iface.Name) {
 			continue
 		}
@@ -247,14 +312,14 @@ func ospfInterfaceFor(node model.Node, iface model.Interface, pfx netip.Prefix) 
 		state.NetworkType = configured.NetworkType
 	}
 	if state.Area == "" {
-		for _, network := range node.OSPF.Networks {
+		for _, network := range process.Networks {
 			if network.Prefix.Contains(pfx.Addr()) {
 				state.Area = normalizeOSPFArea(network.Area)
 				break
 			}
 		}
 	}
-	for _, passive := range node.OSPF.PassiveInterfaces {
+	for _, passive := range process.PassiveInterfaces {
 		if model.EquivalentInterfaceName(node.Kind, passive, iface.Name) {
 			state.Passive = true
 		}
@@ -281,37 +346,39 @@ func isOSPFLoopbackInterface(name string) bool {
 	return name == "lo" || strings.HasPrefix(name, "lo") || strings.HasPrefix(name, "loopback")
 }
 
-func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceState) []ospfAdvertisement {
+func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceState, processes map[string]model.OSPFProcess) []ospfAdvertisement {
 	var out []ospfAdvertisement
 	seen := map[string]bool{}
 	for node, byIface := range states {
 		for _, state := range byIface {
 			prefix := model.PrefixFromNetIP(state.Prefix)
-			key := node + "|" + prefix.String()
+			key := node + "|" + string(state.NetworkInstance) + "|" + prefix.String()
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			out = append(out, ospfAdvertisement{Node: node, Prefix: prefix, Cost: state.Cost, Area: state.Area})
+			out = append(out, ospfAdvertisement{Node: node, NetworkInstance: state.NetworkInstance, Prefix: prefix, Cost: state.Cost, Area: state.Area})
 		}
 	}
 	for _, node := range e.idx.Topology.Nodes {
-		if !node.OSPF.Enabled {
+		process, ok := processes[node.Name]
+		if !ok {
 			continue
 		}
-		for _, route := range e.ospfRedistributedRoutes(node) {
-			area := ospfExternalArea(node, states[node.Name])
+		for _, route := range e.ospfRedistributedRoutes(node, process) {
+			area := ospfExternalArea(process, states[node.Name])
 			out = append(out, ospfAdvertisement{
-				Node:         node.Name,
-				Prefix:       route.RouteSource.Prefix,
-				Cost:         route.RouteSource.Metric,
-				External:     true,
-				MetricType:   route.RouteSource.MetricType,
-				ExternalArea: area,
-				Source:       route,
+				Node:            node.Name,
+				NetworkInstance: process.NetworkInstance,
+				Prefix:          route.RouteSource.Prefix,
+				Cost:            route.RouteSource.Metric,
+				External:        true,
+				MetricType:      route.RouteSource.MetricType,
+				ExternalArea:    area,
+				Source:          route,
 			})
 		}
-		for _, area := range node.OSPF.Areas {
+		for _, area := range process.Areas {
 			if area.Kind == model.OSPFAreaStub && !ospfNodeAttachedToOtherArea(states[node.Name], area.ID) {
 				continue
 			}
@@ -321,7 +388,7 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 			if !ospfNodeAttachedToArea(states[node.Name], area.ID) {
 				continue
 			}
-			out = append(out, ospfAdvertisement{Node: node.Name, Prefix: model.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
+			out = append(out, ospfAdvertisement{Node: node.Name, NetworkInstance: process.NetworkInstance, Prefix: model.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -333,10 +400,10 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 	return out
 }
 
-func (e *Engine) ospfRedistributedRoutes(node model.Node) []RIBEntry {
+func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProcess) []RIBEntry {
 	var out []RIBEntry
-	for _, redist := range node.OSPF.Redistribute {
-		for _, route := range e.ospfRedistributionCandidates(node, redist.Kind) {
+	for _, redist := range process.Redistribute {
+		for _, route := range e.ospfRedistributionCandidates(node, process.NetworkInstance, redist.Kind) {
 			route = route.Normalize()
 			if route.SourceKind == model.RouteSourceConnected && route.RouteSource.ConnectedClass == model.ConnectedRouteClassLink {
 				continue
@@ -363,12 +430,13 @@ func (e *Engine) ospfRedistributedRoutes(node model.Node) []RIBEntry {
 	return out
 }
 
-func (e *Engine) ospfRedistributionCandidates(node model.Node, kind model.RouteSourceKind) []RIBEntry {
+func (e *Engine) ospfRedistributionCandidates(node model.Node, vrf model.NetworkInstanceID, kind model.RouteSourceKind) []RIBEntry {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	var out []RIBEntry
 	switch kind {
 	case model.RouteSourceConnected, model.RouteSourceStatic:
 		for _, route := range e.redistributionCandidates(node, kind) {
-			if route.NetworkInstance != "" && route.NetworkInstance != model.NetworkInstanceDefault {
+			if model.NormalizeNetworkInstance(string(route.NetworkInstance)) != vrf {
 				continue
 			}
 			entry := e.bgpRouteFromConfiguredRoute(node, route).Normalize()
@@ -377,7 +445,7 @@ func (e *Engine) ospfRedistributionCandidates(node model.Node, kind model.RouteS
 			out = append(out, entry.Normalize())
 		}
 	case model.RouteSourceBGP:
-		byPrefix := e.rib[node.Name][string(model.NetworkInstanceDefault)]
+		byPrefix := e.rib[node.Name][string(vrf)]
 		for _, routes := range byPrefix {
 			for _, route := range routes {
 				route = route.Normalize()
@@ -425,9 +493,9 @@ func ospfExternalMetricType(metricType int) int {
 	return 2
 }
 
-func ospfExternalArea(node model.Node, states map[string]ospfInterfaceState) string {
+func ospfExternalArea(process model.OSPFProcess, states map[string]ospfInterfaceState) string {
 	for _, state := range states {
-		if area := node.OSPF.Areas[state.Area]; area.Kind == model.OSPFAreaNSSA {
+		if area := process.Areas[state.Area]; area.Kind == model.OSPFAreaNSSA {
 			return state.Area
 		}
 	}
@@ -452,7 +520,7 @@ func ospfNodeAttachedToOtherArea(states map[string]ospfInterfaceState, area stri
 	return false
 }
 
-func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPath, topo *model.Topology) bool {
+func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPath, processes map[string]model.OSPFProcess) bool {
 	if adv.DefaultArea != "" {
 		return pathUsesOnlyArea(path, adv.DefaultArea)
 	}
@@ -460,7 +528,7 @@ func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPa
 		return true
 	}
 	for _, areaID := range path.Areas {
-		area := ospfAreaForPathArea(topo, path, areaID)
+		area := ospfAreaForPathArea(processes, path, areaID)
 		switch area.Kind {
 		case model.OSPFAreaStub:
 			return false
@@ -473,7 +541,7 @@ func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPa
 	if adv.ExternalArea != "" {
 		return true
 	}
-	return !ospfNodeInStubOrNSSA(src)
+	return !ospfNodeInStubOrNSSA(processes[src.Name])
 }
 
 func pathUsesOnlyArea(path ospfPath, area string) bool {
@@ -488,8 +556,8 @@ func pathUsesOnlyArea(path ospfPath, area string) bool {
 	return true
 }
 
-func ospfNodeInStubOrNSSA(node model.Node) bool {
-	for _, area := range node.OSPF.Areas {
+func ospfNodeInStubOrNSSA(process model.OSPFProcess) bool {
+	for _, area := range process.Areas {
 		if area.Kind == model.OSPFAreaStub || area.Kind == model.OSPFAreaNSSA {
 			return true
 		}
@@ -497,13 +565,13 @@ func ospfNodeInStubOrNSSA(node model.Node) bool {
 	return false
 }
 
-func ospfAreaForPathArea(topo *model.Topology, path ospfPath, areaID string) model.OSPFArea {
+func ospfAreaForPathArea(processes map[string]model.OSPFProcess, path ospfPath, areaID string) model.OSPFArea {
 	for _, nodeName := range path.Nodes {
-		node, ok := topo.Node(nodeName)
+		process, ok := processes[nodeName]
 		if !ok {
 			continue
 		}
-		area := node.OSPF.Areas[areaID]
+		area := process.Areas[areaID]
 		if area.Kind != "" {
 			return area
 		}
@@ -719,7 +787,7 @@ func sortOSPFPaths(paths []ospfPath) {
 func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string]ospfSPFNode {
 	dist := map[string]ospfSPFNode{}
 	for _, node := range e.idx.Topology.Nodes {
-		if !node.OSPF.Enabled || node.Name == excluded {
+		if len(states[node.Name]) == 0 || node.Name == excluded {
 			continue
 		}
 		dist[node.Name] = ospfSPFNode{Cost: math.MaxInt}

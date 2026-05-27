@@ -98,7 +98,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
-		if parsed.OSPF.Enabled && parsed.Loopback != "" {
+		if parsedOSPFEnabled(parsed) && parsed.Loopback != "" {
 			loopbackPrefix, err := ParsePrefix(parsed.Loopback)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s loopback: %w", name, err)
@@ -120,6 +120,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 			Neighbors:      parsed.Neighbors,
 			Redistribute:   parsed.Redistribute,
 			OSPF:           parsed.OSPF,
+			OSPFProcesses:  parsed.OSPFProcesses,
 			PrefixLists:    parsed.PrefixLists,
 			ASPathLists:    parsed.ASPathLists,
 			CommunityLists: parsed.CommunityLists,
@@ -258,6 +259,18 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		return nil, nil, err
 	}
 	return topo, warnings, nil
+}
+
+func parsedOSPFEnabled(parsed ParsedConfig) bool {
+	if parsed.OSPF.Enabled {
+		return true
+	}
+	for _, process := range parsed.OSPFProcesses {
+		if process.Enabled {
+			return true
+		}
+	}
+	return false
 }
 
 func appendUniquePrefix(prefixes []Prefix, prefix Prefix) []Prefix {
