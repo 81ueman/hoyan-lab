@@ -1,20 +1,14 @@
 package ribcompare
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/srlinuxjson"
 )
-
-const srlinuxJSONMaxAttempts = 3
-
-var srlinuxJSONRetryDelay = 250 * time.Millisecond
 
 func Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedBgpRoute, error) {
 	out, err := collectBGP(ctx, runner, nodes)
@@ -236,45 +230,5 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 }
 
 func RunSRLinuxJSON(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	args := append([]string{"exec", "-i", containerName, "sr_cli", "--output-format", "json", "--pagination", "off", "--"}, showArgs...)
-	var last []byte
-	for attempt := 1; attempt <= srlinuxJSONMaxAttempts; attempt++ {
-		data, err := runner.Run(ctx, "docker", args...)
-		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s sr_cli %s: %w", containerName, strings.Join(showArgs, " "), err)
-		}
-		trimmed := bytes.TrimSpace(data)
-		if len(trimmed) > 0 && json.Valid(trimmed) {
-			return data, nil
-		}
-		last = data
-		if attempt < srlinuxJSONMaxAttempts {
-			if err := sleepContext(ctx, srlinuxJSONRetryDelay); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return nil, fmt.Errorf("docker exec -i %s sr_cli %s returned malformed JSON after %d attempts: bytes=%d preview=%q", containerName, strings.Join(showArgs, " "), srlinuxJSONMaxAttempts, len(last), previewBytes(last, 160))
-}
-
-func sleepContext(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func previewBytes(data []byte, limit int) string {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) <= limit {
-		return string(trimmed)
-	}
-	return string(trimmed[:limit]) + "..."
+	return srlinuxjson.ExecJSON(ctx, runner, containerName, showArgs...)
 }

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/srlinuxjson"
 )
 
 func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]NormalizedFIBRoute, error) {
@@ -157,7 +157,7 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			data, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+			data, err := srlinuxjson.ExecJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 			if err != nil {
 				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
 			}
@@ -169,7 +169,7 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 				if !srlinuxNeedsRouteDetail(routes[i]) {
 					continue
 				}
-				detail, err := runSRLinuxFIBJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+				detail, err := srlinuxjson.ExecJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
 				if err != nil {
 					return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", containerName, ni, routes[i].Prefix, err)
 				}
@@ -188,25 +188,6 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 	return out, nil
 }
 
-func runSRLinuxFIBJSON(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	args := append([]string{"exec", "-i", containerName, "sr_cli", "--output-format", "json", "--pagination", "off", "--"}, showArgs...)
-	data, err := runner.Run(ctx, "docker", args...)
-	if err == nil {
-		if _, payloadErr := jsonPayload(data); payloadErr == nil {
-			return data, nil
-		}
-	}
-	command := "docker exec -it " + shellQuote(containerName) + " sr_cli --output-format json --pagination off -- " + shellJoin(showArgs)
-	data, ttyErr := runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
-	if ttyErr != nil {
-		if err != nil {
-			return nil, fmt.Errorf("docker exec -i/it %s sr_cli %s: %w", containerName, strings.Join(showArgs, " "), ttyErr)
-		}
-		return nil, fmt.Errorf("docker exec -it %s sr_cli %s: %w", containerName, strings.Join(showArgs, " "), ttyErr)
-	}
-	return data, nil
-}
-
 func srlinuxNeedsRouteDetail(route NormalizedFIBRoute) bool {
 	switch canonicalProtocol(route.Protocol) {
 	case "bgp", "static":
@@ -223,16 +204,4 @@ func srlinuxRouteDetailFor(summary NormalizedFIBRoute, details []NormalizedFIBRo
 		}
 	}
 	return NormalizedFIBRoute{}, false
-}
-
-func shellJoin(args []string) string {
-	quoted := make([]string, 0, len(args))
-	for _, arg := range args {
-		quoted = append(quoted, shellQuote(arg))
-	}
-	return strings.Join(quoted, " ")
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

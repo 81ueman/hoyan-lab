@@ -662,10 +662,6 @@ func TestParseSRLinux(t *testing.T) {
 }
 
 func TestRunSRLinuxJSONRetriesEmptyOutput(t *testing.T) {
-	oldDelay := srlinuxJSONRetryDelay
-	srlinuxJSONRetryDelay = 0
-	defer func() { srlinuxJSONRetryDelay = oldDelay }()
-
 	calls := 0
 	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		calls++
@@ -690,10 +686,6 @@ func TestRunSRLinuxJSONRetriesEmptyOutput(t *testing.T) {
 }
 
 func TestRunSRLinuxJSONReportsMalformedOutput(t *testing.T) {
-	oldDelay := srlinuxJSONRetryDelay
-	srlinuxJSONRetryDelay = 0
-	defer func() { srlinuxJSONRetryDelay = oldDelay }()
-
 	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return []byte(`{"header":`), nil
 	})

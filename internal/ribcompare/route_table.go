@@ -62,10 +62,9 @@ func (srlinuxCollector) CollectRouteTables(ctx context.Context, runner Runner, n
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			command := fmt.Sprintf("docker exec -it %s sr_cli --output-format json --pagination off -- show network-instance %s route-table ipv4-unicast summary", shellQuote(containerName), shellQuote(ni))
-			data, err := runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
+			data, err := RunSRLinuxJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 			if err != nil {
-				return nil, fmt.Errorf("docker exec -it %s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
+				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
 			}
 			routes, err := ParseSRLinuxRouteTableNetworkInstance(n.Name, ni, data)
 			if err != nil {
@@ -504,8 +503,4 @@ func srlinuxNextHopAddress(raw string) string {
 		return ip.String()
 	}
 	return addr
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
