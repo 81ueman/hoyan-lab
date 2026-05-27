@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub PR Writing"
+  short_description: "Write clear GitHub pull request bodies"
+  default_prompt: "Use $gh-write-pr when creating or updating a GitHub pull request."
