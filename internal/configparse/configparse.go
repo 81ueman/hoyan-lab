@@ -9,8 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	//lint:ignore ST1001 This package is a mechanical extraction of the legacy parser; issue #64 keeps behavior stable before follow-up cleanup.
-	. "github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 type ParsedConfig struct {
@@ -18,19 +17,19 @@ type ParsedConfig struct {
 	ASN            uint32
 	RouterID       string
 	Loopback       string
-	Interfaces     []Interface
+	Interfaces     []model.Interface
 	Prefixes       []string
-	Routes         []ConfiguredRoute
-	Redistribute   []BGPRedistribution
-	Neighbors      []BGPNeighbor
-	PrefixLists    []PrefixList
-	ASPathLists    []ASPathList
-	CommunityLists []CommunityList
-	RoutePolicies  []RoutePolicy
-	ACLs           []ACL
-	ACLBindings    []ACLBinding
-	OSPF           OSPFProcess
-	OSPFProcesses  []OSPFProcess
+	Routes         []model.ConfiguredRoute
+	Redistribute   []model.BGPRedistribution
+	Neighbors      []model.BGPNeighbor
+	PrefixLists    []model.PrefixList
+	ASPathLists    []model.ASPathList
+	CommunityLists []model.CommunityList
+	RoutePolicies  []model.RoutePolicy
+	ACLs           []model.ACL
+	ACLBindings    []model.ACLBinding
+	OSPF           model.OSPFProcess
+	OSPFProcesses  []model.OSPFProcess
 }
 
 type ParseResult struct {
@@ -58,7 +57,7 @@ type CEOSParser struct{}
 type SRLinuxParser struct{}
 
 type frrLikeDialect interface {
-	Kind() DeviceKind
+	Kind() model.DeviceKind
 	VendorName() string
 	SupportsRouteMapPolicy() bool
 	SupportsOSPFConfig() bool
@@ -66,9 +65,9 @@ type frrLikeDialect interface {
 	SupportsFlatAccessList() bool
 	SupportsBGPStringLists() bool
 	SupportsAdvancedRouteMapPolicy() bool
-	InterfaceVRF(fields []string) (NetworkInstanceID, bool)
-	OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID
-	DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction
+	InterfaceVRF(fields []string) (model.NetworkInstanceID, bool)
+	OSPFInterfaceVRF(ifaces []model.Interface, name string) model.NetworkInstanceID
+	DefaultACLAction(fallback model.ACLDefaultAction) model.ACLDefaultAction
 }
 
 type frrDialect struct{}
@@ -78,21 +77,21 @@ type aclBinding struct {
 	Name      string
 	Interface string
 	Stage     string
-	Source    ConfigSource
+	Source    model.ConfigSource
 }
 
 type parsedACLRule struct {
 	Name      string
 	Stage     string
 	Interface string
-	Action    ACLAction
+	Action    model.ACLAction
 	Protocol  string
-	SrcPrefix Prefix
-	DstPrefix Prefix
-	SrcPort   PortSet
-	DstPort   PortSet
+	SrcPrefix model.Prefix
+	DstPrefix model.Prefix
+	SrcPort   model.PortSet
+	DstPort   model.PortSet
 	Seq       int
-	Source    ConfigSource
+	Source    model.ConfigSource
 }
 
 func (w UnsupportedStatement) String() string {
@@ -118,12 +117,12 @@ func (e UnsupportedConfigError) Error() string {
 	return strings.Join(lines, "\n")
 }
 
-func ParseConfig(kind DeviceKind, path string) (ParsedConfig, error) {
+func ParseConfig(kind model.DeviceKind, path string) (ParsedConfig, error) {
 	result, err := parseConfig(kind, path, false)
 	return result.Config, err
 }
 
-func ParseConfigWithWarnings(kind DeviceKind, path string) (ParseResult, error) {
+func ParseConfigWithWarnings(kind model.DeviceKind, path string) (ParseResult, error) {
 	return parseConfig(kind, path, true)
 }
 
@@ -131,11 +130,11 @@ type ParseOptions struct {
 	CollectWarnings bool
 }
 
-func ParseConfigWithOptions(kind DeviceKind, path string, opts ParseOptions) (ParseResult, error) {
+func ParseConfigWithOptions(kind model.DeviceKind, path string, opts ParseOptions) (ParseResult, error) {
 	return parseConfig(kind, path, opts.CollectWarnings)
 }
 
-func ParseNftablesACLConfig(path string) ([]ACL, []ACLBinding, error) {
+func ParseNftablesACLConfig(path string) ([]model.ACL, []model.ACLBinding, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
@@ -143,20 +142,20 @@ func ParseNftablesACLConfig(path string) ([]ACL, []ACLBinding, error) {
 	return parseNftables(path, string(data))
 }
 
-func parseConfig(kind DeviceKind, path string, collectWarnings bool) (ParseResult, error) {
+func parseConfig(kind model.DeviceKind, path string, collectWarnings bool) (ParseResult, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ParseResult{}, err
 	}
-	if !ProfileFor(kind).ConfigProfile().SupportsConfigParse() {
+	if !model.ProfileFor(kind).ConfigProfile().SupportsConfigParse() {
 		return ParseResult{}, fmt.Errorf("unsupported config kind %q", kind)
 	}
 	switch kind {
-	case KindFRR:
+	case model.KindFRR:
 		return parseFRR(path, string(data), collectWarnings)
-	case KindCEOS:
+	case model.KindCEOS:
 		return parseCEOS(path, string(data), collectWarnings)
-	case KindSRLinux:
+	case model.KindSRLinux:
 		return parseSRLinux(path, string(data), collectWarnings)
 	default:
 		return ParseResult{}, fmt.Errorf("unsupported config kind %q", kind)
@@ -187,18 +186,18 @@ func parseSRLinux(path, text string, collectWarnings bool) (ParseResult, error) 
 	return SRLinuxParser{}.Parse(path, text, collectWarnings)
 }
 
-func (frrDialect) Kind() DeviceKind { return KindFRR }
+func (frrDialect) Kind() model.DeviceKind { return model.KindFRR }
 
 func (frrDialect) VendorName() string {
-	return ProfileFor(KindFRR).ConfigProfile().RouteMapVendorName()
+	return model.ProfileFor(model.KindFRR).ConfigProfile().RouteMapVendorName()
 }
 
 func (frrDialect) SupportsRouteMapPolicy() bool {
-	return ProfileFor(KindFRR).ConfigProfile().SupportsRouteMapPolicy()
+	return model.ProfileFor(model.KindFRR).ConfigProfile().SupportsRouteMapPolicy()
 }
 
 func (frrDialect) SupportsOSPFConfig() bool {
-	return ProfileFor(KindFRR).ConfigProfile().SupportsOSPFConfig()
+	return model.ProfileFor(model.KindFRR).ConfigProfile().SupportsOSPFConfig()
 }
 
 func (frrDialect) SupportsVRF() bool { return true }
@@ -209,33 +208,33 @@ func (frrDialect) SupportsBGPStringLists() bool { return true }
 
 func (frrDialect) SupportsAdvancedRouteMapPolicy() bool { return true }
 
-func (frrDialect) InterfaceVRF(fields []string) (NetworkInstanceID, bool) {
+func (frrDialect) InterfaceVRF(fields []string) (model.NetworkInstanceID, bool) {
 	if len(fields) >= 3 && fields[1] == "forwarding" {
-		return NormalizeNetworkInstance(fields[2]), true
+		return model.NormalizeNetworkInstance(fields[2]), true
 	}
 	return "", false
 }
 
-func (frrDialect) OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID {
-	return ProfileFor(KindFRR).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
+func (frrDialect) OSPFInterfaceVRF(ifaces []model.Interface, name string) model.NetworkInstanceID {
+	return model.ProfileFor(model.KindFRR).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
 }
 
-func (frrDialect) DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction {
-	return ProfileFor(KindFRR).ACLProfile().DefaultACLAction(fallback)
+func (frrDialect) DefaultACLAction(fallback model.ACLDefaultAction) model.ACLDefaultAction {
+	return model.ProfileFor(model.KindFRR).ACLProfile().DefaultACLAction(fallback)
 }
 
-func (ceosDialect) Kind() DeviceKind { return KindCEOS }
+func (ceosDialect) Kind() model.DeviceKind { return model.KindCEOS }
 
 func (ceosDialect) VendorName() string {
-	return ProfileFor(KindCEOS).ConfigProfile().RouteMapVendorName()
+	return model.ProfileFor(model.KindCEOS).ConfigProfile().RouteMapVendorName()
 }
 
 func (ceosDialect) SupportsRouteMapPolicy() bool {
-	return ProfileFor(KindCEOS).ConfigProfile().SupportsRouteMapPolicy()
+	return model.ProfileFor(model.KindCEOS).ConfigProfile().SupportsRouteMapPolicy()
 }
 
 func (ceosDialect) SupportsOSPFConfig() bool {
-	return ProfileFor(KindCEOS).ConfigProfile().SupportsOSPFConfig()
+	return model.ProfileFor(model.KindCEOS).ConfigProfile().SupportsOSPFConfig()
 }
 
 func (ceosDialect) SupportsVRF() bool { return true }
@@ -246,44 +245,44 @@ func (ceosDialect) SupportsBGPStringLists() bool { return false }
 
 func (ceosDialect) SupportsAdvancedRouteMapPolicy() bool { return false }
 
-func (ceosDialect) InterfaceVRF(fields []string) (NetworkInstanceID, bool) {
+func (ceosDialect) InterfaceVRF(fields []string) (model.NetworkInstanceID, bool) {
 	if len(fields) >= 3 && fields[1] == "forwarding" {
-		return NormalizeNetworkInstance(fields[2]), true
+		return model.NormalizeNetworkInstance(fields[2]), true
 	}
 	if len(fields) >= 2 {
-		return NormalizeNetworkInstance(fields[1]), true
+		return model.NormalizeNetworkInstance(fields[1]), true
 	}
 	return "", false
 }
 
-func (ceosDialect) OSPFInterfaceVRF(ifaces []Interface, name string) NetworkInstanceID {
-	return ProfileFor(KindCEOS).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
+func (ceosDialect) OSPFInterfaceVRF(ifaces []model.Interface, name string) model.NetworkInstanceID {
+	return model.ProfileFor(model.KindCEOS).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
 }
 
-func (ceosDialect) DefaultACLAction(fallback ACLDefaultAction) ACLDefaultAction {
-	return ProfileFor(KindCEOS).ACLProfile().DefaultACLAction(fallback)
+func (ceosDialect) DefaultACLAction(fallback model.ACLDefaultAction) model.ACLDefaultAction {
+	return model.ProfileFor(model.KindCEOS).ACLProfile().DefaultACLAction(fallback)
 }
 
 func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings bool) (ParseResult, error) {
 	kind := dialect.Kind()
 	var cfg ParsedConfig
 	var warnings []UnsupportedStatement
-	neighbors := map[string]*BGPNeighbor{}
-	prefixLists := map[string]*PrefixList{}
-	asPathLists := map[string]*ASPathList{}
-	communityLists := map[string]*CommunityList{}
-	routePolicies := map[string]*RoutePolicy{}
+	neighbors := map[string]*model.BGPNeighbor{}
+	prefixLists := map[string]*model.PrefixList{}
+	asPathLists := map[string]*model.ASPathList{}
+	communityLists := map[string]*model.CommunityList{}
+	routePolicies := map[string]*model.RoutePolicy{}
 	aclPolicies := map[string][]parsedACLRule{}
 	var aclBindings []aclBinding
 	var currentInterface string
 	var currentACL string
-	var currentRoutePolicy *RoutePolicy
-	var currentRouteRule *RoutePolicyRule
+	var currentRoutePolicy *model.RoutePolicy
+	var currentRouteRule *model.RoutePolicyRule
 	inBGP := false
 	inAF := false
 	inOSPF := false
-	bgpVRF := NetworkInstanceDefault
-	currentOSPFVRF := NetworkInstanceDefault
+	bgpVRF := model.NetworkInstanceDefault
+	currentOSPFVRF := model.NetworkInstanceDefault
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNo := 0
 	for scanner.Scan() {
@@ -294,7 +293,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			currentRoutePolicy = nil
 			currentRouteRule = nil
 			inOSPF = false
-			currentOSPFVRF = NetworkInstanceDefault
+			currentOSPFVRF = model.NetworkInstanceDefault
 			if !strings.HasPrefix(line, "ip access-list ") {
 				currentACL = ""
 			}
@@ -362,9 +361,9 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			}
 			addPrefixListRule(prefixLists, fields[2], rule)
 		case dialect.SupportsBGPStringLists() && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "as-path" && fields[2] == "access-list" && (fields[4] == "permit" || fields[4] == "deny"):
-			addStringListRule(asPathLists, fields[3], StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
+			addStringListRule(asPathLists, fields[3], model.StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
 		case dialect.SupportsBGPStringLists() && len(fields) >= 6 && fields[0] == "bgp" && fields[1] == "community-list" && fields[2] == "standard" && (fields[4] == "permit" || fields[4] == "deny"):
-			addCommunityListRule(communityLists, fields[3], StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
+			addCommunityListRule(communityLists, fields[3], model.StringListRule{Action: fields[4], Pattern: strings.Join(fields[5:], " ")})
 		case dialect.SupportsRouteMapPolicy() && len(fields) >= 4 && fields[0] == "route-map" && (fields[2] == "permit" || fields[2] == "deny"):
 			seq := 0
 			if len(fields) >= 4 {
@@ -467,7 +466,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 		case fields[0] == "interface" && len(fields) >= 2:
 			currentInterface = fields[1]
 			if dialect.SupportsVRF() && len(fields) >= 4 && fields[2] == "vrf" {
-				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: NormalizeNetworkInstance(fields[3])})
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, model.Interface{Name: currentInterface, VRF: model.NormalizeNetworkInstance(fields[3])})
 			}
 			currentACL = ""
 			inBGP = false
@@ -475,25 +474,25 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			inOSPF = false
 		case currentInterface != "" && len(fields) >= 3 && fields[0] == "ip" && fields[1] == "address":
 			addr := fields[2]
-			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, Address: addr})
+			cfg.Interfaces = upsertInterface(cfg.Interfaces, model.Interface{Name: currentInterface, Address: addr})
 			if strings.EqualFold(currentInterface, "lo") || strings.HasPrefix(strings.ToLower(currentInterface), "loopback") {
 				cfg.Loopback = addr
 			}
 		case dialect.SupportsVRF() && currentInterface != "" && len(fields) >= 2 && fields[0] == "vrf":
 			if vrf, ok := dialect.InterfaceVRF(fields); ok {
-				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: currentInterface, VRF: vrf})
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, model.Interface{Name: currentInterface, VRF: vrf})
 			}
 		case currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "access-group":
 			stage, ok := aclStage(fields[3])
 			if ok {
-				aclBindings = append(aclBindings, aclBinding{Name: fields[2], Interface: currentInterface, Stage: stage, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
+				aclBindings = append(aclBindings, aclBinding{Name: fields[2], Interface: currentInterface, Stage: stage, Source: model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
 			}
 		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "area":
 			vrf := dialect.OSPFInterfaceVRF(cfg.Interfaces, currentInterface)
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.Area = normalizeOSPFAreaID(fields[3])
-			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			oi.Source = model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
 		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "cost":
@@ -509,7 +508,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.Cost = cost
-			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			oi.Source = model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
 		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && fields[2] == "network" && isSupportedOSPFNetworkType(fields[3]):
@@ -517,7 +516,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			ospf := ospfProcess(&cfg, vrf)
 			oi := ospfInterface(ospf, currentInterface)
 			oi.NetworkType = normalizeOSPFNetworkType(fields[3])
-			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			oi.Source = model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[currentInterface] = *oi
 			ospf.Enabled = true
 		case dialect.SupportsOSPFConfig() && currentInterface != "" && len(fields) >= 4 && fields[0] == "ip" && fields[1] == "ospf" && (fields[2] == "hello-interval" || fields[2] == "dead-interval"):
@@ -545,9 +544,9 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 				return ParseResult{}, err
 			}
 			cfg.ASN = uint32(asn)
-			bgpVRF = NetworkInstanceDefault
+			bgpVRF = model.NetworkInstanceDefault
 			if len(fields) >= 5 && fields[3] == "vrf" {
-				bgpVRF = NormalizeNetworkInstance(fields[4])
+				bgpVRF = model.NormalizeNetworkInstance(fields[4])
 			}
 			inBGP = true
 			inAF = false
@@ -566,7 +565,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 2 && fields[0] == "router-id":
 			ospfProcess(&cfg, currentOSPFVRF).RouterID = fields[1]
 		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 4 && fields[0] == "network" && fields[2] == "area":
-			prefix, err := ParsePrefix(fields[1])
+			prefix, err := model.ParsePrefix(fields[1])
 			if err != nil {
 				if !collectWarnings {
 					return ParseResult{}, fmt.Errorf("unsupported %s OSPF network %q", dialect.VendorName(), line)
@@ -575,7 +574,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 				continue
 			}
 			ospf := ospfProcess(&cfg, currentOSPFVRF)
-			ospf.Networks = append(ospf.Networks, OSPFNetwork{Prefix: prefix, Area: normalizeOSPFAreaID(fields[3]), Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
+			ospf.Networks = append(ospf.Networks, model.OSPFNetwork{Prefix: prefix, Area: normalizeOSPFAreaID(fields[3]), Source: model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}})
 		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 3 && fields[0] == "area":
 			area, err := parseFRRLikeOSPFArea(kind, path, lineNo, line, fields)
 			if err != nil {
@@ -592,7 +591,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			ospf.PassiveInterfaces = appendUnique(ospf.PassiveInterfaces, fields[1])
 			oi := ospfInterface(ospf, fields[1])
 			oi.Passive = true
-			oi.Source = ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
+			oi.Source = model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line}
 			ospf.Interfaces[fields[1]] = *oi
 		case dialect.SupportsOSPFConfig() && inOSPF && len(fields) >= 1 && fields[0] == "redistribute":
 			redist, err := parseFRRLikeOSPFRedistribution(kind, path, lineNo, line, fields)
@@ -626,21 +625,21 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 			n := getNeighbor(neighbors, bgpVRF, fields[1])
 			n.RemoteAS = uint32(asn)
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "network":
-			if bgpVRF == NetworkInstanceDefault {
+			if bgpVRF == model.NetworkInstanceDefault {
 				cfg.Prefixes = appendUnique(cfg.Prefixes, fields[1])
 				continue
 			}
-			prefix, err := ParsePrefix(fields[1])
+			prefix, err := model.ParsePrefix(fields[1])
 			if err != nil {
 				return ParseResult{}, err
 			}
-			cfg.Routes = append(cfg.Routes, ConfiguredRoute{
+			cfg.Routes = append(cfg.Routes, model.ConfiguredRoute{
 				NetworkInstance: bgpVRF,
-				AFI:             AFIIPv4,
+				AFI:             model.AFIIPv4,
 				Prefix:          prefix,
-				Kind:            RouteSourceBGP,
+				Kind:            model.RouteSourceBGP,
 				AdminDistance:   200,
-				Source:          ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line},
+				Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line},
 			})
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "aggregate-address":
 			route, err := parseAggregateRoute(kind, path, lineNo, line, fields)
@@ -690,7 +689,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 	cfg.ASPathLists = sortedASPathLists(asPathLists)
 	cfg.CommunityLists = sortedCommunityLists(communityLists)
 	cfg.RoutePolicies = sortedRoutePolicies(routePolicies)
-	cfg.ACLs = normalizedACLs(kind, aclPolicies, dialect.DefaultACLAction(ACLDefaultDeny))
+	cfg.ACLs = normalizedACLs(kind, aclPolicies, dialect.DefaultACLAction(model.ACLDefaultDeny))
 	cfg.ACLBindings = normalizedACLBindings(aclBindings)
 	cfg.OSPFProcesses = compactOSPFProcesses(cfg.OSPFProcesses)
 	if cfg.Loopback == "" && cfg.RouterID != "" {
@@ -711,8 +710,8 @@ func parseSRLinuxConfig(path, text string, collectWarnings bool) (ParseResult, e
 	neighborExportPolicy := map[string]string{}
 	neighborNextHopSelf := map[string]bool{}
 	staticNextHopGroups := map[string]string{}
-	prefixLists := map[string]*PrefixList{}
-	routePolicies := map[string]*RoutePolicy{}
+	prefixLists := map[string]*model.PrefixList{}
+	routePolicies := map[string]*model.RoutePolicy{}
 	srlACLs := map[string]map[int]*parsedACLRule{}
 	var aclBindings []aclBinding
 	scanner := bufio.NewScanner(strings.NewReader(text))
@@ -755,15 +754,15 @@ func parseSRLinuxConfig(path, text string, collectWarnings bool) (ParseResult, e
 		case containsSeq(fields, "system", "name", "host-name") && len(fields) > 0:
 			cfg.Hostname = fields[len(fields)-1]
 		case containsSeq(fields, "network-instance") && containsSeq(fields, "interface") && !containsSeq(fields, "protocols"):
-			ni := NormalizeNetworkInstance(fieldAfter(fields, "network-instance"))
+			ni := model.NormalizeNetworkInstance(fieldAfter(fields, "network-instance"))
 			iface := srlinuxConfigInterfaceName(fieldAfter(fields, "interface"))
 			if iface != "" {
-				cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: iface, VRF: ni})
+				cfg.Interfaces = upsertInterface(cfg.Interfaces, model.Interface{Name: iface, VRF: ni})
 			}
 		case containsSeq(fields, "interface") && containsSeq(fields, "ipv4", "address") && len(fields) > 0:
 			iface := fieldAfter(fields, "interface")
 			addr := fields[len(fields)-1]
-			cfg.Interfaces = upsertInterface(cfg.Interfaces, Interface{Name: iface, Address: addr})
+			cfg.Interfaces = upsertInterface(cfg.Interfaces, model.Interface{Name: iface, Address: addr})
 			if strings.HasPrefix(strings.ToLower(iface), "lo") {
 				cfg.Loopback = addr
 			}
@@ -858,7 +857,7 @@ func parseSRLinuxConfig(path, text string, collectWarnings bool) (ParseResult, e
 		return ParseResult{}, err
 	}
 	for addr, group := range neighborGroup {
-		neighbor := BGPNeighbor{
+		neighbor := model.BGPNeighbor{
 			Address:      addr,
 			RemoteAS:     groupAS[group],
 			Activated:    true,
@@ -880,39 +879,39 @@ func parseSRLinuxConfig(path, text string, collectWarnings bool) (ParseResult, e
 	addSRLinuxDefaultPolicyActions(routePolicies)
 	cfg.PrefixLists = sortedPrefixLists(prefixLists)
 	cfg.RoutePolicies = sortedRoutePolicies(routePolicies)
-	cfg.ACLs = normalizedACLs(KindSRLinux, flattenSRLinuxACLs(srlACLs), ACLDefaultDeny)
+	cfg.ACLs = normalizedACLs(model.KindSRLinux, flattenSRLinuxACLs(srlACLs), model.ACLDefaultDeny)
 	cfg.ACLBindings = normalizedACLBindings(aclBindings)
 	return ParseResult{Config: cfg, Warnings: warnings}, nil
 }
 
-func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {
-	vrf := NetworkInstanceDefault
+func parseFRRLikeStaticRoute(kind model.DeviceKind, path string, lineNo int, raw string, fields []string) (model.ConfiguredRoute, error) {
+	vrf := model.NetworkInstanceDefault
 	if len(fields) >= 5 && fields[2] == "vrf" {
-		vrf = NormalizeNetworkInstance(fields[3])
+		vrf = model.NormalizeNetworkInstance(fields[3])
 		fields = append([]string{fields[0], fields[1]}, fields[4:]...)
 	}
 	if len(fields) == 6 && fields[4] == "vrf" {
-		vrf = NormalizeNetworkInstance(fields[5])
+		vrf = model.NormalizeNetworkInstance(fields[5])
 		fields = fields[:4]
 	}
 	if len(fields) != 4 {
-		return ConfiguredRoute{}, fmt.Errorf("unsupported %s static route statement", routeMapVendorName(kind))
+		return model.ConfiguredRoute{}, fmt.Errorf("unsupported %s static route statement", routeMapVendorName(kind))
 	}
-	prefix, err := ParsePrefix(fields[2])
+	prefix, err := model.ParsePrefix(fields[2])
 	if err != nil {
-		return ConfiguredRoute{}, err
+		return model.ConfiguredRoute{}, err
 	}
-	route := ConfiguredRoute{
+	route := model.ConfiguredRoute{
 		NetworkInstance: vrf,
-		AFI:             AFIIPv4,
+		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
-		Kind:            RouteSourceStatic,
+		Kind:            model.RouteSourceStatic,
 		AdminDistance:   1,
-		Source:          ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
+		Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
 	}
 	target := fields[3]
 	if strings.EqualFold(target, "Null0") {
-		route.Kind = RouteSourceBlackhole
+		route.Kind = model.RouteSourceBlackhole
 		route.Interface = target
 		return route, nil
 	}
@@ -924,40 +923,40 @@ func parseFRRLikeStaticRoute(kind DeviceKind, path string, lineNo int, raw strin
 	return route, nil
 }
 
-func ospfProcess(cfg *ParsedConfig, vrf NetworkInstanceID) *OSPFProcess {
-	vrf = NormalizeNetworkInstance(string(vrf))
-	if vrf == NetworkInstanceDefault {
-		cfg.OSPF.NetworkInstance = NetworkInstanceDefault
+func ospfProcess(cfg *ParsedConfig, vrf model.NetworkInstanceID) *model.OSPFProcess {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
+	if vrf == model.NetworkInstanceDefault {
+		cfg.OSPF.NetworkInstance = model.NetworkInstanceDefault
 		if cfg.OSPF.Interfaces == nil {
-			cfg.OSPF.Interfaces = map[string]OSPFInterface{}
+			cfg.OSPF.Interfaces = map[string]model.OSPFInterface{}
 		}
 		if cfg.OSPF.Areas == nil {
-			cfg.OSPF.Areas = map[string]OSPFArea{}
+			cfg.OSPF.Areas = map[string]model.OSPFArea{}
 		}
 		return &cfg.OSPF
 	}
 	for i := range cfg.OSPFProcesses {
-		if NormalizeNetworkInstance(string(cfg.OSPFProcesses[i].NetworkInstance)) == vrf {
+		if model.NormalizeNetworkInstance(string(cfg.OSPFProcesses[i].NetworkInstance)) == vrf {
 			if cfg.OSPFProcesses[i].Interfaces == nil {
-				cfg.OSPFProcesses[i].Interfaces = map[string]OSPFInterface{}
+				cfg.OSPFProcesses[i].Interfaces = map[string]model.OSPFInterface{}
 			}
 			if cfg.OSPFProcesses[i].Areas == nil {
-				cfg.OSPFProcesses[i].Areas = map[string]OSPFArea{}
+				cfg.OSPFProcesses[i].Areas = map[string]model.OSPFArea{}
 			}
 			return &cfg.OSPFProcesses[i]
 		}
 	}
-	cfg.OSPFProcesses = append(cfg.OSPFProcesses, OSPFProcess{
+	cfg.OSPFProcesses = append(cfg.OSPFProcesses, model.OSPFProcess{
 		NetworkInstance: vrf,
-		Interfaces:      map[string]OSPFInterface{},
-		Areas:           map[string]OSPFArea{},
+		Interfaces:      map[string]model.OSPFInterface{},
+		Areas:           map[string]model.OSPFArea{},
 	})
 	return &cfg.OSPFProcesses[len(cfg.OSPFProcesses)-1]
 }
 
-func ospfInterface(ospf *OSPFProcess, name string) *OSPFInterface {
+func ospfInterface(ospf *model.OSPFProcess, name string) *model.OSPFInterface {
 	if ospf.Interfaces == nil {
-		ospf.Interfaces = map[string]OSPFInterface{}
+		ospf.Interfaces = map[string]model.OSPFInterface{}
 	}
 	oi := ospf.Interfaces[name]
 	if oi.Name == "" {
@@ -967,20 +966,20 @@ func ospfInterface(ospf *OSPFProcess, name string) *OSPFInterface {
 	return &oi
 }
 
-func parseFRRLikeOSPFVRF(fields []string) NetworkInstanceID {
+func parseFRRLikeOSPFVRF(fields []string) model.NetworkInstanceID {
 	for i := 2; i+1 < len(fields); i++ {
 		if fields[i] == "vrf" {
-			return NormalizeNetworkInstance(fields[i+1])
+			return model.NormalizeNetworkInstance(fields[i+1])
 		}
 	}
-	return NetworkInstanceDefault
+	return model.NetworkInstanceDefault
 }
 
-func compactOSPFProcesses(processes []OSPFProcess) []OSPFProcess {
+func compactOSPFProcesses(processes []model.OSPFProcess) []model.OSPFProcess {
 	out := processes[:0]
 	for _, process := range processes {
-		process.NetworkInstance = NormalizeNetworkInstance(string(process.NetworkInstance))
-		if process.NetworkInstance == NetworkInstanceDefault || !process.Enabled {
+		process.NetworkInstance = model.NormalizeNetworkInstance(string(process.NetworkInstance))
+		if process.NetworkInstance == model.NetworkInstanceDefault || !process.Enabled {
 			continue
 		}
 		out = append(out, process)
@@ -988,86 +987,86 @@ func compactOSPFProcesses(processes []OSPFProcess) []OSPFProcess {
 	return out
 }
 
-func parseFRRLikeOSPFArea(kind DeviceKind, path string, lineNo int, raw string, fields []string) (OSPFArea, error) {
-	area := OSPFArea{ID: normalizeOSPFAreaID(fields[1]), Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
+func parseFRRLikeOSPFArea(kind model.DeviceKind, path string, lineNo int, raw string, fields []string) (model.OSPFArea, error) {
+	area := model.OSPFArea{ID: normalizeOSPFAreaID(fields[1]), Source: model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[2] {
 	case "stub":
-		area.Kind = OSPFAreaStub
+		area.Kind = model.OSPFAreaStub
 	case "nssa":
-		area.Kind = OSPFAreaNSSA
+		area.Kind = model.OSPFAreaNSSA
 	default:
-		return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area statement", routeMapVendorName(kind))
+		return model.OSPFArea{}, fmt.Errorf("unsupported %s OSPF area statement", routeMapVendorName(kind))
 	}
 	for _, opt := range fields[3:] {
 		switch opt {
 		case "no-summary":
 			area.NoSummary = true
 		case "default-information-originate":
-			if area.Kind != OSPFAreaNSSA {
-				return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
+			if area.Kind != model.OSPFAreaNSSA {
+				return model.OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
 			}
 			area.DefaultInformationOriginate = true
 		default:
-			return OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
+			return model.OSPFArea{}, fmt.Errorf("unsupported %s OSPF area option %q", routeMapVendorName(kind), opt)
 		}
 	}
 	return area, nil
 }
 
-func parseFRRLikeOSPFRedistribution(kind DeviceKind, path string, lineNo int, raw string, fields []string) (OSPFRedistribution, error) {
+func parseFRRLikeOSPFRedistribution(kind model.DeviceKind, path string, lineNo int, raw string, fields []string) (model.OSPFRedistribution, error) {
 	if len(fields) < 2 {
-		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
+		return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
 	}
-	redist := OSPFRedistribution{MetricType: 2, Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
+	redist := model.OSPFRedistribution{MetricType: 2, Source: model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[1] {
 	case "connected":
-		redist.Kind = RouteSourceConnected
+		redist.Kind = model.RouteSourceConnected
 	case "static":
-		redist.Kind = RouteSourceStatic
+		redist.Kind = model.RouteSourceStatic
 	case "bgp":
-		redist.Kind = RouteSourceBGP
+		redist.Kind = model.RouteSourceBGP
 	default:
-		return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute source %q", routeMapVendorName(kind), fields[1])
+		return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute source %q", routeMapVendorName(kind), fields[1])
 	}
 	for i := 2; i < len(fields); {
 		switch fields[i] {
 		case "route-map":
 			if i+1 >= len(fields) {
-				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
+				return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute statement", routeMapVendorName(kind))
 			}
 			redist.RouteMap = fields[i+1]
 			i += 2
 		case "metric":
 			if i+1 >= len(fields) {
-				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
+				return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
 			}
 			metric, err := strconv.Atoi(fields[i+1])
 			if err != nil || metric < 0 {
-				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
+				return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric", routeMapVendorName(kind))
 			}
 			redist.Metric = metric
 			i += 2
 		case "metric-type":
 			if i+1 >= len(fields) {
-				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
+				return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
 			}
 			metricType, err := strconv.Atoi(fields[i+1])
 			if err != nil || (metricType != 1 && metricType != 2) {
-				return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
+				return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute metric-type", routeMapVendorName(kind))
 			}
 			redist.MetricType = metricType
 			i += 2
 		default:
-			return OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute option %q", routeMapVendorName(kind), fields[i])
+			return model.OSPFRedistribution{}, fmt.Errorf("unsupported %s OSPF redistribute option %q", routeMapVendorName(kind), fields[i])
 		}
 	}
 	return redist, nil
 }
 
 func parseSRLinuxOSPF(cfg *ParsedConfig, path string, lineNo int, raw string, fields []string) error {
-	ospf := ospfProcess(cfg, NetworkInstanceDefault)
+	ospf := ospfProcess(cfg, model.NetworkInstanceDefault)
 	ospf.Enabled = true
-	source := ConfigSource{Vendor: string(KindSRLinux), File: path, Line: lineNo, Raw: raw}
+	source := model.ConfigSource{Vendor: string(model.KindSRLinux), File: path, Line: lineNo, Raw: raw}
 	if containsAnyField(fields, "router-id") {
 		ospf.RouterID = fields[len(fields)-1]
 		return nil
@@ -1146,43 +1145,43 @@ func parseConfigBool(raw string) bool {
 	}
 }
 
-func parseAggregateRoute(kind DeviceKind, path string, lineNo int, raw string, fields []string) (ConfiguredRoute, error) {
+func parseAggregateRoute(kind model.DeviceKind, path string, lineNo int, raw string, fields []string) (model.ConfiguredRoute, error) {
 	if len(fields) < 2 {
-		return ConfiguredRoute{}, fmt.Errorf("unsupported %s aggregate-address statement", routeMapVendorName(kind))
+		return model.ConfiguredRoute{}, fmt.Errorf("unsupported %s aggregate-address statement", routeMapVendorName(kind))
 	}
 	prefixText := fields[1]
-	prefix, err := ParsePrefix(prefixText)
+	prefix, err := model.ParsePrefix(prefixText)
 	if err != nil {
-		return ConfiguredRoute{}, err
+		return model.ConfiguredRoute{}, err
 	}
-	route := ConfiguredRoute{
-		NetworkInstance: NetworkInstanceDefault,
-		AFI:             AFIIPv4,
+	route := model.ConfiguredRoute{
+		NetworkInstance: model.NetworkInstanceDefault,
+		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
-		Kind:            RouteSourceAggregate,
+		Kind:            model.RouteSourceAggregate,
 		AdminDistance:   200,
-		Source:          ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
+		Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
 	}
 	for _, opt := range fields[2:] {
 		switch opt {
 		case "summary-only":
 			route.SummaryOnly = true
 		default:
-			return ConfiguredRoute{}, fmt.Errorf("unsupported %s aggregate-address option %q", routeMapVendorName(kind), opt)
+			return model.ConfiguredRoute{}, fmt.Errorf("unsupported %s aggregate-address option %q", routeMapVendorName(kind), opt)
 		}
 	}
 	return route, nil
 }
 
-func parseFRRLikeRedistribution(kind DeviceKind, path string, lineNo int, raw string, fields []string) (BGPRedistribution, error) {
-	redist := BGPRedistribution{Source: ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
+func parseFRRLikeRedistribution(kind model.DeviceKind, path string, lineNo int, raw string, fields []string) (model.BGPRedistribution, error) {
+	redist := model.BGPRedistribution{Source: model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw}}
 	switch fields[1] {
 	case "connected":
-		redist.Kind = RouteSourceConnected
+		redist.Kind = model.RouteSourceConnected
 	case "static":
-		redist.Kind = RouteSourceStatic
+		redist.Kind = model.RouteSourceStatic
 	default:
-		return BGPRedistribution{}, fmt.Errorf("unsupported %s redistribute source %q", routeMapVendorName(kind), fields[1])
+		return model.BGPRedistribution{}, fmt.Errorf("unsupported %s redistribute source %q", routeMapVendorName(kind), fields[1])
 	}
 	if len(fields) == 2 {
 		return redist, nil
@@ -1191,25 +1190,25 @@ func parseFRRLikeRedistribution(kind DeviceKind, path string, lineNo int, raw st
 		redist.RouteMap = fields[3]
 		return redist, nil
 	}
-	return BGPRedistribution{}, fmt.Errorf("unsupported %s redistribute statement", routeMapVendorName(kind))
+	return model.BGPRedistribution{}, fmt.Errorf("unsupported %s redistribute statement", routeMapVendorName(kind))
 }
 
-func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []string, nextHopGroups map[string]string) (ConfiguredRoute, error) {
+func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []string, nextHopGroups map[string]string) (model.ConfiguredRoute, error) {
 	prefixText := fieldAfter(fields, "route")
 	if prefixText == "" {
-		return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route statement")
+		return model.ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route statement")
 	}
-	prefix, err := ParsePrefix(prefixText)
+	prefix, err := model.ParsePrefix(prefixText)
 	if err != nil {
-		return ConfiguredRoute{}, err
+		return model.ConfiguredRoute{}, err
 	}
-	route := ConfiguredRoute{
-		NetworkInstance: NormalizeNetworkInstance(fieldAfter(fields, "network-instance")),
-		AFI:             AFIIPv4,
+	route := model.ConfiguredRoute{
+		NetworkInstance: model.NormalizeNetworkInstance(fieldAfter(fields, "network-instance")),
+		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
-		Kind:            RouteSourceStatic,
+		Kind:            model.RouteSourceStatic,
 		AdminDistance:   5,
-		Source:          ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw},
+		Source:          model.ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw},
 	}
 	if nh := fieldAfter(fields, "next-hop"); nh != "" {
 		if _, err := netip.ParseAddr(nh); err == nil {
@@ -1223,21 +1222,21 @@ func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []strin
 			route.NextHop = nh
 			return route, nil
 		}
-		return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop-group")
+		return model.ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop-group")
 	}
 	if iface := fieldAfter(fields, "interface"); iface != "" {
 		route.Interface = iface
 		return route, nil
 	}
 	if containsAnyField(fields, "blackhole") || containsAnyField(fields, "discard") {
-		route.Kind = RouteSourceBlackhole
+		route.Kind = model.RouteSourceBlackhole
 		return route, nil
 	}
-	return ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop")
+	return model.ConfiguredRoute{}, fmt.Errorf("unsupported SR Linux static route next-hop")
 }
 
 func srlinuxNextHopGroupKey(networkInstance, group string) string {
-	return string(NormalizeNetworkInstance(networkInstance)) + "\x00" + group
+	return string(model.NormalizeNetworkInstance(networkInstance)) + "\x00" + group
 }
 
 func srlinuxConfigInterfaceName(iface string) string {
@@ -1247,7 +1246,7 @@ func srlinuxConfigInterfaceName(iface string) string {
 	return iface
 }
 
-func parseSRLinuxPrefixSet(prefixLists map[string]*PrefixList, fields []string) error {
+func parseSRLinuxPrefixSet(prefixLists map[string]*model.PrefixList, fields []string) error {
 	name := fieldAfter(fields, "prefix-set")
 	prefix := fieldAfter(fields, "prefix")
 	if name == "" || prefix == "" {
@@ -1307,7 +1306,7 @@ func prefixRangeFields(ge, le int) []string {
 
 const unsupportedSRLinuxPolicyPrefixList = "__unsupported_srlinux_policy_never_match__"
 
-func parseSRLinuxRoutePolicy(routePolicies map[string]*RoutePolicy, prefixLists map[string]*PrefixList, fields []string) error {
+func parseSRLinuxRoutePolicy(routePolicies map[string]*model.RoutePolicy, prefixLists map[string]*model.PrefixList, fields []string) error {
 	name := fieldAfter(fields, "policy")
 	if name == "" {
 		return fmt.Errorf("unsupported SR Linux routing-policy statement")
@@ -1366,17 +1365,17 @@ func parseSRLinuxRoutePolicy(routePolicies map[string]*RoutePolicy, prefixLists 
 	return nil
 }
 
-func markUnsupportedSRLinuxRoutePolicyRule(prefixLists map[string]*PrefixList, rule *RoutePolicyRule) {
+func markUnsupportedSRLinuxRoutePolicyRule(prefixLists map[string]*model.PrefixList, rule *model.RoutePolicyRule) {
 	if prefixLists[unsupportedSRLinuxPolicyPrefixList] == nil {
 		denyAny, err := parsePrefixListRule(0, "deny", "any", nil)
 		if err == nil {
-			prefixLists[unsupportedSRLinuxPolicyPrefixList] = &PrefixList{Name: unsupportedSRLinuxPolicyPrefixList, Rules: []PrefixListRule{denyAny}}
+			prefixLists[unsupportedSRLinuxPolicyPrefixList] = &model.PrefixList{Name: unsupportedSRLinuxPolicyPrefixList, Rules: []model.PrefixListRule{denyAny}}
 		}
 	}
 	rule.MatchPrefixList = unsupportedSRLinuxPolicyPrefixList
 }
 
-func addSRLinuxDefaultPolicyActions(routePolicies map[string]*RoutePolicy) {
+func addSRLinuxDefaultPolicyActions(routePolicies map[string]*model.RoutePolicy) {
 	for _, policy := range routePolicies {
 		hasDefault := false
 		for _, rule := range policy.Rules {
@@ -1386,14 +1385,14 @@ func addSRLinuxDefaultPolicyActions(routePolicies map[string]*RoutePolicy) {
 			}
 		}
 		if !hasDefault {
-			policy.Rules = append(policy.Rules, RoutePolicyRule{Seq: 65535, Action: "permit"})
+			policy.Rules = append(policy.Rules, model.RoutePolicyRule{Seq: 65535, Action: "permit"})
 		}
 	}
 }
 
-func ensureRoutePolicyRule(routePolicies map[string]*RoutePolicy, name string, seq int) (*RoutePolicy, *RoutePolicyRule) {
+func ensureRoutePolicyRule(routePolicies map[string]*model.RoutePolicy, name string, seq int) (*model.RoutePolicy, *model.RoutePolicyRule) {
 	if routePolicies[name] == nil {
-		routePolicies[name] = &RoutePolicy{Name: name}
+		routePolicies[name] = &model.RoutePolicy{Name: name}
 	}
 	policy := routePolicies[name]
 	for i := range policy.Rules {
@@ -1401,7 +1400,7 @@ func ensureRoutePolicyRule(routePolicies map[string]*RoutePolicy, name string, s
 			return policy, &policy.Rules[i]
 		}
 	}
-	policy.Rules = append(policy.Rules, RoutePolicyRule{Seq: seq, Action: "deny"})
+	policy.Rules = append(policy.Rules, model.RoutePolicyRule{Seq: seq, Action: "deny"})
 	return policy, &policy.Rules[len(policy.Rules)-1]
 }
 
@@ -1449,10 +1448,10 @@ func unsupportedStatement(vendor, file string, line int, text, reason string) Un
 	}
 }
 
-func parseNftables(path, text string) ([]ACL, []ACLBinding, error) {
+func parseNftables(path, text string) ([]model.ACL, []model.ACLBinding, error) {
 	var rules []parsedACLRule
 	var tableName string
-	var chainDefault ACLDefaultAction = ACLDefaultPermit
+	var chainDefault model.ACLDefaultAction = model.ACLDefaultPermit
 	inForward := false
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	lineNo := 0
@@ -1499,19 +1498,19 @@ func parseNftables(path, text string) ([]ACL, []ACLBinding, error) {
 		return nil, nil, err
 	}
 	aclName := nftablesPolicyName(tableName)
-	acl := ACL{
+	acl := model.ACL{
 		Name:          aclName,
-		Vendor:        KindFRR,
+		Vendor:        model.KindFRR,
 		DefaultAction: chainDefault,
-		Source:        ConfigSource{Vendor: "nftables", File: path},
+		Source:        model.ConfigSource{Vendor: "nftables", File: path},
 	}
 	bindingSeen := map[string]bool{}
-	var bindings []ACLBinding
+	var bindings []model.ACLBinding
 	for _, rule := range rules {
 		acl.Rules = append(acl.Rules, parsedACLRuleToACLRule(rule))
 		key := rule.Stage + "\x00" + rule.Interface
 		if !bindingSeen[key] {
-			bindings = append(bindings, ACLBinding{
+			bindings = append(bindings, model.ACLBinding{
 				Interface: rule.Interface,
 				Direction: rule.Stage,
 				ACLName:   aclName,
@@ -1520,19 +1519,19 @@ func parseNftables(path, text string) ([]ACL, []ACLBinding, error) {
 			bindingSeen[key] = true
 		}
 	}
-	return []ACL{acl}, bindings, nil
+	return []model.ACL{acl}, bindings, nil
 }
 
-func nftablesChainPolicy(fields []string) (ACLDefaultAction, bool) {
+func nftablesChainPolicy(fields []string) (model.ACLDefaultAction, bool) {
 	for i := 0; i+1 < len(fields); i++ {
 		if fields[i] != "policy" {
 			continue
 		}
 		switch strings.TrimSuffix(fields[i+1], ";") {
 		case "accept":
-			return ACLDefaultPermit, true
+			return model.ACLDefaultPermit, true
 		case "drop":
-			return ACLDefaultDeny, true
+			return model.ACLDefaultDeny, true
 		}
 	}
 	return "", false
@@ -1542,9 +1541,9 @@ func parseNftablesForwardRule(path string, lineNo int, raw, tableName string, fi
 	stage := ""
 	iface := ""
 	protocol := ""
-	dstPrefix := Prefix{}
-	dstPort := PortSet(nil)
-	action := ACLAction("")
+	dstPrefix := model.Prefix{}
+	dstPort := model.PortSet(nil)
+	action := model.ACLAction("")
 	for i := 0; i < len(fields); i++ {
 		switch fields[i] {
 		case ";":
@@ -1568,7 +1567,7 @@ func parseNftablesForwardRule(path string, lineNo int, raw, tableName string, fi
 			case "protocol":
 				protocol = fields[i+2]
 			case "daddr":
-				pfx, err := ParsePrefix(fields[i+2])
+				pfx, err := model.ParsePrefix(fields[i+2])
 				if err != nil {
 					return parsedACLRule{}, false, fmt.Errorf("%s:%d: %w", path, lineNo, err)
 				}
@@ -1588,12 +1587,12 @@ func parseNftablesForwardRule(path string, lineNo int, raw, tableName string, fi
 			if err != nil {
 				return parsedACLRule{}, false, fmt.Errorf("%s:%d: %w", path, lineNo, err)
 			}
-			dstPort = ExactPort(port)
+			dstPort = model.ExactPort(port)
 			i += 2
 		case "drop":
-			action = ACLDeny
+			action = model.ACLDeny
 		case "accept":
-			action = ACLPermit
+			action = model.ACLPermit
 		default:
 			return parsedACLRule{}, false, fmt.Errorf("%s:%d: unsupported nftables forward statement %q", path, lineNo, raw)
 		}
@@ -1613,7 +1612,7 @@ func parseNftablesForwardRule(path string, lineNo int, raw, tableName string, fi
 		DstPrefix: dstPrefix,
 		DstPort:   dstPort,
 		Seq:       lineNo,
-		Source: ConfigSource{
+		Source: model.ConfigSource{
 			Vendor: "nftables",
 			File:   path,
 			Line:   lineNo,
@@ -1645,7 +1644,7 @@ func isACLRuleLine(fields []string) bool {
 	return false
 }
 
-func parseACLRule(kind DeviceKind, path string, lineNo int, raw, name string, fields []string) (parsedACLRule, bool, error) {
+func parseACLRule(kind model.DeviceKind, path string, lineNo int, raw, name string, fields []string) (parsedACLRule, bool, error) {
 	seq := 0
 	if len(fields) >= 2 && fields[0] == "seq" {
 		fields = fields[1:]
@@ -1657,8 +1656,8 @@ func parseACLRule(kind DeviceKind, path string, lineNo int, raw, name string, fi
 	if len(fields) < 4 {
 		return parsedACLRule{}, false, fmt.Errorf("unsupported %s ACL statement", routeMapVendorName(kind))
 	}
-	action := ACLAction(fields[0])
-	if action != ACLPermit && action != ACLDeny {
+	action := model.ACLAction(fields[0])
+	if action != model.ACLPermit && action != model.ACLDeny {
 		return parsedACLRule{}, false, fmt.Errorf("unsupported %s ACL action %q", routeMapVendorName(kind), fields[0])
 	}
 	protocol := fields[1]
@@ -1689,7 +1688,7 @@ func parseACLRule(kind DeviceKind, path string, lineNo int, raw, name string, fi
 		DstPrefix: dstPrefix,
 		DstPort:   dstPort,
 		Seq:       seq,
-		Source: ConfigSource{
+		Source: model.ConfigSource{
 			Vendor: string(kind),
 			File:   path,
 			Line:   lineNo,
@@ -1698,23 +1697,23 @@ func parseACLRule(kind DeviceKind, path string, lineNo int, raw, name string, fi
 	}, true, nil
 }
 
-func parseACLAddress(fields []string) (Prefix, int, error) {
+func parseACLAddress(fields []string) (model.Prefix, int, error) {
 	if len(fields) == 0 {
-		return Prefix{}, 0, fmt.Errorf("unsupported ACL empty address")
+		return model.Prefix{}, 0, fmt.Errorf("unsupported ACL empty address")
 	}
 	switch fields[0] {
 	case "any":
-		pfx, err := ParsePrefix("0.0.0.0/0")
+		pfx, err := model.ParsePrefix("0.0.0.0/0")
 		return pfx, 1, err
 	case "host":
 		if len(fields) < 2 {
-			return Prefix{}, 0, fmt.Errorf("unsupported ACL host address")
+			return model.Prefix{}, 0, fmt.Errorf("unsupported ACL host address")
 		}
-		pfx, err := ParsePrefix(fields[1] + "/32")
+		pfx, err := model.ParsePrefix(fields[1] + "/32")
 		return pfx, 2, err
 	}
 	if strings.Contains(fields[0], "/") {
-		pfx, err := ParsePrefix(fields[0])
+		pfx, err := model.ParsePrefix(fields[0])
 		return pfx, 1, err
 	}
 	if len(fields) >= 2 {
@@ -1722,17 +1721,17 @@ func parseACLAddress(fields []string) (Prefix, int, error) {
 			return pfx, 2, nil
 		}
 	}
-	return Prefix{}, 0, fmt.Errorf("unsupported ACL address %q", strings.Join(fields, " "))
+	return model.Prefix{}, 0, fmt.Errorf("unsupported ACL address %q", strings.Join(fields, " "))
 }
 
-func wildcardPrefix(addr, wildcard string) (Prefix, bool) {
+func wildcardPrefix(addr, wildcard string) (model.Prefix, bool) {
 	ip, err := netip.ParseAddr(addr)
 	if err != nil || !ip.Is4() {
-		return Prefix{}, false
+		return model.Prefix{}, false
 	}
 	w, err := netip.ParseAddr(wildcard)
 	if err != nil || !w.Is4() {
-		return Prefix{}, false
+		return model.Prefix{}, false
 	}
 	wb := w.As4()
 	bits := 0
@@ -1745,13 +1744,13 @@ func wildcardPrefix(addr, wildcard string) (Prefix, bool) {
 				continue
 			}
 			if seenOne {
-				return Prefix{}, false
+				return model.Prefix{}, false
 			}
 			bits++
 		}
 	}
 	pfx := netip.PrefixFrom(ip, bits).Masked()
-	return PrefixFromNetIP(pfx), true
+	return model.PrefixFromNetIP(pfx), true
 }
 
 func supportedACLPortTail(fields []string) bool {
@@ -1759,7 +1758,7 @@ func supportedACLPortTail(fields []string) bool {
 	return err == nil
 }
 
-func parseACLPortTail(fields []string) (PortSet, error) {
+func parseACLPortTail(fields []string) (model.PortSet, error) {
 	if len(fields) == 0 {
 		return nil, nil
 	}
@@ -1768,7 +1767,7 @@ func parseACLPortTail(fields []string) (PortSet, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ExactPort(port), nil
+		return model.ExactPort(port), nil
 	}
 	return nil, fmt.Errorf("unsupported port tail")
 }
@@ -1803,10 +1802,10 @@ func aclStage(raw string) (string, bool) {
 	}
 }
 
-func normalizedACLs(kind DeviceKind, aclPolicies map[string][]parsedACLRule, defaultAction ACLDefaultAction) []ACL {
-	var out []ACL
+func normalizedACLs(kind model.DeviceKind, aclPolicies map[string][]parsedACLRule, defaultAction model.ACLDefaultAction) []model.ACL {
+	var out []model.ACL
 	for name, policies := range aclPolicies {
-		acl := ACL{
+		acl := model.ACL{
 			Name:          name,
 			Vendor:        kind,
 			DefaultAction: defaultAction,
@@ -1828,10 +1827,10 @@ func normalizedACLs(kind DeviceKind, aclPolicies map[string][]parsedACLRule, def
 	return out
 }
 
-func normalizedACLBindings(bindings []aclBinding) []ACLBinding {
-	out := make([]ACLBinding, 0, len(bindings))
+func normalizedACLBindings(bindings []aclBinding) []model.ACLBinding {
+	out := make([]model.ACLBinding, 0, len(bindings))
 	for _, binding := range bindings {
-		out = append(out, ACLBinding{
+		out = append(out, model.ACLBinding{
 			Interface: binding.Interface,
 			Direction: binding.Stage,
 			ACLName:   binding.Name,
@@ -1850,15 +1849,15 @@ func normalizedACLBindings(bindings []aclBinding) []ACLBinding {
 	return out
 }
 
-func parsedACLRuleToACLRule(policy parsedACLRule) ACLRule {
+func parsedACLRuleToACLRule(policy parsedACLRule) model.ACLRule {
 	action := policy.Action
 	if action == "" {
-		action = ACLDeny
+		action = model.ACLDeny
 	}
-	return ACLRule{
+	return model.ACLRule{
 		Seq:    policy.Seq,
 		Action: action,
-		Match: PacketSpec{
+		Match: model.PacketSpec{
 			SrcSet:   prefixSetOrNil(policy.SrcPrefix),
 			DstSet:   prefixSetOrNil(policy.DstPrefix),
 			Protocol: policy.Protocol,
@@ -1869,11 +1868,11 @@ func parsedACLRuleToACLRule(policy parsedACLRule) ACLRule {
 	}
 }
 
-func prefixSetOrNil(prefix Prefix) PrefixSet {
+func prefixSetOrNil(prefix model.Prefix) model.PrefixSet {
 	if prefix.IsZero() {
 		return nil
 	}
-	return ExactPrefixSet{Prefix: prefix}
+	return model.ExactPrefixSet{Prefix: prefix}
 }
 
 func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string, lineNo int, raw string, fields []string) error {
@@ -1897,7 +1896,7 @@ func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string,
 		policy = &parsedACLRule{
 			Name:   name,
 			Seq:    seq,
-			Source: ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw},
+			Source: model.ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw},
 		}
 		aclPolicies[name][seq] = policy
 	}
@@ -1910,7 +1909,7 @@ func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string,
 		return nil
 	}
 	if containsSeq(fields, "match", "ipv4", "destination-ip", "prefix") {
-		pfx, err := ParsePrefix(fields[len(fields)-1])
+		pfx, err := model.ParsePrefix(fields[len(fields)-1])
 		if err != nil {
 			return err
 		}
@@ -1925,15 +1924,15 @@ func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string,
 		if err != nil {
 			return err
 		}
-		policy.DstPort = ExactPort(port)
+		policy.DstPort = model.ExactPort(port)
 		return nil
 	}
 	if containsSeq(fields, "action") {
 		switch fields[len(fields)-1] {
 		case "drop":
-			policy.Action = ACLDeny
+			policy.Action = model.ACLDeny
 		case "accept":
-			policy.Action = ACLPermit
+			policy.Action = model.ACLPermit
 		default:
 			return fmt.Errorf("unsupported SR Linux ACL action %q", fields[len(fields)-1])
 		}
@@ -1958,14 +1957,14 @@ func parseSRLinuxACLBinding(path string, lineNo int, raw string, fields []string
 	if iface == "" || stage == "" {
 		return aclBinding{}, false
 	}
-	return aclBinding{Name: name, Interface: iface, Stage: stage, Source: ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw}}, true
+	return aclBinding{Name: name, Interface: iface, Stage: stage, Source: model.ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw}}, true
 }
 
 func flattenSRLinuxACLs(raw map[string]map[int]*parsedACLRule) map[string][]parsedACLRule {
 	out := map[string][]parsedACLRule{}
 	for name, entries := range raw {
 		for _, policy := range entries {
-			if policy.Action != ACLDeny && policy.Action != ACLPermit {
+			if policy.Action != model.ACLDeny && policy.Action != model.ACLPermit {
 				continue
 			}
 			out[name] = append(out[name], *policy)
@@ -1983,28 +1982,28 @@ func srLinuxRoutingPolicyKind(fields []string) string {
 	return ""
 }
 
-func routeMapVendorName(kind DeviceKind) string {
-	return ProfileFor(kind).ConfigProfile().RouteMapVendorName()
+func routeMapVendorName(kind model.DeviceKind) string {
+	return model.ProfileFor(kind).ConfigProfile().RouteMapVendorName()
 }
 
-func getNeighbor(neighbors map[string]*BGPNeighbor, vrf NetworkInstanceID, addr string) *BGPNeighbor {
-	vrf = NormalizeNetworkInstance(string(vrf))
+func getNeighbor(neighbors map[string]*model.BGPNeighbor, vrf model.NetworkInstanceID, addr string) *model.BGPNeighbor {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	key := string(vrf) + "|" + addr
 	if neighbors[key] == nil {
-		neighbors[key] = &BGPNeighbor{NetworkInstance: vrf, Address: addr}
+		neighbors[key] = &model.BGPNeighbor{NetworkInstance: vrf, Address: addr}
 	}
 	return neighbors[key]
 }
 
-func parsePrefixListRule(seq int, action, prefix string, fields []string) (PrefixListRule, error) {
-	rule := PrefixListRule{Seq: seq, Action: action, Prefix: prefix}
+func parsePrefixListRule(seq int, action, prefix string, fields []string) (model.PrefixListRule, error) {
+	rule := model.PrefixListRule{Seq: seq, Action: action, Prefix: prefix}
 	for i := 0; i < len(fields); i += 2 {
 		if i+1 >= len(fields) {
-			return PrefixListRule{}, fmt.Errorf("invalid prefix-list range")
+			return model.PrefixListRule{}, fmt.Errorf("invalid prefix-list range")
 		}
 		v, err := strconv.Atoi(fields[i+1])
 		if err != nil {
-			return PrefixListRule{}, err
+			return model.PrefixListRule{}, err
 		}
 		switch fields[i] {
 		case "ge":
@@ -2012,12 +2011,12 @@ func parsePrefixListRule(seq int, action, prefix string, fields []string) (Prefi
 		case "le":
 			rule.Le = v
 		default:
-			return PrefixListRule{}, fmt.Errorf("unsupported prefix-list option %q", fields[i])
+			return model.PrefixListRule{}, fmt.Errorf("unsupported prefix-list option %q", fields[i])
 		}
 	}
-	match, err := NewPrefixSet(rule.Prefix, rule.Ge, rule.Le)
+	match, err := model.NewPrefixSet(rule.Prefix, rule.Ge, rule.Le)
 	if err != nil {
-		return PrefixListRule{}, err
+		return model.PrefixListRule{}, err
 	}
 	rule.Match = match
 	return rule, nil
@@ -2041,41 +2040,41 @@ func parseASPathFields(fields []string) ([]uint32, error) {
 	return out, nil
 }
 
-func addPrefixListRule(prefixLists map[string]*PrefixList, name string, rule PrefixListRule) {
+func addPrefixListRule(prefixLists map[string]*model.PrefixList, name string, rule model.PrefixListRule) {
 	if prefixLists[name] == nil {
-		prefixLists[name] = &PrefixList{Name: name}
+		prefixLists[name] = &model.PrefixList{Name: name}
 	}
 	prefixLists[name].Rules = append(prefixLists[name].Rules, rule)
 }
 
-func addStringListRule(asPathLists map[string]*ASPathList, name string, rule StringListRule) {
+func addStringListRule(asPathLists map[string]*model.ASPathList, name string, rule model.StringListRule) {
 	if asPathLists[name] == nil {
-		asPathLists[name] = &ASPathList{Name: name}
+		asPathLists[name] = &model.ASPathList{Name: name}
 	}
 	asPathLists[name].Rules = append(asPathLists[name].Rules, rule)
 }
 
-func addCommunityListRule(communityLists map[string]*CommunityList, name string, rule StringListRule) {
+func addCommunityListRule(communityLists map[string]*model.CommunityList, name string, rule model.StringListRule) {
 	if communityLists[name] == nil {
-		communityLists[name] = &CommunityList{Name: name}
+		communityLists[name] = &model.CommunityList{Name: name}
 	}
 	communityLists[name].Rules = append(communityLists[name].Rules, rule)
 }
 
-func addRoutePolicyRule(routePolicies map[string]*RoutePolicy, name string, action string, seq int) (*RoutePolicy, *RoutePolicyRule) {
+func addRoutePolicyRule(routePolicies map[string]*model.RoutePolicy, name string, action string, seq int) (*model.RoutePolicy, *model.RoutePolicyRule) {
 	if routePolicies[name] == nil {
-		routePolicies[name] = &RoutePolicy{Name: name}
+		routePolicies[name] = &model.RoutePolicy{Name: name}
 	}
-	routePolicies[name].Rules = append(routePolicies[name].Rules, RoutePolicyRule{Seq: seq, Action: action})
+	routePolicies[name].Rules = append(routePolicies[name].Rules, model.RoutePolicyRule{Seq: seq, Action: action})
 	policy := routePolicies[name]
 	return policy, &policy.Rules[len(policy.Rules)-1]
 }
 
-func sortedPrefixLists(prefixLists map[string]*PrefixList) []PrefixList {
-	var out []PrefixList
+func sortedPrefixLists(prefixLists map[string]*model.PrefixList) []model.PrefixList {
+	var out []model.PrefixList
 	for _, prefixList := range prefixLists {
 		cp := *prefixList
-		cp.Rules = append([]PrefixListRule(nil), prefixList.Rules...)
+		cp.Rules = append([]model.PrefixListRule(nil), prefixList.Rules...)
 		sort.Slice(cp.Rules, func(i, j int) bool {
 			return cp.Rules[i].Seq < cp.Rules[j].Seq
 		})
@@ -2087,11 +2086,11 @@ func sortedPrefixLists(prefixLists map[string]*PrefixList) []PrefixList {
 	return out
 }
 
-func sortedASPathLists(asPathLists map[string]*ASPathList) []ASPathList {
-	var out []ASPathList
+func sortedASPathLists(asPathLists map[string]*model.ASPathList) []model.ASPathList {
+	var out []model.ASPathList
 	for _, list := range asPathLists {
 		cp := *list
-		cp.Rules = append([]StringListRule(nil), list.Rules...)
+		cp.Rules = append([]model.StringListRule(nil), list.Rules...)
 		out = append(out, cp)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -2100,11 +2099,11 @@ func sortedASPathLists(asPathLists map[string]*ASPathList) []ASPathList {
 	return out
 }
 
-func sortedCommunityLists(communityLists map[string]*CommunityList) []CommunityList {
-	var out []CommunityList
+func sortedCommunityLists(communityLists map[string]*model.CommunityList) []model.CommunityList {
+	var out []model.CommunityList
 	for _, list := range communityLists {
 		cp := *list
-		cp.Rules = append([]StringListRule(nil), list.Rules...)
+		cp.Rules = append([]model.StringListRule(nil), list.Rules...)
 		out = append(out, cp)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -2113,11 +2112,11 @@ func sortedCommunityLists(communityLists map[string]*CommunityList) []CommunityL
 	return out
 }
 
-func sortedRoutePolicies(routePolicies map[string]*RoutePolicy) []RoutePolicy {
-	var out []RoutePolicy
+func sortedRoutePolicies(routePolicies map[string]*model.RoutePolicy) []model.RoutePolicy {
+	var out []model.RoutePolicy
 	for _, routePolicy := range routePolicies {
 		cp := *routePolicy
-		cp.Rules = append([]RoutePolicyRule(nil), routePolicy.Rules...)
+		cp.Rules = append([]model.RoutePolicyRule(nil), routePolicy.Rules...)
 		sort.Slice(cp.Rules, func(i, j int) bool {
 			return cp.Rules[i].Seq < cp.Rules[j].Seq
 		})
@@ -2133,7 +2132,7 @@ func intPtr(v int) *int {
 	return &v
 }
 
-func upsertInterface(xs []Interface, iface Interface) []Interface {
+func upsertInterface(xs []model.Interface, iface model.Interface) []model.Interface {
 	for i := range xs {
 		if xs[i].Name == iface.Name {
 			if iface.Address != "" {

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/configparse"
-	. "github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestParseFRRConfig(t *testing.T) {
@@ -44,7 +44,7 @@ router ospf
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := configparse.ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
@@ -156,23 +156,23 @@ func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := configparse.ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
-	if cfg.OSPF.Areas["1"].Kind != OSPFAreaStub {
+	if cfg.OSPF.Areas["1"].Kind != model.OSPFAreaStub {
 		t.Fatalf("area 1 = %#v, want stub", cfg.OSPF.Areas["1"])
 	}
-	if area := cfg.OSPF.Areas["2"]; area.Kind != OSPFAreaNSSA || !area.DefaultInformationOriginate {
+	if area := cfg.OSPF.Areas["2"]; area.Kind != model.OSPFAreaNSSA || !area.DefaultInformationOriginate {
 		t.Fatalf("area 2 = %#v, want NSSA default-information-originate", area)
 	}
 	if len(cfg.OSPF.Redistribute) != 3 ||
-		cfg.OSPF.Redistribute[0].Kind != RouteSourceConnected ||
-		cfg.OSPF.Redistribute[1].Kind != RouteSourceStatic ||
+		cfg.OSPF.Redistribute[0].Kind != model.RouteSourceConnected ||
+		cfg.OSPF.Redistribute[1].Kind != model.RouteSourceStatic ||
 		cfg.OSPF.Redistribute[1].Metric != 44 ||
 		cfg.OSPF.Redistribute[1].MetricType != 1 ||
 		cfg.OSPF.Redistribute[1].RouteMap != "STATIC-TO-OSPF" ||
-		cfg.OSPF.Redistribute[2].Kind != RouteSourceBGP ||
+		cfg.OSPF.Redistribute[2].Kind != model.RouteSourceBGP ||
 		cfg.OSPF.Redistribute[2].Metric != 12 ||
 		cfg.OSPF.Redistribute[2].MetricType != 2 {
 		t.Fatalf("redistribute = %#v, want connected, static options, and bgp", cfg.OSPF.Redistribute)
@@ -186,7 +186,7 @@ func TestParseFRROSPFUnsupportedAreaOptionWarns(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
@@ -215,10 +215,10 @@ func TestParseNftablesConfig(t *testing.T) {
 		t.Fatalf("ACLs = %#v, want one ACL with two rules", acls)
 	}
 	acl := acls[0]
-	if acl.Name != "BLOCK-HTTP-TO-HZ" || acl.DefaultAction != ACLDefaultPermit {
+	if acl.Name != "BLOCK-HTTP-TO-HZ" || acl.DefaultAction != model.ACLDefaultPermit {
 		t.Fatalf("acl metadata = %#v", acl)
 	}
-	if acl.Rules[0].Match.Protocol != "tcp" || acl.Rules[0].Action != ACLDeny || !acl.Rules[0].Match.DstPort.Contains(80) {
+	if acl.Rules[0].Match.Protocol != "tcp" || acl.Rules[0].Action != model.ACLDeny || !acl.Rules[0].Match.DstPort.Contains(80) {
 		t.Fatalf("first rule = %#v", acl.Rules[0])
 	}
 	if len(bindings) != 2 || bindings[0].Direction != "egress" || bindings[0].Interface != "eth1" || bindings[1].Direction != "ingress" || bindings[1].Interface != "eth2" {
@@ -246,10 +246,10 @@ ip access-list WEB-FILTER
 		t.Fatalf("ACLs = %#v, want one ACL", cfg.ACLs)
 	}
 	acl := cfg.ACLs[0]
-	if acl.Name != "WEB-FILTER" || acl.Vendor != KindCEOS || acl.DefaultAction != ACLDefaultDeny {
+	if acl.Name != "WEB-FILTER" || acl.Vendor != model.KindCEOS || acl.DefaultAction != model.ACLDefaultDeny {
 		t.Fatalf("ACL metadata = %#v", acl)
 	}
-	if len(acl.Rules) != 2 || acl.Rules[0].Action != ACLPermit || acl.Rules[0].Seq != 10 || acl.Rules[1].Action != ACLDeny || acl.Rules[1].Seq != 20 {
+	if len(acl.Rules) != 2 || acl.Rules[0].Action != model.ACLPermit || acl.Rules[0].Seq != 10 || acl.Rules[1].Action != model.ACLDeny || acl.Rules[1].Seq != 20 {
 		t.Fatalf("ACL rules = %#v, want permit seq 10 then deny seq 20", acl.Rules)
 	}
 	if acl.Rules[0].Match.Protocol != "tcp" || !acl.Rules[0].Match.DstPort.Contains(443) {
@@ -335,9 +335,9 @@ router bgp 65001
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
-	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []PrefixList{
-		{Name: "PL-IN", Rules: []PrefixListRule{{Seq: 10, Action: "permit", Prefix: "10.0.0.0/24"}}},
-		{Name: "PL-OUT", Rules: []PrefixListRule{{Seq: 0, Action: "permit", Prefix: "10.0.1.0/24"}}},
+	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []model.PrefixList{
+		{Name: "PL-IN", Rules: []model.PrefixListRule{{Seq: 10, Action: "permit", Prefix: "10.0.0.0/24"}}},
+		{Name: "PL-OUT", Rules: []model.PrefixListRule{{Seq: 0, Action: "permit", Prefix: "10.0.1.0/24"}}},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("PrefixLists = %#v, want %#v", got, want)
 	}
@@ -446,7 +446,7 @@ set / network-instance default protocols bgp neighbor 192.0.2.1 export-policy [ 
 	if cfg.Hostname != "core1" || cfg.ASN != 65100 {
 		t.Fatalf("Config = %#v", cfg)
 	}
-	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []PrefixList{{Name: "LOCAL", Rules: []PrefixListRule{{Action: "permit", Prefix: "10.0.0.0/24", Le: 32}}}}; !reflect.DeepEqual(got, want) {
+	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []model.PrefixList{{Name: "LOCAL", Rules: []model.PrefixListRule{{Action: "permit", Prefix: "10.0.0.0/24", Le: 32}}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("PrefixLists = %#v, want %#v", got, want)
 	}
 	importPolicy := routePolicyByName(cfg.RoutePolicies, "IMPORT")
@@ -495,15 +495,15 @@ set / routing-policy policy IMPORT statement 10 action policy-result accept
 
 func TestParseConfigWithWarningsCurrentLabConfigs(t *testing.T) {
 	tests := []struct {
-		kind DeviceKind
+		kind model.DeviceKind
 		glob string
 	}{
-		{kind: KindFRR, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "*", "frr.conf")},
-		{kind: KindCEOS, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "ceos", "*.cfg")},
-		{kind: KindSRLinux, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "srlinux", "*.cfg")},
-		{kind: KindFRR, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "frr", "*", "frr.conf")},
-		{kind: KindCEOS, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "ceos", "*.cfg")},
-		{kind: KindSRLinux, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "srlinux", "*.cfg")},
+		{kind: model.KindFRR, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "*", "frr.conf")},
+		{kind: model.KindCEOS, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "ceos", "*.cfg")},
+		{kind: model.KindSRLinux, glob: filepath.Join("..", "..", "labs", "base-wan", "configs", "srlinux", "*.cfg")},
+		{kind: model.KindFRR, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "frr", "*", "frr.conf")},
+		{kind: model.KindCEOS, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "ceos", "*.cfg")},
+		{kind: model.KindSRLinux, glob: filepath.Join("..", "..", "labs", "ospf-basic", "configs", "srlinux", "*.cfg")},
 	}
 	for _, tt := range tests {
 		paths, err := filepath.Glob(tt.glob)
@@ -536,10 +536,10 @@ route-map RM permit 10
  set local-preference +50
  set metric -10
 `)
-	if got, want := cfg.ASPathLists, []ASPathList{{Name: "FROM-BJ", Rules: []StringListRule{{Action: "permit", Pattern: "^65001$"}}}}; !reflect.DeepEqual(got, want) {
+	if got, want := cfg.ASPathLists, []model.ASPathList{{Name: "FROM-BJ", Rules: []model.StringListRule{{Action: "permit", Pattern: "^65001$"}}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ASPathLists = %#v, want %#v", got, want)
 	}
-	if got, want := cfg.CommunityLists, []CommunityList{{Name: "BJ-COMM", Rules: []StringListRule{{Action: "permit", Pattern: "65001:100"}}}}; !reflect.DeepEqual(got, want) {
+	if got, want := cfg.CommunityLists, []model.CommunityList{{Name: "BJ-COMM", Rules: []model.StringListRule{{Action: "permit", Pattern: "65001:100"}}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CommunityLists = %#v, want %#v", got, want)
 	}
 	policy := routePolicyByName(cfg.RoutePolicies, "RM")
@@ -575,7 +575,7 @@ ip prefix-list PL seq 20 permit 10.1.0.0/16
 ip prefix-list PL seq 10 deny 10.0.0.0/8
 `)
 	got := prefixListsWithoutMatches(cfg.PrefixLists)
-	want := []PrefixList{{Name: "PL", Rules: []PrefixListRule{
+	want := []model.PrefixList{{Name: "PL", Rules: []model.PrefixListRule{
 		{Seq: 10, Action: "deny", Prefix: "10.0.0.0/8"},
 		{Seq: 20, Action: "permit", Prefix: "10.1.0.0/16"},
 	}}}
@@ -590,7 +590,7 @@ ip prefix-list PL permit any
 ip prefix-list PL seq 10 permit 10.0.0.0/8 ge 16 le 24
 `)
 	got := prefixListsWithoutMatches(cfg.PrefixLists)
-	want := []PrefixList{{Name: "PL", Rules: []PrefixListRule{
+	want := []model.PrefixList{{Name: "PL", Rules: []model.PrefixListRule{
 		{Seq: 0, Action: "permit", Prefix: "any"},
 		{Seq: 10, Action: "permit", Prefix: "10.0.0.0/8", Ge: 16, Le: 24},
 	}}}
@@ -681,12 +681,12 @@ router bgp 65001
       neighbor 192.0.2.1 route-map RM-OUT out
 `
 	cfg := parseCEOSConfigText(t, config)
-	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []PrefixList{
-		{Name: "PL-IN", Rules: []PrefixListRule{
+	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []model.PrefixList{
+		{Name: "PL-IN", Rules: []model.PrefixListRule{
 			{Seq: 10, Action: "permit", Prefix: "10.0.0.0/24"},
 			{Seq: 20, Action: "deny", Prefix: "10.0.1.0/24"},
 		}},
-		{Name: "PL-OUT", Rules: []PrefixListRule{{Seq: 0, Action: "permit", Prefix: "10.0.2.0/24", Ge: 25, Le: 28}}},
+		{Name: "PL-OUT", Rules: []model.PrefixListRule{{Seq: 0, Action: "permit", Prefix: "10.0.2.0/24", Ge: 25, Le: 28}}},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("PrefixLists = %#v, want %#v", got, want)
 	}
@@ -722,13 +722,13 @@ router bgp 65001
 	if got, want := len(cfg.Routes), 2; got != want {
 		t.Fatalf("routes = %d, want %d: %#v", got, want, cfg.Routes)
 	}
-	if cfg.Routes[0].Prefix.String() != "0.0.0.0/0" || cfg.Routes[0].NextHop != "192.0.2.254" || cfg.Routes[0].Kind != RouteSourceStatic {
+	if cfg.Routes[0].Prefix.String() != "0.0.0.0/0" || cfg.Routes[0].NextHop != "192.0.2.254" || cfg.Routes[0].Kind != model.RouteSourceStatic {
 		t.Fatalf("default static route not parsed: %#v", cfg.Routes[0])
 	}
-	if cfg.Routes[1].Kind != RouteSourceBlackhole || cfg.Routes[1].Interface != "Null0" {
+	if cfg.Routes[1].Kind != model.RouteSourceBlackhole || cfg.Routes[1].Interface != "Null0" {
 		t.Fatalf("blackhole route not parsed: %#v", cfg.Routes[1])
 	}
-	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].Kind != RouteSourceStatic || cfg.Redistribute[0].RouteMap != "STATIC-OUT" {
+	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].Kind != model.RouteSourceStatic || cfg.Redistribute[0].RouteMap != "STATIC-OUT" {
 		t.Fatalf("redistribute static not parsed: %#v", cfg.Redistribute)
 	}
 	if len(cfg.Prefixes) != 1 || cfg.Prefixes[0] != "198.51.100.0/24" {
@@ -749,7 +749,7 @@ router bgp 65001
 		t.Fatalf("routes = %#v, want one aggregate route", cfg.Routes)
 	}
 	route := cfg.Routes[0]
-	if route.Kind != RouteSourceAggregate || route.Prefix.String() != "10.0.0.0/16" || !route.SummaryOnly || route.AdminDistance != 200 {
+	if route.Kind != model.RouteSourceAggregate || route.Prefix.String() != "10.0.0.0/16" || !route.SummaryOnly || route.AdminDistance != 200 {
 		t.Fatalf("aggregate route = %#v", route)
 	}
 	if len(cfg.Prefixes) != 0 {
@@ -772,7 +772,7 @@ router bgp 65001
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
@@ -787,11 +787,11 @@ func TestParseSRLinuxBGPAggregateWarnsUnsupported(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, err := configparse.ParseConfig(KindSRLinux, path)
+	_, err := configparse.ParseConfig(model.KindSRLinux, path)
 	if err == nil || !strings.Contains(err.Error(), "unsupported SR Linux BGP aggregate route statement") {
 		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported SR Linux aggregate", err)
 	}
-	result, err := configparse.ParseConfigWithWarnings(KindSRLinux, path)
+	result, err := configparse.ParseConfigWithWarnings(model.KindSRLinux, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
@@ -806,14 +806,14 @@ func TestParseUnsupportedStaticRouteWarningAndStrictError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("ip route 10.0.0.0/24 192.0.2.1 250\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
 	if len(result.Warnings) != 1 {
 		t.Fatalf("warnings = %#v, want one unsupported static route warning", result.Warnings)
 	}
-	_, err = configparse.ParseConfig(KindFRR, path)
+	_, err = configparse.ParseConfig(model.KindFRR, path)
 	if err == nil {
 		t.Fatalf("configparse.ParseConfig() error = nil, want strict unsupported static route error")
 	}
@@ -836,7 +836,7 @@ func TestParseFRRVRFInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := configparse.ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(model.KindFRR, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
@@ -867,7 +867,7 @@ func TestParseCEOSVRFInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := configparse.ParseConfig(KindCEOS, path)
+	cfg, err := configparse.ParseConfig(model.KindCEOS, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
@@ -936,7 +936,7 @@ func TestParseSRLinuxNetworkInstanceInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := configparse.ParseConfig(KindSRLinux, path)
+	cfg, err := configparse.ParseConfig(model.KindSRLinux, path)
 	if err != nil {
 		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
@@ -972,10 +972,10 @@ exit
 	if len(cfg.Neighbors) != 1 || cfg.Neighbors[0].NetworkInstance != "tenant-a" || cfg.Neighbors[0].Address != "192.0.2.2" || !cfg.Neighbors[0].Activated || cfg.Neighbors[0].ImportPolicy != "IMPORT-A" {
 		t.Fatalf("Neighbors = %#v, want tenant-a neighbor", cfg.Neighbors)
 	}
-	if len(cfg.Routes) != 1 || cfg.Routes[0].Kind != RouteSourceBGP || cfg.Routes[0].NetworkInstance != "tenant-a" || cfg.Routes[0].Prefix.String() != "10.255.0.1/32" {
+	if len(cfg.Routes) != 1 || cfg.Routes[0].Kind != model.RouteSourceBGP || cfg.Routes[0].NetworkInstance != "tenant-a" || cfg.Routes[0].Prefix.String() != "10.255.0.1/32" {
 		t.Fatalf("Routes = %#v, want tenant-a BGP network", cfg.Routes)
 	}
-	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].NetworkInstance != "tenant-a" || cfg.Redistribute[0].Kind != RouteSourceConnected || cfg.Redistribute[0].RouteMap != "CONNECTED-OUT" {
+	if len(cfg.Redistribute) != 1 || cfg.Redistribute[0].NetworkInstance != "tenant-a" || cfg.Redistribute[0].Kind != model.RouteSourceConnected || cfg.Redistribute[0].RouteMap != "CONNECTED-OUT" {
 		t.Fatalf("Redistribute = %#v, want tenant-a connected route-map", cfg.Redistribute)
 	}
 }
@@ -1074,11 +1074,11 @@ set / network-instance default protocols bgp neighbor 198.18.20.9 afi-safi ipv4-
 	}
 }
 
-func prefixListsWithoutMatches(in []PrefixList) []PrefixList {
-	out := make([]PrefixList, len(in))
+func prefixListsWithoutMatches(in []model.PrefixList) []model.PrefixList {
+	out := make([]model.PrefixList, len(in))
 	for i, prefixList := range in {
 		out[i] = prefixList
-		out[i].Rules = append([]PrefixListRule(nil), prefixList.Rules...)
+		out[i].Rules = append([]model.PrefixListRule(nil), prefixList.Rules...)
 		for j := range out[i].Rules {
 			out[i].Rules[j].Match = nil
 		}
@@ -1086,16 +1086,16 @@ func prefixListsWithoutMatches(in []PrefixList) []PrefixList {
 	return out
 }
 
-func interfaceByName(interfaces []Interface, name string) Interface {
+func interfaceByName(interfaces []model.Interface, name string) model.Interface {
 	for _, iface := range interfaces {
 		if iface.Name == name {
 			return iface
 		}
 	}
-	return Interface{}
+	return model.Interface{}
 }
 
-func routePolicyByName(policies []RoutePolicy, name string) *RoutePolicy {
+func routePolicyByName(policies []model.RoutePolicy, name string) *model.RoutePolicy {
 	for i := range policies {
 		if policies[i].Name == name {
 			return &policies[i]
@@ -1104,7 +1104,7 @@ func routePolicyByName(policies []RoutePolicy, name string) *RoutePolicy {
 	return nil
 }
 
-func prefixListByName(prefixLists []PrefixList, name string) *PrefixList {
+func prefixListByName(prefixLists []model.PrefixList, name string) *model.PrefixList {
 	for i := range prefixLists {
 		if prefixLists[i].Name == name {
 			return &prefixLists[i]
@@ -1113,7 +1113,7 @@ func prefixListByName(prefixLists []PrefixList, name string) *PrefixList {
 	return nil
 }
 
-func asPathListByName(lists []ASPathList, name string) *ASPathList {
+func asPathListByName(lists []model.ASPathList, name string) *model.ASPathList {
 	for i := range lists {
 		if lists[i].Name == name {
 			return &lists[i]
@@ -1122,7 +1122,7 @@ func asPathListByName(lists []ASPathList, name string) *ASPathList {
 	return nil
 }
 
-func communityListByName(lists []CommunityList, name string) *CommunityList {
+func communityListByName(lists []model.CommunityList, name string) *model.CommunityList {
 	for i := range lists {
 		if lists[i].Name == name {
 			return &lists[i]
@@ -1131,7 +1131,7 @@ func communityListByName(lists []CommunityList, name string) *CommunityList {
 	return nil
 }
 
-func neighborByAddress(neighbors []BGPNeighbor, addr string) *BGPNeighbor {
+func neighborByAddress(neighbors []model.BGPNeighbor, addr string) *model.BGPNeighbor {
 	for i := range neighbors {
 		if neighbors[i].Address == addr {
 			return &neighbors[i]
