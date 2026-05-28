@@ -6,8 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/config/parser"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
 type RIBRow struct {
@@ -35,7 +36,7 @@ type FIBRow struct {
 type Snapshot struct {
 	Name     string
 	LabPath  string
-	Topology *model.Topology
+	Topology *topology.Topology
 	Graph    *sim.Graph
 	RIB      []RIBRow
 	FIB      []FIBRow
@@ -46,11 +47,12 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 		snapshotName = "current"
 	}
 	labPath = resolveLabPath(labPath)
-	topo, _, err := model.LoadLabTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), model.LoadLabTopologyOptions{})
+	lab, _, err := parser.LoadLabTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), parser.LoadLabTopologyOptions{})
 	if err != nil {
 		return Snapshot{}, err
 	}
-	graph := sim.NewGraph(topo)
+	topo := lab.Topology
+	graph := sim.NewGraphWithRouting(topo, lab.Routing)
 	fibInstalled := map[string]map[string]bool{}
 	var fibRows []FIBRow
 	nodes := nodeNames(topo)
@@ -119,7 +121,7 @@ func resolveLabPath(raw string) string {
 	return raw
 }
 
-func nodeNames(topo *model.Topology) []string {
+func nodeNames(topo *topology.Topology) []string {
 	nodes := make([]string, 0, len(topo.Nodes))
 	for _, node := range topo.Nodes {
 		nodes = append(nodes, node.Name)

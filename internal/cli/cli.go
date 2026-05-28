@@ -12,13 +12,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/compare/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/compare/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/config/parser"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	"github.com/81ueman/hoyan-lab/internal/engine/space"
 	"github.com/81ueman/hoyan-lab/internal/intent"
-	"github.com/81ueman/hoyan-lab/internal/livecheck"
-	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/ribcompare"
-	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/live/livecheck"
+	"github.com/81ueman/hoyan-lab/internal/live/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -240,7 +243,7 @@ type verifyOptions struct {
 }
 
 func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) error {
-	topo, warnings, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{
+	lab, warnings, err := parser.LoadLabTopologyWithOptions(opts.topologyPath, parser.LoadLabTopologyOptions{
 		CollectWarnings: true,
 		StrictConfig:    opts.strictConfig,
 	})
@@ -250,7 +253,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 	for _, warning := range warnings {
 		fmt.Fprintf(errOut, "warning: %s\n", warning)
 	}
-	queries, err := model.LoadQueries(opts.queriesPath)
+	queries, err := query.Load(opts.queriesPath)
 	if err != nil {
 		return err
 	}
@@ -258,7 +261,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 		CollapseEquivalentResults: !opts.noCollapse,
 		MaxPrefixClasses:          opts.maxPrefixClasses,
 	}
-	report := verify.RunWithOptions(topo, queries, verifyOpts)
+	report := verify.RunWithOptions(lab.Topology, lab.Routing, queries, verifyOpts)
 	if opts.format == "json" {
 		enc := json.NewEncoder(out)
 		enc.SetEscapeHTML(false)
@@ -314,7 +317,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 	return nil
 }
 
-func writePrefixUniverseStats(out io.Writer, stats model.PrefixUniverseStats) {
+func writePrefixUniverseStats(out io.Writer, stats space.PrefixUniverseStats) {
 	fmt.Fprintf(out, "predicates=%d unique=%d classes=%d build=%s max_class_cidrs=%d\n",
 		stats.PredicateCount,
 		stats.UniquePredicateCount,
@@ -336,7 +339,7 @@ func writePrefixUniverseStats(out io.Writer, stats model.PrefixUniverseStats) {
 	}
 }
 
-func formatClassIDs(ids []model.PrefixClassID) string {
+func formatClassIDs(ids []space.PrefixClassID) string {
 	parts := make([]string, 0, len(ids))
 	for _, id := range ids {
 		parts = append(parts, fmt.Sprintf("pc-%d", id))
@@ -494,12 +497,13 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	if _, ok := livesnapshot.ParseHashPolicy(opts.snapshotHashPolicy); !ok {
 		return ExitError{Code: 2, Err: fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")}
 	}
-	topo, _, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
+	lab, _, err := parser.LoadLabTopologyWithOptions(opts.topologyPath, parser.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
+	topo := lab.Topology
 	nodes := ribcompare.SupportedNodes(topo.Nodes)
-	expected := ribcompare.ExpectedForNodes(topo, nodes)
+	expected := ribcompare.ExpectedForNodes(topo, lab.Routing, nodes)
 	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
 	var actual []ribcompare.NormalizedRoute
 	if opts.snapshotPath != "" {
@@ -572,16 +576,17 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 	if _, ok := livesnapshot.ParseHashPolicy(opts.snapshotHashPolicy); !ok {
 		return ExitError{Code: 2, Err: fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")}
 	}
-	topo, _, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
+	lab, _, err := parser.LoadLabTopologyWithOptions(opts.topologyPath, parser.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
+	topo := lab.Topology
 	nodes := topo.Nodes
 	if opts.allowUnsupported {
 		nodes = fibcompare.SupportedNodes(nodes)
 	}
 	fibOpts := fibcompare.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: fibcompare.UnresolvedPolicy(opts.unresolvedPolicy)}
-	expected := fibcompare.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, nodes), fibOpts)
+	expected := fibcompare.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, lab.Routing, nodes), fibOpts)
 	var actualFiltered fibcompare.FilterResult
 	if opts.snapshotPath != "" {
 		snap, err := livesnapshot.Load(opts.snapshotPath)
@@ -711,7 +716,7 @@ func runRenderTopology(opts renderTopologyOptions, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	renderOpts := model.TopologyRenderOptions{
+	renderOpts := topology.TopologyRenderOptions{
 		Suffix:      opts.suffix,
 		LabName:     opts.labName,
 		MgmtNetwork: opts.mgmtNetwork,
@@ -720,7 +725,7 @@ func runRenderTopology(opts renderTopologyOptions, out io.Writer) error {
 	if shouldRewriteConfigPaths(sourceDir, opts.outputPath) {
 		renderOpts.SourceDir = sourceDir
 	}
-	rendered, err := model.RenderIsolatedTopology(data, renderOpts)
+	rendered, err := topology.RenderIsolatedTopology(data, renderOpts)
 	if err != nil {
 		return err
 	}

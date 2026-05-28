@@ -1,23 +1,27 @@
 package verify
 
 import (
+	"github.com/81ueman/hoyan-lab/internal/core/netaddr"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/config/routing"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/space"
 )
 
 func TestRunBundledQueries(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := topology.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
-	report := Run(topo, queries)
+	report := Run(topo, routing.FromTopology(topo), queries)
 	if len(report.Results) != 19 {
 		t.Fatalf("results = %d, want 19", len(report.Results))
 	}
@@ -36,15 +40,15 @@ func TestRunBundledQueries(t *testing.T) {
 }
 
 func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := topology.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
-	report := RunWithOptions(topo, queries, VerifyOptions{})
+	report := RunWithOptions(topo, routing.FromTopology(topo), queries, VerifyOptions{})
 	if len(report.Results) <= 13 {
 		t.Fatalf("prefix-class results = %d, want class-expanded results", len(report.Results))
 	}
@@ -71,16 +75,16 @@ func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
 }
 
 func TestRunWithOptionsCollapsesEquivalentPrefixClassResults(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := topology.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
 		t.Fatalf("LoadQueries() error = %v", err)
 	}
-	raw := RunWithOptions(topo, queries, VerifyOptions{})
-	collapsed := RunWithOptions(topo, queries, VerifyOptions{CollapseEquivalentResults: true})
+	raw := RunWithOptions(topo, routing.FromTopology(topo), queries, VerifyOptions{})
+	collapsed := RunWithOptions(topo, routing.FromTopology(topo), queries, VerifyOptions{CollapseEquivalentResults: true})
 	if len(collapsed.Results) >= len(raw.Results) {
 		t.Fatalf("collapsed results = %d, raw results = %d; want fewer collapsed results", len(collapsed.Results), len(raw.Results))
 	}
@@ -92,13 +96,13 @@ func TestRunWithOptionsCollapsesEquivalentPrefixClassResults(t *testing.T) {
 }
 
 func TestRouteCheckPrefixClassesEvaluateClassSpace(t *testing.T) {
-	topo := &model.Topology{
-		Nodes: []model.Node{
+	topo := &topology.Topology{
+		Nodes: []topology.Node{
 			{
 				Name: "src",
-				Kind: model.KindFRR,
+				Kind: topology.KindFRR,
 				ASN:  65001,
-				Neighbors: []model.BGPNeighbor{{
+				Neighbors: []topology.BGPNeighbor{{
 					PeerNode:  "dst",
 					RemoteAS:  65002,
 					Activated: true,
@@ -106,35 +110,35 @@ func TestRouteCheckPrefixClassesEvaluateClassSpace(t *testing.T) {
 			},
 			{
 				Name:     "dst",
-				Kind:     model.KindFRR,
+				Kind:     topology.KindFRR,
 				ASN:      65002,
-				Prefixes: model.MustPrefixes("10.0.1.0/24"),
-				Neighbors: []model.BGPNeighbor{{
+				Prefixes: netaddr.MustPrefixes("10.0.1.0/24"),
+				Neighbors: []topology.BGPNeighbor{{
 					PeerNode:  "src",
 					RemoteAS:  65001,
 					Activated: true,
 				}},
 			},
 		},
-		Links: []model.Link{{
+		Links: []topology.Link{{
 			Name: "src-dst",
 			A:    "src",
 			B:    "dst",
 			Cost: 10,
 		}},
 	}
-	queries := &model.Queries{RouteChecks: []model.RouteCheck{{
+	queries := &query.Queries{RouteChecks: []query.RouteCheck{{
 		Name:        "src-to-wide-prefix",
 		From:        "src",
-		Prefix:      model.MustPrefix("10.0.0.0/16"),
+		Prefix:      netaddr.MustPrefix("10.0.0.0/16"),
 		MaxFailures: 1,
 	}}}
 
-	report := RunWithOptions(topo, queries, VerifyOptions{})
+	report := RunWithOptions(topo, routing.FromTopology(topo), queries, VerifyOptions{})
 	if len(report.Results) < 2 {
 		t.Fatalf("prefix-class route results = %d, want split classes: %#v", len(report.Results), report.Results)
 	}
-	var routedClass, unroutedClass *model.PrefixClassID
+	var routedClass, unroutedClass *space.PrefixClassID
 	for i := range report.Results {
 		result := report.Results[i]
 		if result.Type != QueryTypeRoute {

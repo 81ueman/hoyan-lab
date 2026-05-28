@@ -1,18 +1,24 @@
 package cli
 
 import (
+	"github.com/81ueman/hoyan-lab/internal/core/netaddr"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/81ueman/hoyan-lab/internal/core/predicate"
 	"io"
 	"net/netip"
 	"sort"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/config/parser"
+	"github.com/81ueman/hoyan-lab/internal/config/routing"
+	"github.com/81ueman/hoyan-lab/internal/core/failure"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	"github.com/81ueman/hoyan-lab/internal/engine/space"
 	"github.com/spf13/cobra"
 )
 
@@ -40,14 +46,14 @@ type modelInspectOptions struct {
 }
 
 type prefixClassInspectRow struct {
-	ClassID           model.PrefixClassID `json:"class_id"`
+	ClassID           space.PrefixClassID `json:"class_id"`
 	Space             string              `json:"space"`
 	MatchedPredicates []string            `json:"matched_predicates,omitempty"`
 }
 
 type packetClassInspectRow struct {
-	ClassID           model.PacketClassID `json:"class_id"`
-	PrefixClassID     model.PrefixClassID `json:"prefix_class_id"`
+	ClassID           space.PacketClassID `json:"class_id"`
+	PrefixClassID     space.PrefixClassID `json:"prefix_class_id"`
 	Space             string              `json:"space"`
 	Protocol          string              `json:"protocol,omitempty"`
 	SrcPort           string              `json:"src_port,omitempty"`
@@ -136,43 +142,43 @@ type symbolicPacketInspectState struct {
 }
 
 type symbolicPacketBlockedPath struct {
-	PathNodes     []string               `json:"path_nodes,omitempty"`
-	PathLinks     []string               `json:"path_links,omitempty"`
-	Cost          int                    `json:"cost"`
-	Condition     string                 `json:"condition,omitempty"`
-	Reason        string                 `json:"reason,omitempty"`
-	ACL           string                 `json:"acl,omitempty"`
-	RuleSeq       int                    `json:"rule_seq,omitempty"`
-	Action        model.ACLAction        `json:"action,omitempty"`
-	DefaultAction model.ACLDefaultAction `json:"default_action,omitempty"`
-	Node          string                 `json:"node,omitempty"`
-	Interface     string                 `json:"interface,omitempty"`
-	Stage         string                 `json:"stage,omitempty"`
-	Source        model.ConfigSource     `json:"source,omitempty"`
+	PathNodes     []string                  `json:"path_nodes,omitempty"`
+	PathLinks     []string                  `json:"path_links,omitempty"`
+	Cost          int                       `json:"cost"`
+	Condition     string                    `json:"condition,omitempty"`
+	Reason        string                    `json:"reason,omitempty"`
+	ACL           string                    `json:"acl,omitempty"`
+	RuleSeq       int                       `json:"rule_seq,omitempty"`
+	Action        topology.ACLAction        `json:"action,omitempty"`
+	DefaultAction topology.ACLDefaultAction `json:"default_action,omitempty"`
+	Node          string                    `json:"node,omitempty"`
+	Interface     string                    `json:"interface,omitempty"`
+	Stage         string                    `json:"stage,omitempty"`
+	Source        topology.ConfigSource     `json:"source,omitempty"`
 }
 
 type symbolicPacketInspectBlockedReason struct {
-	Kind          string                 `json:"kind"`
-	Node          string                 `json:"node,omitempty"`
-	Link          string                 `json:"link,omitempty"`
-	Interface     string                 `json:"interface,omitempty"`
-	PolicyName    string                 `json:"policy_name,omitempty"`
-	ACLName       string                 `json:"acl_name,omitempty"`
-	RuleSeq       int                    `json:"rule_seq,omitempty"`
-	Action        model.ACLAction        `json:"action,omitempty"`
-	DefaultAction model.ACLDefaultAction `json:"default_action,omitempty"`
-	PolicyRaw     string                 `json:"policy_raw,omitempty"`
-	PathNodes     []string               `json:"path_nodes,omitempty"`
-	PathLinks     []string               `json:"path_links,omitempty"`
-	Cost          int                    `json:"cost"`
-	Condition     string                 `json:"condition,omitempty"`
-	Message       string                 `json:"message,omitempty"`
+	Kind          string                    `json:"kind"`
+	Node          string                    `json:"node,omitempty"`
+	Link          string                    `json:"link,omitempty"`
+	Interface     string                    `json:"interface,omitempty"`
+	PolicyName    string                    `json:"policy_name,omitempty"`
+	ACLName       string                    `json:"acl_name,omitempty"`
+	RuleSeq       int                       `json:"rule_seq,omitempty"`
+	Action        topology.ACLAction        `json:"action,omitempty"`
+	DefaultAction topology.ACLDefaultAction `json:"default_action,omitempty"`
+	PolicyRaw     string                    `json:"policy_raw,omitempty"`
+	PathNodes     []string                  `json:"path_nodes,omitempty"`
+	PathLinks     []string                  `json:"path_links,omitempty"`
+	Cost          int                       `json:"cost"`
+	Condition     string                    `json:"condition,omitempty"`
+	Message       string                    `json:"message,omitempty"`
 }
 
 type symbolicRouteInspect struct {
 	From              string                     `json:"from"`
 	Prefix            string                     `json:"prefix"`
-	ClassID           model.PrefixClassID        `json:"class_id"`
+	ClassID           space.PrefixClassID        `json:"class_id"`
 	Space             string                     `json:"space"`
 	MatchedPredicates []string                   `json:"matched_predicates,omitempty"`
 	Reachable         string                     `json:"reachable_condition"`
@@ -372,7 +378,7 @@ func runModelRIB(_ context.Context, opts modelInspectOptions, out io.Writer) err
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	topo, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
+	topo, _, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -396,7 +402,7 @@ func runModelRIB(_ context.Context, opts modelInspectOptions, out io.Writer) err
 }
 
 func runModelFIB(_ context.Context, opts modelInspectOptions, out io.Writer) error {
-	topo, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
+	topo, _, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -420,22 +426,21 @@ func runModelFIB(_ context.Context, opts modelInspectOptions, out io.Writer) err
 }
 
 func runModelPrefixClasses(_ context.Context, opts modelInspectOptions, out io.Writer) error {
-	topo, err := model.LoadLabTopology(opts.topologyPath)
+	topo, routes, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	graph := sim.NewGraph(topo)
-	var filter model.PrefixSet
-	var request []model.PrefixPredicate
+	var filter predicate.PrefixSet
+	var request []space.PrefixPredicate
 	if opts.prefix != "" {
-		prefix, err := model.ParsePrefix(opts.prefix)
+		prefix, err := netaddr.ParsePrefix(opts.prefix)
 		if err != nil {
 			return ExitError{Code: 2, Err: fmt.Errorf("--prefix %q: %w", opts.prefix, err)}
 		}
-		filter = model.ExactPrefixSet{Prefix: prefix}
-		request = append(request, model.PrefixPredicate{Source: "request:prefix-classes:" + prefix.String(), Set: filter})
+		filter = predicate.ExactPrefixSet{Prefix: prefix}
+		request = append(request, space.PrefixPredicate{Source: "request:prefix-classes:" + prefix.String(), Set: filter})
 	}
-	universe, err := modelPrefixUniverse(topo, graph, request)
+	universe, err := modelPrefixUniverse(topo, routes, graph, request)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -452,7 +457,7 @@ func runModelPrefixClasses(_ context.Context, opts modelInspectOptions, out io.W
 	case modelFormatJSON:
 		if opts.summary {
 			return writeJSON(out, struct {
-				Stats   model.PrefixUniverseStats `json:"prefix_universe_stats"`
+				Stats   space.PrefixUniverseStats `json:"prefix_universe_stats"`
 				Classes []prefixClassInspectRow   `json:"classes"`
 			}{
 				Stats:   universe.Stats,
@@ -466,29 +471,29 @@ func runModelPrefixClasses(_ context.Context, opts modelInspectOptions, out io.W
 }
 
 func runModelPacketClasses(_ context.Context, opts modelInspectOptions, out io.Writer) error {
-	topo, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
+	topo, routes, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	queries, err := model.LoadQueries(opts.queriesPath)
+	queries, err := query.Load(opts.queriesPath)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	var filter model.PrefixSet
-	var request []model.PrefixPredicate
+	var filter predicate.PrefixSet
+	var request []space.PrefixPredicate
 	if opts.prefix != "" {
-		prefix, err := model.ParsePrefix(opts.prefix)
+		prefix, err := netaddr.ParsePrefix(opts.prefix)
 		if err != nil {
 			return ExitError{Code: 2, Err: fmt.Errorf("--prefix %q: %w", opts.prefix, err)}
 		}
-		filter = model.ExactPrefixSet{Prefix: prefix}
-		request = append(request, model.PrefixPredicate{Source: "request:packet-classes:" + prefix.String(), Set: filter})
+		filter = predicate.ExactPrefixSet{Prefix: prefix}
+		request = append(request, space.PrefixPredicate{Source: "request:packet-classes:" + prefix.String(), Set: filter})
 	}
-	universe, err := modelPrefixUniverseWithQueries(topo, queries, graph, request)
+	universe, err := modelPrefixUniverseWithQueries(topo, routes, queries, graph, request)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	headerSpace := model.NewHeaderSpace(topo, queries, universe)
+	headerSpace := space.NewHeaderSpace(topo, routes, queries, universe)
 	rows := collectPacketClassRows(headerSpace, filter, opts.protocol, opts.dstPort)
 	switch opts.format {
 	case modelFormatTable:
@@ -507,7 +512,7 @@ func runModelSymbolicPacket(_ context.Context, opts modelInspectOptions, out io.
 	if opts.to == "" {
 		return ExitError{Code: 2, Err: fmt.Errorf("--to is required")}
 	}
-	topo, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
+	topo, _, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -517,7 +522,7 @@ func runModelSymbolicPacket(_ context.Context, opts modelInspectOptions, out io.
 	if _, err := netip.ParseAddr(opts.to); err != nil {
 		return ExitError{Code: 2, Err: fmt.Errorf("--to must be an IP address: %w", err)}
 	}
-	spec := model.PacketSpec{Protocol: opts.protocol, DstPort: model.ExactPort(opts.dstPort)}
+	spec := predicate.PacketSpec{Protocol: opts.protocol, DstPort: predicate.ExactPort(opts.dstPort)}
 	result := buildSymbolicPacketInspect(opts, graph.SymbolicPacketReachabilitySpec(opts.from, opts.to, spec))
 	switch opts.format {
 	case modelFormatTable:
@@ -536,7 +541,7 @@ func runModelSymbolicRoute(_ context.Context, opts modelInspectOptions, out io.W
 	if opts.prefix == "" {
 		return ExitError{Code: 2, Err: fmt.Errorf("--prefix is required")}
 	}
-	topo, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
+	topo, routes, graph, err := loadModelGraph(opts.topologyPath, opts.strictConfig)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -547,12 +552,12 @@ func runModelSymbolicRoute(_ context.Context, opts modelInspectOptions, out io.W
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	parsedPrefix, err := model.ParsePrefix(prefix)
+	parsedPrefix, err := netaddr.ParsePrefix(prefix)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	filter := model.ExactPrefixSet{Prefix: parsedPrefix}
-	universe, err := modelPrefixUniverse(topo, graph, []model.PrefixPredicate{{
+	filter := predicate.ExactPrefixSet{Prefix: parsedPrefix}
+	universe, err := modelPrefixUniverse(topo, routes, graph, []space.PrefixPredicate{{
 		Source: "request:symbolic-route:" + parsedPrefix.String(),
 		Set:    filter,
 	}})
@@ -570,15 +575,15 @@ func runModelSymbolicRoute(_ context.Context, opts modelInspectOptions, out io.W
 	}
 }
 
-func loadModelGraph(topologyPath string, strictConfig bool) (*model.Topology, *sim.Graph, error) {
-	topo, _, err := model.LoadLabTopologyWithOptions(topologyPath, model.LoadLabTopologyOptions{StrictConfig: strictConfig})
+func loadModelGraph(topologyPath string, strictConfig bool) (*topology.Topology, routing.TopologyRouting, *sim.Graph, error) {
+	lab, _, err := parser.LoadLabTopologyWithOptions(topologyPath, parser.LoadLabTopologyOptions{StrictConfig: strictConfig})
 	if err != nil {
-		return nil, nil, err
+		return nil, routing.TopologyRouting{}, nil, err
 	}
-	return topo, sim.NewGraph(topo), nil
+	return lab.Topology, lab.Routing, sim.NewGraphWithRouting(lab.Topology, lab.Routing), nil
 }
 
-func inspectNodes(topo *model.Topology, node string) ([]string, error) {
+func inspectNodes(topo *topology.Topology, node string) ([]string, error) {
 	if node != "" {
 		if _, ok := topo.Node(node); !ok {
 			return nil, fmt.Errorf("unknown node %q", node)
@@ -597,19 +602,19 @@ func canonicalPrefix(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	prefix, err := model.ParsePrefix(raw)
+	prefix, err := netaddr.ParsePrefix(raw)
 	if err != nil {
 		return "", fmt.Errorf("--prefix %q: %w", raw, err)
 	}
 	return prefix.String(), nil
 }
 
-func canonicalRouteProtocol(raw string) (model.RouteSourceKind, error) {
-	protocol := model.RouteSourceKind(strings.ToLower(strings.TrimSpace(raw)))
+func canonicalRouteProtocol(raw string) (topology.RouteSourceKind, error) {
+	protocol := topology.RouteSourceKind(strings.ToLower(strings.TrimSpace(raw)))
 	switch protocol {
 	case "":
 		return "", nil
-	case model.RouteSourceBGP, model.RouteSourceConnected, model.RouteSourceStatic, model.RouteSourceOSPF, model.RouteSourceAggregate, model.RouteSourceBlackhole:
+	case topology.RouteSourceBGP, topology.RouteSourceConnected, topology.RouteSourceStatic, topology.RouteSourceOSPF, topology.RouteSourceAggregate, topology.RouteSourceBlackhole:
 		return protocol, nil
 	default:
 		return "", fmt.Errorf("protocol must be one of bgp, connected, static, ospf, aggregate, or blackhole")
@@ -620,22 +625,22 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
-func modelPrefixUniverse(topo *model.Topology, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
-	return modelPrefixUniverseWithQueries(topo, nil, graph, request)
+func modelPrefixUniverse(topo *topology.Topology, routes routing.TopologyRouting, graph *sim.Graph, request []space.PrefixPredicate) (space.PrefixUniverse, error) {
+	return modelPrefixUniverseWithQueries(topo, routes, nil, graph, request)
 }
 
-func modelPrefixUniverseWithQueries(topo *model.Topology, queries *model.Queries, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
-	predicates := model.CollectPrefixPredicateMetadata(topo, queries)
+func modelPrefixUniverseWithQueries(topo *topology.Topology, routes routing.TopologyRouting, queries *query.Queries, graph *sim.Graph, request []space.PrefixPredicate) (space.PrefixUniverse, error) {
+	predicates := space.CollectPrefixPredicateMetadata(topo, routes, queries)
 	predicates = append(predicates, sim.CollectRIBPrefixPredicates(graph)...)
 	predicates = append(predicates, sim.CollectFIBPrefixPredicates(graph)...)
 	predicates = append(predicates, request...)
-	return model.BuildPrefixUniverseFromPredicates(predicates)
+	return space.BuildPrefixUniverseFromPredicates(predicates)
 }
 
-func collectPrefixClassRows(universe model.PrefixUniverse, filter model.PrefixSet) []prefixClassInspectRow {
+func collectPrefixClassRows(universe space.PrefixUniverse, filter predicate.PrefixSet) []prefixClassInspectRow {
 	var rows []prefixClassInspectRow
 	for _, class := range universe.Classes {
-		if filter != nil && !model.AddressSpaceOverlaps(class.Space, filter) {
+		if filter != nil && !predicate.AddressSpaceOverlaps(class.Space, filter) {
 			continue
 		}
 		rows = append(rows, prefixClassInspectRow{
@@ -647,11 +652,11 @@ func collectPrefixClassRows(universe model.PrefixUniverse, filter model.PrefixSe
 	return rows
 }
 
-func collectPacketClassRows(headerSpace model.HeaderSpace, filter model.PrefixSet, protocol string, dstPort int) []packetClassInspectRow {
+func collectPacketClassRows(headerSpace space.HeaderSpace, filter predicate.PrefixSet, protocol string, dstPort int) []packetClassInspectRow {
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	var rows []packetClassInspectRow
 	for _, class := range headerSpace.Classes {
-		if filter != nil && !model.AddressSpaceOverlaps(class.DstSet, filter) {
+		if filter != nil && !predicate.AddressSpaceOverlaps(class.DstSet, filter) {
 			continue
 		}
 		if protocol != "" && class.Protocol != "" && class.Protocol != protocol {
@@ -675,7 +680,7 @@ func collectPacketClassRows(headerSpace model.HeaderSpace, filter model.PrefixSe
 	return rows
 }
 
-func collectRIBRows(graph *sim.Graph, nodes []string, prefix string, protocol model.RouteSourceKind) []ribInspectRow {
+func collectRIBRows(graph *sim.Graph, nodes []string, prefix string, protocol topology.RouteSourceKind) []ribInspectRow {
 	var rows []ribInspectRow
 	for _, node := range nodes {
 		if prefix != "" {
@@ -695,7 +700,7 @@ func collectRIBRows(graph *sim.Graph, nodes []string, prefix string, protocol mo
 	return rows
 }
 
-func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSourceKind) []ribInspectRow {
+func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol topology.RouteSourceKind) []ribInspectRow {
 	rows := make([]ribInspectRow, 0, len(routes))
 	for _, route := range routes {
 		route = route.Normalize()
@@ -720,7 +725,7 @@ func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSo
 			SelectedCondition:     condString(route.SelectedCond),
 			BaseCondition:         condString(route.BaseCond),
 		})
-		if route.SourceKind == model.RouteSourceBGP {
+		if route.SourceKind == topology.RouteSourceBGP {
 			last := &rows[len(rows)-1]
 			last.ASPath = append([]uint32(nil), route.Attrs.ASPath...)
 			last.Communities = append([]string(nil), route.Attrs.Communities...)
@@ -730,7 +735,7 @@ func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSo
 			last.LearnedIBGP = ptr(route.Attrs.LearnedIBGP)
 			last.Invalid = ptr(route.Attrs.Invalid)
 		}
-		if route.SourceKind == model.RouteSourceOSPF {
+		if route.SourceKind == topology.RouteSourceOSPF {
 			rows[len(rows)-1].Metric = ptr(route.RouteSource.Metric)
 		}
 	}
@@ -837,10 +842,10 @@ func buildSymbolicPacketInspect(opts modelInspectOptions, result sim.SymbolicRea
 	return out
 }
 
-func buildSymbolicRouteClassInspects(from, prefix string, universe model.PrefixUniverse, filter model.PrefixSet, result sim.SymbolicRouteReachabilityResult) []symbolicRouteInspect {
+func buildSymbolicRouteClassInspects(from, prefix string, universe space.PrefixUniverse, filter predicate.PrefixSet, result sim.SymbolicRouteReachabilityResult) []symbolicRouteInspect {
 	var out []symbolicRouteInspect
 	for _, class := range universe.Classes {
-		if filter != nil && !model.AddressSpaceOverlaps(class.Space, filter) {
+		if filter != nil && !predicate.AddressSpaceOverlaps(class.Space, filter) {
 			continue
 		}
 		out = append(out, buildSymbolicRouteInspect(from, prefix, class, matchedPrefixPredicates(universe, class), result))
@@ -848,7 +853,7 @@ func buildSymbolicRouteClassInspects(from, prefix string, universe model.PrefixU
 	return out
 }
 
-func buildSymbolicRouteInspect(from, prefix string, class model.PrefixClass, matched []string, result sim.SymbolicRouteReachabilityResult) symbolicRouteInspect {
+func buildSymbolicRouteInspect(from, prefix string, class space.PrefixClass, matched []string, result sim.SymbolicRouteReachabilityResult) symbolicRouteInspect {
 	out := symbolicRouteInspect{
 		From:              from,
 		Prefix:            prefix,
@@ -870,8 +875,8 @@ func buildSymbolicRouteInspect(from, prefix string, class model.PrefixClass, mat
 	return out
 }
 
-func matchedPrefixPredicates(universe model.PrefixUniverse, class model.PrefixClass) []string {
-	byID := map[model.PrefixPredicateID]string{}
+func matchedPrefixPredicates(universe space.PrefixUniverse, class space.PrefixClass) []string {
+	byID := map[space.PrefixPredicateID]string{}
 	for _, predicate := range universe.Predicates {
 		byID[predicate.ID] = predicate.Source
 	}
@@ -889,8 +894,8 @@ func matchedPrefixPredicates(universe model.PrefixUniverse, class model.PrefixCl
 	return out
 }
 
-func matchedHeaderPredicates(headerSpace model.HeaderSpace, class model.PacketClass) []string {
-	byID := map[model.HeaderPredicateID]string{}
+func matchedHeaderPredicates(headerSpace space.HeaderSpace, class space.PacketClass) []string {
+	byID := map[space.HeaderPredicateID]string{}
 	for _, predicate := range headerSpace.Predicates {
 		byID[predicate.ID] = predicate.Source
 	}
@@ -954,8 +959,8 @@ func writePacketClassTable(out io.Writer, rows []packetClassInspectRow, showPred
 	return tw.Flush()
 }
 
-func writeRIBTable(out io.Writer, rows []ribInspectRow, showCond bool, protocol model.RouteSourceKind) error {
-	if protocol != "" && protocol != model.RouteSourceBGP {
+func writeRIBTable(out io.Writer, rows []ribInspectRow, showCond bool, protocol topology.RouteSourceKind) error {
+	if protocol != "" && protocol != topology.RouteSourceBGP {
 		return writeRouteSourceRIBTable(out, rows, showCond)
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
@@ -1170,7 +1175,7 @@ func writeSymbolicPacketTable(out io.Writer, result symbolicPacketInspect, showC
 	return blockedTW.Flush()
 }
 
-func formatConfigSource(src model.ConfigSource) string {
+func formatConfigSource(src topology.ConfigSource) string {
 	var parts []string
 	if src.Vendor != "" {
 		parts = append(parts, src.Vendor)
@@ -1245,14 +1250,14 @@ func condString(cond failure.Cond) string {
 	return cond.String()
 }
 
-func prefixSetString(set model.PrefixSet) string {
+func prefixSetString(set predicate.PrefixSet) string {
 	if set == nil {
 		return ""
 	}
 	return set.String()
 }
 
-func portSetInspectString(set model.PortSet) string {
+func portSetInspectString(set predicate.PortSet) string {
 	if set == nil {
 		return "any"
 	}

@@ -1,0 +1,257 @@
+package space
+
+import (
+	"github.com/81ueman/hoyan-lab/internal/core/netaddr"
+	"github.com/81ueman/hoyan-lab/internal/core/predicate"
+	"reflect"
+	"testing"
+
+	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/config/routing"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+)
+
+func TestPrefixUniverseFromAdvertisedAndQueryPrefixes(t *testing.T) {
+	topo := &topology.Topology{Nodes: []topology.Node{
+		{Name: "src"},
+		{Name: "dst", Prefixes: netaddr.MustPrefixes("10.0.0.0/24", "10.0.1.0/24")},
+	}}
+	queries := &query.Queries{
+		RouteChecks:  []query.RouteCheck{{Name: "route", From: "src", Prefix: netaddr.MustPrefix("10.0.1.0/24")}},
+		PacketChecks: []query.PacketCheck{{Name: "packet", From: "src", To: "dst"}},
+	}
+	universe, err := NewPrefixUniverse(topo, routing.FromTopology(topo), queries)
+	if err != nil {
+		t.Fatalf("NewPrefixUniverse() error = %v", err)
+	}
+	if got, want := len(universe.Classes), 2; got != want {
+		t.Fatalf("len(Classes) = %d, want %d", got, want)
+	}
+	id, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.0.1.0/24"))
+	if !ok {
+		t.Fatalf("ClassForPrefix() did not find advertised/query prefix")
+	}
+	if got, want := id, PrefixClassID(1); got != want {
+		t.Fatalf("ClassForPrefix() ID = %d, want %d", got, want)
+	}
+	if _, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.0.2.0/24")); ok {
+		t.Fatalf("ClassForPrefix() found an unknown prefix")
+	}
+}
+
+func TestPrefixUniverseCollectsPrefixListAndPolicyPredicates(t *testing.T) {
+	rangeSet, err := predicate.NewPrefixSet("10.0.0.0/16", 24, 24)
+	if err != nil {
+		t.Fatalf("predicate.NewPrefixSet() error = %v", err)
+	}
+	topo := &topology.Topology{
+		Nodes: []topology.Node{{
+			Name: "r1",
+			PrefixLists: []topology.PrefixList{{
+				Name:  "PL",
+				Rules: []topology.PrefixListRule{{Seq: 10, Action: "permit", Prefix: "10.0.0.0/16", Ge: 24, Le: 24, Match: rangeSet}},
+			}},
+		}},
+		ACLs: []topology.ACL{{Name: "deny-dst", Node: "r1", DefaultAction: topology.ACLDefaultPermit, Rules: []topology.ACLRule{{
+			Seq: 10, Action: topology.ACLDeny, Match: predicate.PacketSpec{DstSet: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("192.0.2.0/24")}},
+		}}}},
+	}
+	universe, err := NewPrefixUniverse(topo, routing.FromTopology(topo), nil)
+	if err != nil {
+		t.Fatalf("NewPrefixUniverse() error = %v", err)
+	}
+	if got, want := len(universe.Classes), 2; got != want {
+		t.Fatalf("len(Classes) = %d, want %d", got, want)
+	}
+	ids := universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.12.0/24")})
+	if !reflect.DeepEqual(ids, []PrefixClassID{0}) {
+		t.Fatalf("ClassesMatching(range member) = %#v, want [0]", ids)
+	}
+	ids = universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("192.0.2.0/24")})
+	if !reflect.DeepEqual(ids, []PrefixClassID{1}) {
+		t.Fatalf("ClassesMatching(policy prefix) = %#v, want [1]", ids)
+	}
+}
+
+func TestBuildPrefixUniverseSplitsOverlappingPredicates(t *testing.T) {
+	rangeSet, err := predicate.NewPrefixSet("10.0.0.0/16", 24, 24)
+	if err != nil {
+		t.Fatalf("predicate.NewPrefixSet() error = %v", err)
+	}
+	universe, err := BuildPrefixUniverse([]predicate.PrefixSet{
+		predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.1.0/24")},
+		rangeSet,
+	})
+	if err != nil {
+		t.Fatalf("BuildPrefixUniverse() error = %v", err)
+	}
+	if got, want := len(universe.Classes), 3; got != want {
+		t.Fatalf("len(Classes) = %d, want %d", got, want)
+	}
+	id, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.0.1.0/24"))
+	if !ok {
+		t.Fatalf("ClassForPrefix() did not find overlapping exact prefix")
+	}
+	if got, want := universe.PredicatesForClass(id), []PrefixPredicateID{0, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PredicatesForClass(overlap) = %#v, want %#v", got, want)
+	}
+	ids := universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.0.0/16")})
+	if got, want := len(ids), 3; got != want {
+		t.Fatalf("ClassesMatching(10.0.0.0/16) = %#v, want %d classes", ids, want)
+	}
+}
+
+func TestBuildPrefixUniverseAllowsDefaultAndSpecificRoute(t *testing.T) {
+	universe, err := BuildPrefixUniverse([]predicate.PrefixSet{
+		predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("0.0.0.0/0")},
+		predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.4.0.0/16")},
+	})
+	if err != nil {
+		t.Fatalf("BuildPrefixUniverse() error = %v", err)
+	}
+	id, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.4.1.0/24"))
+	if !ok {
+		t.Fatalf("ClassForPrefix() did not find specific route class")
+	}
+	if got, want := universe.PredicatesForClass(id), []PrefixPredicateID{0, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PredicatesForClass(specific) = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildPrefixUniverseRangeAndSpecificPredicateMatches(t *testing.T) {
+	rangeSet, err := predicate.NewPrefixSet("10.0.0.0/8", 16, 24)
+	if err != nil {
+		t.Fatalf("predicate.NewPrefixSet() error = %v", err)
+	}
+	universe, err := BuildPrefixUniverse([]predicate.PrefixSet{
+		rangeSet,
+		predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.4.0.0/16")},
+	})
+	if err != nil {
+		t.Fatalf("BuildPrefixUniverse() error = %v", err)
+	}
+	id, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.4.1.0/24"))
+	if !ok {
+		t.Fatalf("ClassForPrefix() did not find class for 10.4.1.0/24")
+	}
+	if got, want := universe.PredicatesForClass(id), []PrefixPredicateID{0, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PredicatesForClass(10.4.1.0/24) = %#v, want %#v", got, want)
+	}
+	ids := universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.4.0.0/16")})
+	if got, want := len(ids), 1; got != want {
+		t.Fatalf("ClassesMatching(10.4.0.0/16) = %#v, want %d class", ids, want)
+	}
+}
+
+func TestPrefixUniverseSeparatesAddressSpaceAndNLRIPredicateKinds(t *testing.T) {
+	rangeSet, err := predicate.NewPrefixSet("10.0.0.0/8", 16, 24)
+	if err != nil {
+		t.Fatalf("predicate.NewPrefixSet() error = %v", err)
+	}
+	packetHost := predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.4.1.10/32")}
+	universe, err := BuildPrefixUniverseFromPredicates([]PrefixPredicate{
+		{ID: 0, Source: "prefix-list:PL:10", Kind: PredicateNLRI, Set: rangeSet},
+		{ID: 1, Source: "query-packet:packet", Kind: PredicateAddressSpace, Set: packetHost},
+	})
+	if err != nil {
+		t.Fatalf("BuildPrefixUniverseFromPredicates() error = %v", err)
+	}
+	id, ok := universe.ClassForPrefix(netaddr.MustPrefix("10.4.1.10/32"))
+	if !ok {
+		t.Fatalf("ClassForPrefix() did not find packet host class")
+	}
+	if got, want := universe.PredicatesForClass(id), []PrefixPredicateID{1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("PredicatesForClass(packet host) = %#v, want %#v", got, want)
+	}
+	foundRangeClass := false
+	for _, class := range universe.Classes {
+		matches := universe.PredicatesForClass(class.ID)
+		if containsPrefixPredicateID(matches, 0) && !containsPrefixPredicateID(matches, 1) {
+			foundRangeClass = true
+			break
+		}
+	}
+	if !foundRangeClass {
+		t.Fatalf("universe classes = %#v, want at least one class matching only the NLRI range predicate", universe.Classes)
+	}
+}
+
+func TestBuildPrefixUniverseRejectsIPv6Explicitly(t *testing.T) {
+	_, err := BuildPrefixUniverse([]predicate.PrefixSet{
+		predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("2001:db8::/32")},
+	})
+	if err == nil {
+		t.Fatalf("BuildPrefixUniverse() error = nil, want IPv4-only error")
+	}
+}
+
+func TestPrefixUniverseStats(t *testing.T) {
+	universe, err := BuildPrefixUniverseFromPredicates([]PrefixPredicate{
+		{Source: "route:r1", Set: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.0.0/24")}},
+		{Source: "route:r2", Set: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.0.0/24")}},
+		{Source: "prefix-list:r1:PL:10", Set: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.1.0/24")}},
+		{Source: "query-route:q1", Set: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("10.0.2.0/24")}},
+	})
+	if err != nil {
+		t.Fatalf("BuildPrefixUniverseFromPredicates() error = %v", err)
+	}
+	if got, want := universe.Stats.PredicateCount, 4; got != want {
+		t.Fatalf("PredicateCount = %d, want %d", got, want)
+	}
+	if got, want := universe.Stats.UniquePredicateCount, 3; got != want {
+		t.Fatalf("UniquePredicateCount = %d, want %d", got, want)
+	}
+	if got, want := universe.Stats.ClassCount, len(universe.Classes); got != want {
+		t.Fatalf("ClassCount = %d, want %d", got, want)
+	}
+	if got, want := universe.Stats.MaxClassCIDRs, 1; got != want {
+		t.Fatalf("MaxClassCIDRs = %d, want %d", got, want)
+	}
+	wantSources := map[string]int{"route": 2, "prefix-list": 1, "query-route": 1}
+	if !reflect.DeepEqual(universe.Stats.PredicateSources, wantSources) {
+		t.Fatalf("PredicateSources = %#v, want %#v", universe.Stats.PredicateSources, wantSources)
+	}
+}
+
+func TestPrefixPredicateSourceCategory(t *testing.T) {
+	tests := map[string]string{
+		"route:r1":           "route",
+		"prefix-list:r1:PL":  "prefix-list",
+		"query-packet:allow": "query-packet",
+		"fib":                "fib",
+		"":                   "unknown",
+	}
+	for source, want := range tests {
+		if got := PrefixPredicateSourceCategory(source); got != want {
+			t.Fatalf("PrefixPredicateSourceCategory(%q) = %q, want %q", source, got, want)
+		}
+	}
+}
+
+func containsPrefixPredicateID(ids []PrefixPredicateID, want PrefixPredicateID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCollectPrefixPredicateMetadataSources(t *testing.T) {
+	topo := &topology.Topology{
+		Nodes: []topology.Node{{Name: "dst", Prefixes: netaddr.MustPrefixes("10.0.0.0/24")}},
+		ACLs: []topology.ACL{{Name: "deny-dst", DefaultAction: topology.ACLDefaultPermit, Rules: []topology.ACLRule{{
+			Seq: 10, Action: topology.ACLDeny, Match: predicate.PacketSpec{DstSet: predicate.ExactPrefixSet{Prefix: netaddr.MustPrefix("192.0.2.0/24")}},
+		}}}},
+	}
+	queries := &query.Queries{RouteChecks: []query.RouteCheck{{Name: "route", Prefix: netaddr.MustPrefix("10.0.0.0/24")}}}
+	predicates := CollectPrefixPredicateMetadata(topo, routing.FromTopology(topo), queries)
+	var sources []string
+	for _, predicate := range predicates {
+		sources = append(sources, predicate.Source)
+	}
+	want := []string{"route:dst", "acl:deny-dst", "query-route:route"}
+	if !reflect.DeepEqual(sources, want) {
+		t.Fatalf("sources = %#v, want %#v", sources, want)
+	}
+}

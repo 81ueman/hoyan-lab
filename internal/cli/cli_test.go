@@ -70,13 +70,13 @@ func TestLabFlagResolvesDefaultInputs(t *testing.T) {
 	if err := cmd.ParseFlags([]string{"--lab", "base-wan"}); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
-	topology := defaultTopologyPath
+	topo := defaultTopologyPath
 	queries := defaultQueriesPath
-	if err := resolveLabInputs(cmd, "base-wan", &topology, &queries); err != nil {
+	if err := resolveLabInputs(cmd, "base-wan", &topo, &queries); err != nil {
 		t.Fatalf("resolveLabInputs() error = %v", err)
 	}
-	if want := filepath.Join("labs", "base-wan", "hoyan.clab.yml"); topology != want {
-		t.Fatalf("topology = %q, want %q", topology, want)
+	if want := filepath.Join("labs", "base-wan", "hoyan.clab.yml"); topo != want {
+		t.Fatalf("topology = %q, want %q", topo, want)
 	}
 	if want := filepath.Join("labs", "base-wan", "intent", "queries.yml"); queries != want {
 		t.Fatalf("queries = %q, want %q", queries, want)
@@ -106,13 +106,13 @@ func TestLabFlagKeepsExplicitTopology(t *testing.T) {
 	if err := cmd.ParseFlags([]string{"--lab", "base-wan", "--topology", "custom.yml"}); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
-	topology := "custom.yml"
+	topo := "custom.yml"
 	queries := defaultQueriesPath
-	if err := resolveLabInputs(cmd, "base-wan", &topology, &queries); err != nil {
+	if err := resolveLabInputs(cmd, "base-wan", &topo, &queries); err != nil {
 		t.Fatalf("resolveLabInputs() error = %v", err)
 	}
-	if topology != "custom.yml" {
-		t.Fatalf("topology = %q, want explicit custom.yml", topology)
+	if topo != "custom.yml" {
+		t.Fatalf("topology = %q, want explicit custom.yml", topo)
 	}
 	if want := filepath.Join("labs", "base-wan", "intent", "queries.yml"); queries != want {
 		t.Fatalf("queries = %q, want %q", queries, want)

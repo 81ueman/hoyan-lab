@@ -1,0 +1,974 @@
+package controlplane
+
+import (
+	"github.com/81ueman/hoyan-lab/internal/core/netaddr"
+	"container/heap"
+	"math"
+	"net/netip"
+	"sort"
+	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/core/failure"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+)
+
+type ospfInterfaceState struct {
+	Node            string
+	Name            string
+	NetworkInstance topology.NetworkInstanceID
+	Prefix          netip.Prefix
+	Area            string
+	Cost            int
+	Passive         bool
+	NetworkType     string
+}
+
+type ospfAdvertisement struct {
+	Node            string
+	NetworkInstance topology.NetworkInstanceID
+	Prefix          netaddr.Prefix
+	Cost            int
+	Area            string
+	External        bool
+	MetricType      int
+	ExternalArea    string
+	DefaultArea     string
+	Source          RIBEntry
+}
+
+type ospfPath struct {
+	Cost  int
+	Nodes []string
+	Links []string
+	Areas []string
+	Cond  failure.Cond
+}
+
+type ospfAdjacency struct {
+	From string
+	To   string
+	Link string
+	Area string
+	Cost int
+}
+
+type ospfSPFNode struct {
+	Cost         int
+	Predecessors []ospfSPFPredecessor
+}
+
+type ospfSPFPredecessor struct {
+	Node string
+	Link string
+	Area string
+}
+
+type ospfSPFQueueItem struct {
+	Node string
+	Cost int
+}
+
+type ospfSPFQueue []ospfSPFQueueItem
+
+type ospfAdjacencyFilter func(ospfInterfaceState, ospfInterfaceState) (string, bool)
+
+const ospfMaxPathsPerDestination = 8
+
+const (
+	ospfRouteTypeIntraArea = "intra-area"
+	ospfRouteTypeInterArea = "inter-area"
+	ospfRouteTypeExternal1 = "external-type-1"
+	ospfRouteTypeExternal2 = "external-type-2"
+	ospfBackboneArea       = "0"
+)
+
+func (e *Engine) installOSPFRoutes() {
+	for _, vrf := range e.ospfVRFs() {
+		e.installOSPFRoutesVRF(vrf)
+	}
+}
+
+func (e *Engine) installOSPFRoutesVRF(vrf topology.NetworkInstanceID) {
+	processes := e.ospfProcesses(vrf)
+	states := e.ospfInterfaceStates(vrf, processes)
+	advertisements := e.ospfAdvertisements(states, processes)
+	if len(advertisements) == 0 {
+		return
+	}
+	areas := ospfNodeAreas(states)
+	abrs := ospfABRs(areas)
+	for _, src := range e.idx.Topology.Nodes {
+		if _, ok := processes[src.Name]; !ok {
+			continue
+		}
+		anyPaths := e.ospfCandidatePathsAnyArea(src.Name, states)
+		areaPaths := map[string]map[string][]ospfPath{}
+		for area := range areas[src.Name] {
+			areaPaths[area] = e.ospfCandidatePaths(src.Name, area, states)
+		}
+		for _, adv := range advertisements {
+			if adv.Node == src.Name {
+				if adv.External || adv.DefaultArea != "" {
+					continue
+				}
+				e.installLocalOSPFRoute(src, adv, states[src.Name])
+				continue
+			}
+			if adv.External || adv.DefaultArea != "" {
+				for _, path := range anyPaths[adv.Node] {
+					if !ospfAdvertisementAllowed(src, adv, path, processes) {
+						continue
+					}
+					e.installRemoteOSPFRoute(src.Name, adv, path, "")
+				}
+				continue
+			}
+			for _, path := range areaPaths[adv.Area][adv.Node] {
+				if ospfAdvertisementAllowed(src, adv, path, processes) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeIntraArea)
+				}
+			}
+			for _, path := range e.ospfInterAreaPaths(src.Name, adv, states, areas, abrs) {
+				if ospfAdvertisementAllowed(src, adv, path, processes) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, ospfRouteTypeInterArea)
+				}
+			}
+		}
+	}
+}
+
+func (e *Engine) ospfVRFs() []topology.NetworkInstanceID {
+	seen := map[topology.NetworkInstanceID]bool{}
+	for _, node := range e.idx.Topology.Nodes {
+		for _, process := range e.ospfProcessesForNode(node.Name) {
+			if !process.Enabled {
+				continue
+			}
+			vrf := topology.NormalizeNetworkInstance(string(process.NetworkInstance))
+			seen[vrf] = true
+		}
+	}
+	out := make([]topology.NetworkInstanceID, 0, len(seen))
+	for vrf := range seen {
+		out = append(out, vrf)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+func (e *Engine) ospfProcesses(vrf topology.NetworkInstanceID) map[string]topology.OSPFProcess {
+	vrf = topology.NormalizeNetworkInstance(string(vrf))
+	out := map[string]topology.OSPFProcess{}
+	for _, node := range e.idx.Topology.Nodes {
+		for _, process := range e.ospfProcessesForNode(node.Name) {
+			if !process.Enabled || topology.NormalizeNetworkInstance(string(process.NetworkInstance)) != vrf {
+				continue
+			}
+			process.NetworkInstance = vrf
+			out[node.Name] = process
+		}
+	}
+	return out
+}
+
+func (e *Engine) ospfProcessesForNode(node string) []topology.OSPFProcess {
+	var out []topology.OSPFProcess
+	nodeRouting := e.nodeRouting(node)
+	if nodeRouting.OSPF.Enabled {
+		process := nodeRouting.OSPF
+		process.NetworkInstance = topology.NormalizeNetworkInstance(string(process.NetworkInstance))
+		out = append(out, process)
+	}
+	for _, process := range nodeRouting.OSPFProcesses {
+		if !process.Enabled {
+			continue
+		}
+		process.NetworkInstance = topology.NormalizeNetworkInstance(string(process.NetworkInstance))
+		out = append(out, process)
+	}
+	return out
+}
+
+func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path ospfPath, routeType string) {
+	if len(path.Nodes) < 2 {
+		return
+	}
+	metric := path.Cost + adv.Cost
+	if adv.External {
+		routeType = ospfRouteTypeExternal2
+		if adv.MetricType == 1 {
+			routeType = ospfRouteTypeExternal1
+		} else {
+			metric = adv.Cost
+		}
+	}
+	nextHop := path.Nodes[1]
+	nextHopAddr := ""
+	if addr, ok := e.idx.PeerAddress(src, nextHop); ok {
+		nextHopAddr = addr.String()
+	}
+	cond := path.Cond
+	if cond == nil {
+		cond = failure.And(pathCondition(path)...)
+	}
+	if adv.Source.Condition != nil {
+		cond = failure.And(cond, adv.Source.Condition)
+	}
+	route := topology.ConfiguredRoute{
+		Node:            src,
+		NetworkInstance: adv.NetworkInstance,
+		AFI:             topology.AFIIPv4,
+		Prefix:          adv.Prefix,
+		Kind:            topology.RouteSourceOSPF,
+		AdminDistance:   110,
+		Metric:          metric,
+		OSPFRouteType:   routeType,
+	}
+	entry := RIBEntry{
+		NLRI:              RouteNLRI{Prefix: adv.Prefix},
+		Attrs:             BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
+		Provenance:        RouteProvenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
+		ForwardingNextHop: RouteNextHop{Node: nextHop, Addr: nextHopAddr},
+		SourceKind:        topology.RouteSourceOSPF,
+		RouteSource:       route,
+		BaseCond:          cond,
+		Condition:         cond,
+	}.Normalize()
+	e.addRIB(src, adv.Prefix, entry)
+}
+
+func (e *Engine) installLocalOSPFRoute(node topology.Node, adv ospfAdvertisement, states map[string]ospfInterfaceState) {
+	route := topology.ConfiguredRoute{
+		Node:            node.Name,
+		NetworkInstance: adv.NetworkInstance,
+		AFI:             topology.AFIIPv4,
+		Prefix:          adv.Prefix,
+		Kind:            topology.RouteSourceOSPF,
+		AdminDistance:   110,
+		Metric:          adv.Cost,
+		OSPFRouteType:   ospfRouteTypeIntraArea,
+		Interface:       ospfInterfaceForPrefix(states, adv.Prefix),
+	}
+	cond := failure.NodeVar(node.Name)
+	entry := RIBEntry{
+		NLRI:        RouteNLRI{Prefix: adv.Prefix},
+		Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
+		Provenance:  RouteProvenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
+		SourceKind:  topology.RouteSourceOSPF,
+		RouteSource: route,
+		BaseCond:    cond,
+		Condition:   cond,
+	}.Normalize()
+	e.addRIB(node.Name, adv.Prefix, entry)
+}
+
+func ospfInterfaceForPrefix(states map[string]ospfInterfaceState, prefix netaddr.Prefix) string {
+	for _, state := range states {
+		if netaddr.PrefixFromNetIP(state.Prefix).Equal(prefix) {
+			return state.Name
+		}
+	}
+	return ""
+}
+
+func (e *Engine) ospfInterfaceStates(vrf topology.NetworkInstanceID, processes map[string]topology.OSPFProcess) map[string]map[string]ospfInterfaceState {
+	out := map[string]map[string]ospfInterfaceState{}
+	for _, node := range e.idx.Topology.Nodes {
+		process, ok := processes[node.Name]
+		if !ok {
+			continue
+		}
+		for _, iface := range node.Interfaces {
+			pfx, err := netip.ParsePrefix(iface.Address)
+			if err != nil || !pfx.Addr().Is4() {
+				continue
+			}
+			ifState, ok := ospfInterfaceFor(node, process, vrf, iface, pfx)
+			if !ok {
+				continue
+			}
+			if out[node.Name] == nil {
+				out[node.Name] = map[string]ospfInterfaceState{}
+			}
+			out[node.Name][iface.Name] = ifState
+		}
+	}
+	return out
+}
+
+func ospfInterfaceFor(node topology.Node, process topology.OSPFProcess, vrf topology.NetworkInstanceID, iface topology.Interface, pfx netip.Prefix) (ospfInterfaceState, bool) {
+	vrf = topology.NormalizeNetworkInstance(string(vrf))
+	if topology.NormalizeNetworkInstance(string(iface.VRF)) != vrf {
+		return ospfInterfaceState{}, false
+	}
+	state := ospfInterfaceState{Node: node.Name, Name: iface.Name, NetworkInstance: vrf, Prefix: pfx.Masked(), Cost: 1}
+	for _, configured := range process.Interfaces {
+		if !topology.EquivalentInterfaceName(node.Kind, configured.Name, iface.Name) {
+			continue
+		}
+		state.Area = normalizeOSPFArea(configured.Area)
+		if configured.Cost > 0 {
+			state.Cost = configured.Cost
+		}
+		state.Passive = configured.Passive
+		state.NetworkType = configured.NetworkType
+	}
+	if state.Area == "" {
+		for _, network := range process.Networks {
+			if network.Prefix.Contains(pfx.Addr()) {
+				state.Area = normalizeOSPFArea(network.Area)
+				break
+			}
+		}
+	}
+	for _, passive := range process.PassiveInterfaces {
+		if topology.EquivalentInterfaceName(node.Kind, passive, iface.Name) {
+			state.Passive = true
+		}
+	}
+	if state.Area == "" {
+		return ospfInterfaceState{}, false
+	}
+	if isOSPFLoopbackInterface(iface.Name) {
+		state.Cost = 0
+	}
+	return state, true
+}
+
+func normalizeOSPFArea(area string) string {
+	area = strings.TrimSpace(area)
+	if area == "0.0.0.0" {
+		return ospfBackboneArea
+	}
+	return area
+}
+
+func isOSPFLoopbackInterface(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return name == "lo" || strings.HasPrefix(name, "lo") || strings.HasPrefix(name, "loopback")
+}
+
+func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceState, processes map[string]topology.OSPFProcess) []ospfAdvertisement {
+	var out []ospfAdvertisement
+	seen := map[string]bool{}
+	for node, byIface := range states {
+		for _, state := range byIface {
+			prefix := netaddr.PrefixFromNetIP(state.Prefix)
+			key := node + "|" + string(state.NetworkInstance) + "|" + prefix.String()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, ospfAdvertisement{Node: node, NetworkInstance: state.NetworkInstance, Prefix: prefix, Cost: state.Cost, Area: state.Area})
+		}
+	}
+	for _, node := range e.idx.Topology.Nodes {
+		process, ok := processes[node.Name]
+		if !ok {
+			continue
+		}
+		for _, route := range e.ospfRedistributedRoutes(node, process) {
+			area := ospfExternalArea(process, states[node.Name])
+			out = append(out, ospfAdvertisement{
+				Node:            node.Name,
+				NetworkInstance: process.NetworkInstance,
+				Prefix:          route.RouteSource.Prefix,
+				Cost:            route.RouteSource.Metric,
+				External:        true,
+				MetricType:      route.RouteSource.MetricType,
+				ExternalArea:    area,
+				Source:          route,
+			})
+		}
+		for _, area := range process.Areas {
+			if area.Kind == topology.OSPFAreaStub && !ospfNodeAttachedToOtherArea(states[node.Name], area.ID) {
+				continue
+			}
+			if area.Kind != topology.OSPFAreaStub && !(area.Kind == topology.OSPFAreaNSSA && area.DefaultInformationOriginate) {
+				continue
+			}
+			if !ospfNodeAttachedToArea(states[node.Name], area.ID) {
+				continue
+			}
+			out = append(out, ospfAdvertisement{Node: node.Name, NetworkInstance: process.NetworkInstance, Prefix: netaddr.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Node == out[j].Node {
+			return out[i].Prefix.String() < out[j].Prefix.String()
+		}
+		return out[i].Node < out[j].Node
+	})
+	return out
+}
+
+func (e *Engine) ospfRedistributedRoutes(node topology.Node, process topology.OSPFProcess) []RIBEntry {
+	var out []RIBEntry
+	for _, redist := range process.Redistribute {
+		for _, route := range e.ospfRedistributionCandidates(node, process.NetworkInstance, redist.Kind) {
+			route = route.Normalize()
+			if route.SourceKind == topology.RouteSourceConnected && route.RouteSource.ConnectedClass == topology.ConnectedRouteClassLink {
+				continue
+			}
+			if redist.RouteMap != "" {
+				decision := e.applyRoutePolicy(node, "", redist.RouteMap, route)
+				if !decision.Accept {
+					continue
+				}
+				route = decision.Route.Normalize()
+			}
+			sourceRoute := route.RouteSource
+			sourceRoute.Node = node.Name
+			sourceRoute.Kind = topology.RouteSourceOSPF
+			sourceRoute.AdminDistance = 110
+			sourceRoute.MetricType = ospfExternalMetricType(redist.MetricType)
+			sourceRoute.OSPFRouteType = ospfExternalRouteType(sourceRoute.MetricType)
+			sourceRoute.Metric = ospfExternalMetric(redist, route)
+			route.SourceKind = topology.RouteSourceOSPF
+			route.RouteSource = sourceRoute
+			out = append(out, route.Normalize())
+		}
+	}
+	return out
+}
+
+func (e *Engine) ospfRedistributionCandidates(node topology.Node, vrf topology.NetworkInstanceID, kind topology.RouteSourceKind) []RIBEntry {
+	vrf = topology.NormalizeNetworkInstance(string(vrf))
+	var out []RIBEntry
+	switch kind {
+	case topology.RouteSourceConnected, topology.RouteSourceStatic:
+		for _, route := range e.redistributionCandidates(node, kind) {
+			if topology.NormalizeNetworkInstance(string(route.NetworkInstance)) != vrf {
+				continue
+			}
+			entry := e.bgpRouteFromConfiguredRoute(node, route).Normalize()
+			entry.SourceKind = route.Kind
+			entry.RouteSource = route
+			out = append(out, entry.Normalize())
+		}
+	case topology.RouteSourceBGP:
+		byPrefix := e.rib[node.Name][string(vrf)]
+		for _, routes := range byPrefix {
+			for _, route := range routes {
+				route = route.Normalize()
+				if route.SourceKind != topology.RouteSourceBGP && route.SourceKind != topology.RouteSourceAggregate {
+					continue
+				}
+				if route.Provenance.OriginNode == node.Name && len(route.Provenance.PathNodes) == 1 {
+					continue
+				}
+				if route.SelectedCond != nil {
+					route.Condition = route.SelectedCond
+				}
+				out = append(out, route)
+			}
+		}
+	}
+	return out
+}
+
+func ospfExternalMetric(redist topology.OSPFRedistribution, route RIBEntry) int {
+	route = route.Normalize()
+	if redist.Metric > 0 {
+		return redist.Metric
+	}
+	if route.Attrs.MED > 0 {
+		return route.Attrs.MED
+	}
+	if route.RouteSource.Metric > 0 {
+		return route.RouteSource.Metric
+	}
+	return 20
+}
+
+func ospfExternalRouteType(metricType int) string {
+	if ospfExternalMetricType(metricType) == 1 {
+		return ospfRouteTypeExternal1
+	}
+	return ospfRouteTypeExternal2
+}
+
+func ospfExternalMetricType(metricType int) int {
+	if metricType == 1 {
+		return 1
+	}
+	return 2
+}
+
+func ospfExternalArea(process topology.OSPFProcess, states map[string]ospfInterfaceState) string {
+	for _, state := range states {
+		if area := process.Areas[state.Area]; area.Kind == topology.OSPFAreaNSSA {
+			return state.Area
+		}
+	}
+	return ""
+}
+
+func ospfNodeAttachedToArea(states map[string]ospfInterfaceState, area string) bool {
+	for _, state := range states {
+		if state.Area == area {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfNodeAttachedToOtherArea(states map[string]ospfInterfaceState, area string) bool {
+	for _, state := range states {
+		if state.Area != "" && state.Area != area {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfAdvertisementAllowed(src topology.Node, adv ospfAdvertisement, path ospfPath, processes map[string]topology.OSPFProcess) bool {
+	if adv.DefaultArea != "" {
+		return pathUsesOnlyArea(path, adv.DefaultArea)
+	}
+	if !adv.External {
+		return true
+	}
+	for _, areaID := range path.Areas {
+		area := ospfAreaForPathArea(processes, path, areaID)
+		switch area.Kind {
+		case topology.OSPFAreaStub:
+			return false
+		case topology.OSPFAreaNSSA:
+			if adv.ExternalArea != areaID {
+				return false
+			}
+		}
+	}
+	if adv.ExternalArea != "" {
+		return true
+	}
+	return !ospfNodeInStubOrNSSA(processes[src.Name])
+}
+
+func pathUsesOnlyArea(path ospfPath, area string) bool {
+	if len(path.Areas) == 0 {
+		return false
+	}
+	for _, pathArea := range path.Areas {
+		if pathArea != area {
+			return false
+		}
+	}
+	return true
+}
+
+func ospfNodeInStubOrNSSA(process topology.OSPFProcess) bool {
+	for _, area := range process.Areas {
+		if area.Kind == topology.OSPFAreaStub || area.Kind == topology.OSPFAreaNSSA {
+			return true
+		}
+	}
+	return false
+}
+
+func ospfAreaForPathArea(processes map[string]topology.OSPFProcess, path ospfPath, areaID string) topology.OSPFArea {
+	for _, nodeName := range path.Nodes {
+		process, ok := processes[nodeName]
+		if !ok {
+			continue
+		}
+		area := process.Areas[areaID]
+		if area.Kind != "" {
+			return area
+		}
+	}
+	return topology.OSPFArea{ID: areaID, Kind: topology.OSPFAreaNormal}
+}
+
+func ospfNodeAreas(states map[string]map[string]ospfInterfaceState) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for node, byIface := range states {
+		for _, state := range byIface {
+			if state.Area == "" {
+				continue
+			}
+			if out[node] == nil {
+				out[node] = map[string]bool{}
+			}
+			out[node][state.Area] = true
+		}
+	}
+	return out
+}
+
+func ospfABRs(areas map[string]map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for node, nodeAreas := range areas {
+		if len(nodeAreas) > 1 && nodeAreas[ospfBackboneArea] {
+			out[node] = true
+		}
+	}
+	return out
+}
+
+func (e *Engine) ospfCandidatePaths(src, area string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != area || toState.Area != area {
+			return "", false
+		}
+		return area, true
+	})
+}
+
+func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+		if fromState.Area != toState.Area {
+			return "", false
+		}
+		return fromState.Area, true
+	})
+}
+
+func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string][]ospfPath {
+	out := map[string][]ospfPath{}
+	for _, firstHop := range e.ospfAdjacencies(src, states, allowed) {
+		spf := e.ospfShortestPathTree(firstHop.To, src, states, allowed)
+		condMemo := map[string]failure.Cond{}
+		for dst, state := range spf {
+			if dst == firstHop.To {
+				path := ospfPath{
+					Cost:  firstHop.Cost,
+					Nodes: []string{src, firstHop.To},
+					Links: []string{firstHop.Link},
+					Areas: []string{firstHop.Area},
+					Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), failure.NodeVar(firstHop.To)),
+				}
+				out[dst] = append(out[dst], path)
+				continue
+			}
+			if state.Cost == math.MaxInt {
+				continue
+			}
+			nodes, links, areas, ok := ospfRepresentativePath(firstHop.To, dst, spf)
+			if !ok {
+				continue
+			}
+			path := ospfPath{
+				Cost:  firstHop.Cost + state.Cost,
+				Nodes: append([]string{src}, nodes...),
+				Links: append([]string{firstHop.Link}, links...),
+				Areas: append([]string{firstHop.Area}, areas...),
+				Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), ospfSPFCondition(firstHop.To, dst, spf, condMemo)),
+			}
+			out[dst] = append(out[dst], path)
+		}
+	}
+	for node, paths := range out {
+		sortOSPFPaths(paths)
+		out[node] = paths
+	}
+	return out
+}
+
+func (e *Engine) ospfInterAreaPaths(src string, adv ospfAdvertisement, states map[string]map[string]ospfInterfaceState, areas map[string]map[string]bool, abrs map[string]bool) []ospfPath {
+	if areas[src][adv.Area] {
+		return nil
+	}
+	srcAreas := sortedAreaKeys(areas[src])
+	var out []ospfPath
+	for _, srcArea := range srcAreas {
+		srcPaths := e.ospfCandidatePaths(src, srcArea, states)
+		backbonePathsBySrcABR := map[string]map[string][]ospfPath{}
+		for _, srcABR := range ospfAreaBoundaries(src, srcArea, areas, abrs) {
+			toSrcABR := ospfZeroPath(src, srcABR, srcPaths)
+			if len(toSrcABR.Nodes) == 0 {
+				continue
+			}
+			if _, ok := backbonePathsBySrcABR[srcABR]; !ok {
+				backbonePathsBySrcABR[srcABR] = e.ospfCandidatePaths(srcABR, ospfBackboneArea, states)
+			}
+			for _, dstABR := range ospfAreaBoundaries(adv.Node, adv.Area, areas, abrs) {
+				toDstABR := ospfZeroPath(srcABR, dstABR, backbonePathsBySrcABR[srcABR])
+				if len(toDstABR.Nodes) == 0 {
+					continue
+				}
+				dstPaths := e.ospfCandidatePaths(dstABR, adv.Area, states)
+				toAdv := ospfZeroPath(dstABR, adv.Node, dstPaths)
+				if len(toAdv.Nodes) == 0 {
+					continue
+				}
+				combined, ok := concatOSPFPaths(toSrcABR, toDstABR, toAdv)
+				if ok {
+					out = append(out, combined)
+				}
+			}
+		}
+	}
+	sortOSPFPaths(out)
+	if len(out) > ospfMaxPathsPerDestination {
+		out = out[:ospfMaxPathsPerDestination]
+	}
+	return out
+}
+
+func ospfAreaBoundaries(node, area string, areas map[string]map[string]bool, abrs map[string]bool) []string {
+	if area == ospfBackboneArea {
+		if areas[node][ospfBackboneArea] {
+			return []string{node}
+		}
+	}
+	var out []string
+	for n := range abrs {
+		if areas[n][area] {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func ospfZeroPath(src, dst string, paths map[string][]ospfPath) ospfPath {
+	if src == dst {
+		return ospfPath{Nodes: []string{src}}
+	}
+	if len(paths[dst]) == 0 {
+		return ospfPath{}
+	}
+	return paths[dst][0]
+}
+
+func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
+	var out ospfPath
+	seen := map[string]bool{}
+	var conds []failure.Cond
+	for i, part := range parts {
+		if len(part.Nodes) == 0 {
+			return ospfPath{}, false
+		}
+		out.Cost += part.Cost
+		if part.Cond != nil {
+			conds = append(conds, part.Cond)
+		}
+		if i == 0 {
+			out.Nodes = append(out.Nodes, part.Nodes...)
+		} else {
+			if out.Nodes[len(out.Nodes)-1] != part.Nodes[0] {
+				return ospfPath{}, false
+			}
+			out.Nodes = append(out.Nodes, part.Nodes[1:]...)
+		}
+		out.Links = append(out.Links, part.Links...)
+		out.Areas = append(out.Areas, part.Areas...)
+	}
+	for _, node := range out.Nodes {
+		if seen[node] {
+			return ospfPath{}, false
+		}
+		seen[node] = true
+	}
+	if len(conds) > 0 {
+		out.Cond = failure.And(conds...)
+	}
+	return out, true
+}
+
+func sortedAreaKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for area := range m {
+		out = append(out, area)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortOSPFPaths(paths []ospfPath) {
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].Cost != paths[j].Cost {
+			return paths[i].Cost < paths[j].Cost
+		}
+		return strings.Join(paths[i].Nodes, ",") < strings.Join(paths[j].Nodes, ",")
+	})
+}
+
+func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string]ospfSPFNode {
+	dist := map[string]ospfSPFNode{}
+	for _, node := range e.idx.Topology.Nodes {
+		if len(states[node.Name]) == 0 || node.Name == excluded {
+			continue
+		}
+		dist[node.Name] = ospfSPFNode{Cost: math.MaxInt}
+	}
+	if _, ok := dist[src]; !ok {
+		return dist
+	}
+	dist[src] = ospfSPFNode{Cost: 0}
+	q := &ospfSPFQueue{{Node: src}}
+	heap.Init(q)
+	for q.Len() > 0 {
+		item := heap.Pop(q).(ospfSPFQueueItem)
+		current := dist[item.Node]
+		if item.Cost != current.Cost {
+			continue
+		}
+		for _, adj := range e.ospfAdjacencies(item.Node, states, allowed) {
+			if adj.To == excluded {
+				continue
+			}
+			next, ok := dist[adj.To]
+			if !ok {
+				continue
+			}
+			cost := item.Cost + adj.Cost
+			pred := ospfSPFPredecessor{Node: item.Node, Link: adj.Link, Area: adj.Area}
+			switch {
+			case cost < next.Cost:
+				next.Cost = cost
+				next.Predecessors = []ospfSPFPredecessor{pred}
+				dist[adj.To] = next
+				heap.Push(q, ospfSPFQueueItem{Node: adj.To, Cost: cost})
+			case cost == next.Cost:
+				next.Predecessors = append(next.Predecessors, pred)
+				sort.Slice(next.Predecessors, func(i, j int) bool {
+					if next.Predecessors[i].Node == next.Predecessors[j].Node {
+						return next.Predecessors[i].Link < next.Predecessors[j].Link
+					}
+					return next.Predecessors[i].Node < next.Predecessors[j].Node
+				})
+				dist[adj.To] = next
+			}
+		}
+	}
+	return dist
+}
+
+func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) []ospfAdjacency {
+	var out []ospfAdjacency
+	for _, edge := range e.idx.Adj[topology.NodeID(from)] {
+		to := string(edge.To)
+		cost, area, ok := ospfAdjacencyCost(e.idx, from, to, edge.Link, states, allowed)
+		if !ok {
+			continue
+		}
+		out = append(out, ospfAdjacency{From: from, To: to, Link: edge.Link.Name, Area: area, Cost: cost})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].To == out[j].To {
+			return out[i].Link < out[j].Link
+		}
+		return out[i].To < out[j].To
+	})
+	return out
+}
+
+func ospfRepresentativePath(src, dst string, spf map[string]ospfSPFNode) ([]string, []string, []string, bool) {
+	if src == dst {
+		return []string{src}, nil, nil, true
+	}
+	state, ok := spf[dst]
+	if !ok || state.Cost == math.MaxInt || len(state.Predecessors) == 0 {
+		return nil, nil, nil, false
+	}
+	pred := state.Predecessors[0]
+	nodes, links, areas, ok := ospfRepresentativePath(src, pred.Node, spf)
+	if !ok {
+		return nil, nil, nil, false
+	}
+	return append(nodes, dst), append(links, pred.Link), append(areas, pred.Area), true
+}
+
+func ospfSPFCondition(src, dst string, spf map[string]ospfSPFNode, memo map[string]failure.Cond) failure.Cond {
+	if cond, ok := memo[dst]; ok {
+		return cond
+	}
+	if src == dst {
+		cond := failure.NodeVar(src)
+		memo[dst] = cond
+		return cond
+	}
+	state, ok := spf[dst]
+	if !ok || state.Cost == math.MaxInt || len(state.Predecessors) == 0 {
+		return failure.False()
+	}
+	branches := make([]failure.Cond, 0, len(state.Predecessors))
+	for _, pred := range state.Predecessors {
+		branches = append(branches, failure.And(ospfSPFCondition(src, pred.Node, spf, memo), failure.LinkVar(pred.Link), failure.NodeVar(dst)))
+	}
+	cond := failure.Or(branches...)
+	memo[dst] = cond
+	return cond
+}
+
+func ospfAdjacencyCost(idx *topology.TopologyIndex, from, to string, link topology.Link, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) (int, string, bool) {
+	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
+	if !ok {
+		return 0, "", false
+	}
+	toRef, ok := idx.InterfaceOnLink(to, link.Name)
+	if !ok {
+		return 0, "", false
+	}
+	fromState, ok := states[from][fromRef.ConfigName]
+	if !ok || fromState.Passive {
+		return 0, "", false
+	}
+	toState, ok := states[to][toRef.ConfigName]
+	if !ok || toState.Passive {
+		return 0, "", false
+	}
+	area, ok := allowed(fromState, toState)
+	if !ok {
+		return 0, "", false
+	}
+	if !ospfNetworkTypesMatchForAdjacency(fromState.NetworkType, toState.NetworkType) {
+		return 0, "", false
+	}
+	return fromState.Cost, area, true
+}
+
+func ospfNetworkTypesMatchForAdjacency(a, b string) bool {
+	a = normalizeOSPFNetworkType(a)
+	b = normalizeOSPFNetworkType(b)
+	if a == "" || b == "" {
+		return true
+	}
+	return a == b
+}
+
+func normalizeOSPFNetworkType(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "p2p":
+		return "point-to-point"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
+func pathCondition(path ospfPath) []failure.Cond {
+	conds := make([]failure.Cond, 0, len(path.Nodes)+len(path.Links))
+	for _, node := range path.Nodes {
+		conds = append(conds, failure.NodeVar(node))
+	}
+	for _, link := range path.Links {
+		conds = append(conds, failure.LinkVar(link))
+	}
+	return conds
+}
+
+func (q ospfSPFQueue) Len() int { return len(q) }
+
+func (q ospfSPFQueue) Less(i, j int) bool {
+	if q[i].Cost == q[j].Cost {
+		return q[i].Node < q[j].Node
+	}
+	return q[i].Cost < q[j].Cost
+}
+
+func (q ospfSPFQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+
+func (q *ospfSPFQueue) Push(x any) {
+	*q = append(*q, x.(ospfSPFQueueItem))
+}
+
+func (q *ospfSPFQueue) Pop() any {
+	old := *q
+	n := len(old)
+	item := old[n-1]
+	*q = old[:n-1]
+	return item
+}

@@ -1,8 +1,8 @@
 package verify
 
 import (
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	"github.com/81ueman/hoyan-lab/internal/engine/space"
 )
 
 type QueryType string
@@ -16,7 +16,7 @@ const (
 )
 
 type Report struct {
-	Stats   *model.PrefixUniverseStats `json:"prefix_universe_stats,omitempty"`
+	Stats   *space.PrefixUniverseStats `json:"prefix_universe_stats,omitempty"`
 	Results []Result                   `json:"results"`
 }
 
@@ -58,8 +58,8 @@ type FailureResult struct {
 }
 
 type PrefixClassMetadata struct {
-	ClassID           *model.PrefixClassID  `json:"class_id,omitempty"`
-	ClassIDs          []model.PrefixClassID `json:"class_ids,omitempty"`
+	ClassID           *space.PrefixClassID  `json:"class_id,omitempty"`
+	ClassIDs          []space.PrefixClassID `json:"class_ids,omitempty"`
 	Space             string                `json:"space,omitempty"`
 	Spaces            []string              `json:"spaces,omitempty"`
 	MatchedPredicates []string              `json:"matched_predicates,omitempty"`

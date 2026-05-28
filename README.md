@@ -21,6 +21,29 @@ Related papers:
 The lab uses containerlab for the runnable topology and a Go verifier for
 offline route, packet, and failure reachability checks.
 
+## Internal Package Layout
+
+The Go implementation keeps command handling separate from the modeling,
+simulation, comparison, and live-lab layers:
+
+- `internal/cli`: Cobra commands, flag resolution, output formatting, and exit
+  code handling.
+- `internal/core`: shared primitives for network addresses, topology, packet
+  and prefix predicates, failure conditions, symbolic boolean expressions, and
+  solver backends.
+- `internal/config`: configuration-facing package boundaries for parser,
+  routing config, and device profile APIs.
+- `internal/engine`: the offline network engine. `controlplane` computes RIBs,
+  `dataplane` derives FIBs and reachability, `space` partitions prefix/header
+  classes, and `sim` is the high-level facade.
+- `internal/check/query`: query YAML types and loader used by offline
+  verification and live dataplane probes.
+- `internal/compare`: live-vs-modeled RIB and FIB collectors, normalizers, and
+  diff logic.
+- `internal/live`: containerlab live checks and reusable live snapshot handling.
+- `internal/verify`, `internal/intent`, and `internal/facts`: offline query
+  verification, intent DSL evaluation, and modeled fact-table generation.
+
 The verifier treats the selected lab directory as the source of truth.
 `labs/base-wan` is the default lab. Each lab's `hoyan.clab.yml` provides
 containerlab inventory and physical links; its FRR, cEOS, and SR Linux startup
@@ -108,16 +131,16 @@ Data-plane policies are parsed from the device startup configs.
 Linux/FRR data-plane ACLs are stored as nftables rulesets under
 `configs/frr/<node>/nftables.conf`; `hoyan live check` builds the local
 `hoyan-frr-nftables:10.6.1` image and applies those rulesets after deploy.
-The parser normalizes device ACLs into `model.ACL` plus `ACLBinding` records
+The parser normalizes device ACLs into `routing.ACL` plus `ACLBinding` records
 before data-plane simulation. ACL rules are evaluated in sequence order with
 first-match semantics, and both `permit` and `deny` are explicit actions.
 When an ACL is bound to an interface and no rule matches, the model applies
 the ACL's default action. cEOS IPv4 ACLs and SR Linux IPv4 ACL filters use an
 implicit default deny unless an explicit permit rule matches. FRR/Linux
 nftables ACLs use the chain policy; the current lab's nftables chain has
-`policy accept`, so unmatched packets are permitted. `model.ACL` is the single
-data-plane policy IR for parsed configs, manually constructed topologies, and
-packet reachability inspection; the earlier deny-only `model.Policy`
+`policy accept`, so unmatched packets are permitted. `routing.ACL` is the
+single data-plane policy IR for parsed configs, manually constructed
+topologies, and packet reachability inspection; the earlier deny-only policy
 path has been removed. Full vendor ACL grammar, stateful
 firewall/conntrack, NAT, PBR, and QoS are intentionally outside the current
 model.

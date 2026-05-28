@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/fibcompare"
-	"github.com/81ueman/hoyan-lab/internal/livecheck"
-	"github.com/81ueman/hoyan-lab/internal/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/compare/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/compare/ribcompare"
+	"github.com/81ueman/hoyan-lab/internal/live/livecheck"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

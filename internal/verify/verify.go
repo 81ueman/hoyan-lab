@@ -2,13 +2,17 @@ package verify
 
 import (
 	"fmt"
+	"github.com/81ueman/hoyan-lab/internal/core/predicate"
 	"net/netip"
 	"sort"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
-	"github.com/81ueman/hoyan-lab/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/config/routing"
+	"github.com/81ueman/hoyan-lab/internal/core/solver"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	"github.com/81ueman/hoyan-lab/internal/engine/space"
 )
 
 type VerifyOptions struct {
@@ -16,17 +20,17 @@ type VerifyOptions struct {
 	MaxPrefixClasses          int
 }
 
-func Run(topo *model.Topology, queries *model.Queries) Report {
-	return RunWithOptions(topo, queries, VerifyOptions{})
+func Run(topo *topology.Topology, routes routing.TopologyRouting, queries *query.Queries) Report {
+	return RunWithOptions(topo, routes, queries, VerifyOptions{})
 }
 
-func RunWithOptions(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {
-	return runPrefixClasses(topo, queries, opts)
+func RunWithOptions(topo *topology.Topology, routes routing.TopologyRouting, queries *query.Queries, opts VerifyOptions) Report {
+	return runPrefixClasses(topo, routes, queries, opts)
 }
 
-func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {
-	g := sim.NewGraph(topo)
-	universe, err := prefixUniverseForGraph(topo, queries, g, nil)
+func runPrefixClasses(topo *topology.Topology, routes routing.TopologyRouting, queries *query.Queries, opts VerifyOptions) Report {
+	g := sim.NewGraphWithRouting(topo, routes)
+	universe, err := prefixUniverseForGraph(topo, routes, queries, g, nil)
 	if err != nil {
 		return Report{Results: []Result{NewSetupResult("prefix-universe", true, err.Error())}}
 	}
@@ -37,8 +41,8 @@ func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyO
 	stats := universe.Stats
 	report := Report{Stats: &stats}
 	for _, q := range queries.RouteChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
-		classes := universe.ClassesMatching(model.ExactPrefixSet{Prefix: q.Prefix})
+		vrf := string(topology.NormalizeNetworkInstance(q.VRF))
+		classes := universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: q.Prefix})
 		for _, classID := range classes {
 			class, ok := prefixClass(universe, classID)
 			if !ok {
@@ -59,14 +63,14 @@ func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyO
 		}
 	}
 	for _, q := range queries.PacketChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
+		vrf := string(topology.NormalizeNetworkInstance(q.VRF))
 		expected := true
 		if q.ExpectReachable != nil {
 			expected = *q.ExpectReachable
 		}
 		ports := q.DstPortValues()
 		for _, port := range ports {
-			spec := model.PacketSpec{Protocol: q.Protocol, DstPort: model.ExactPort(port)}
+			spec := predicate.PacketSpec{Protocol: q.Protocol, DstPort: predicate.ExactPort(port)}
 			for _, classID := range packetClasses(topo, universe, q.To) {
 				class, ok := prefixClass(universe, classID)
 				if !ok {
@@ -88,7 +92,7 @@ func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyO
 		}
 	}
 	for _, q := range queries.FailureChecks {
-		vrf := string(model.NormalizeNetworkInstance(q.VRF))
+		vrf := string(topology.NormalizeNetworkInstance(q.VRF))
 		expected := true
 		if q.ExpectReachable != nil {
 			expected = *q.ExpectReachable
@@ -126,36 +130,36 @@ func queryResultName(name string, port int, portCount int) string {
 	return fmt.Sprintf("%s:dst-port-%d", name, port)
 }
 
-func prefixUniverseForGraph(topo *model.Topology, queries *model.Queries, g *sim.Graph, extra []model.PrefixPredicate) (model.PrefixUniverse, error) {
-	predicates := model.CollectPrefixPredicateMetadata(topo, queries)
+func prefixUniverseForGraph(topo *topology.Topology, routes routing.TopologyRouting, queries *query.Queries, g *sim.Graph, extra []space.PrefixPredicate) (space.PrefixUniverse, error) {
+	predicates := space.CollectPrefixPredicateMetadata(topo, routes, queries)
 	predicates = append(predicates, sim.CollectRIBPrefixPredicates(g)...)
 	predicates = append(predicates, sim.CollectFIBPrefixPredicates(g)...)
 	predicates = append(predicates, extra...)
-	return model.BuildPrefixUniverseFromPredicates(predicates)
+	return space.BuildPrefixUniverseFromPredicates(predicates)
 }
 
-func checkPrefixClassLimit(universe model.PrefixUniverse, maxClasses int) error {
+func checkPrefixClassLimit(universe space.PrefixUniverse, maxClasses int) error {
 	if maxClasses <= 0 || universe.Stats.ClassCount <= maxClasses {
 		return nil
 	}
 	return fmt.Errorf("prefix universe class count %d exceeds --max-prefix-classes %d", universe.Stats.ClassCount, maxClasses)
 }
 
-func packetClasses(topo *model.Topology, universe model.PrefixUniverse, to string) []model.PrefixClassID {
+func packetClasses(topo *topology.Topology, universe space.PrefixUniverse, to string) []space.PrefixClassID {
 	if addr, err := netip.ParseAddr(to); err == nil {
 		return classesForAddr(universe, addr)
 	}
 	return classesForDestinationNode(topo, universe, to)
 }
 
-func failureClasses(topo *model.Topology, universe model.PrefixUniverse, q model.FailureCheck) []model.PrefixClassID {
+func failureClasses(topo *topology.Topology, universe space.PrefixUniverse, q query.FailureCheck) []space.PrefixClassID {
 	if !q.Prefix.IsZero() {
-		return universe.ClassesMatching(model.ExactPrefixSet{Prefix: q.Prefix})
+		return universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: q.Prefix})
 	}
 	return packetClasses(topo, universe, q.To)
 }
 
-func classesForDestinationNode(topo *model.Topology, universe model.PrefixUniverse, to string) []model.PrefixClassID {
+func classesForDestinationNode(topo *topology.Topology, universe space.PrefixUniverse, to string) []space.PrefixClassID {
 	if topo == nil {
 		return nil
 	}
@@ -163,10 +167,10 @@ func classesForDestinationNode(topo *model.Topology, universe model.PrefixUniver
 	if !ok {
 		return nil
 	}
-	seen := map[model.PrefixClassID]bool{}
-	var out []model.PrefixClassID
+	seen := map[space.PrefixClassID]bool{}
+	var out []space.PrefixClassID
 	for _, prefix := range node.Prefixes {
-		for _, id := range universe.ClassesMatching(model.ExactPrefixSet{Prefix: prefix}) {
+		for _, id := range universe.ClassesMatching(predicate.ExactPrefixSet{Prefix: prefix}) {
 			if !seen[id] {
 				seen[id] = true
 				out = append(out, id)
@@ -176,29 +180,29 @@ func classesForDestinationNode(topo *model.Topology, universe model.PrefixUniver
 	return out
 }
 
-func classesForAddr(universe model.PrefixUniverse, addr netip.Addr) []model.PrefixClassID {
+func classesForAddr(universe space.PrefixUniverse, addr netip.Addr) []space.PrefixClassID {
 	for _, class := range universe.Classes {
-		if model.AddressSpaceContains(class.Space, addr) {
-			return []model.PrefixClassID{class.ID}
+		if predicate.AddressSpaceContains(class.Space, addr) {
+			return []space.PrefixClassID{class.ID}
 		}
 	}
 	return nil
 }
 
-func prefixClass(universe model.PrefixUniverse, id model.PrefixClassID) (model.PrefixClass, bool) {
+func prefixClass(universe space.PrefixUniverse, id space.PrefixClassID) (space.PrefixClass, bool) {
 	for _, class := range universe.Classes {
 		if class.ID == id {
 			return class, true
 		}
 	}
-	return model.PrefixClass{}, false
+	return space.PrefixClass{}, false
 }
 
-func classResult(universe model.PrefixUniverse, class model.PrefixClass, result Result) Result {
+func classResult(universe space.PrefixUniverse, class space.PrefixClass, result Result) Result {
 	id := class.ID
 	result.PrefixClass = &PrefixClassMetadata{
 		ClassID:           &id,
-		ClassIDs:          []model.PrefixClassID{id},
+		ClassIDs:          []space.PrefixClassID{id},
 		Space:             class.Space.String(),
 		Spaces:            []string{class.Space.String()},
 		MatchedPredicates: matchedPredicates(universe, class),
@@ -206,8 +210,8 @@ func classResult(universe model.PrefixUniverse, class model.PrefixClass, result 
 	return result
 }
 
-func matchedPredicates(universe model.PrefixUniverse, class model.PrefixClass) []string {
-	byID := map[model.PrefixPredicateID]string{}
+func matchedPredicates(universe space.PrefixUniverse, class space.PrefixClass) []string {
+	byID := map[space.PrefixPredicateID]string{}
 	for _, predicate := range universe.Predicates {
 		byID[predicate.ID] = predicate.Source
 	}
@@ -298,7 +302,7 @@ func containsString(values []string, want string) bool {
 	return false
 }
 
-func failureSearchOptions(maxFailures int, domain model.FailureDomain) sim.FailureSearchOptions {
+func failureSearchOptions(maxFailures int, domain topology.FailureDomain) sim.FailureSearchOptions {
 	return sim.FailureSearchOptions{
 		IncludeLinks: true,
 		MaxFailures:  maxFailures,

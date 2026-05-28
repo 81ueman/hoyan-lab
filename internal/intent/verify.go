@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/81ueman/hoyan-lab/internal/core/solver"
+	"github.com/81ueman/hoyan-lab/internal/core/topology"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/facts"
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
-	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
 func Verify(doc *Document) (Report, error) {
@@ -159,8 +159,8 @@ func evaluatePacketIntent(in Intent, assertion Assertion, scenario Scenario, sna
 	return result
 }
 
-func failureDomain(in FailureConstraints) model.FailureDomain {
-	return model.FailureDomain{
+func failureDomain(in FailureConstraints) topology.FailureDomain {
+	return topology.FailureDomain{
 		IncludeLinkRoles: in.IncludeLinkRoles,
 		ExcludeLinkRoles: in.ExcludeLinkRoles,
 		IncludeLinks:     in.IncludeLinks,
