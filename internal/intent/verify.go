@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/facts"
 	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
 	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 

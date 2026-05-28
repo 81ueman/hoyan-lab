@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
 	"github.com/81ueman/hoyan-lab/internal/intent"
 	"github.com/81ueman/hoyan-lab/internal/lab"
@@ -20,7 +21,6 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
-	"github.com/81ueman/hoyan-lab/internal/sim"
 	"github.com/81ueman/hoyan-lab/internal/verify"
 	"github.com/spf13/cobra"
 )
