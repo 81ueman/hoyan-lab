@@ -1,4 +1,4 @@
-package model
+package query
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func LoadQueries(path string) (*Queries, error) {
+func Load(path string) (*Queries, error) {
 	var queries Queries
 	if err := loadYAML(path, &queries); err != nil {
 		return nil, err

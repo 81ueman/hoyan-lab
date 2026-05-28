@@ -49,7 +49,27 @@ func (c PacketClass) Spec() PacketSpec {
 	}
 }
 
-func CollectHeaderPredicates(topo *Topology, queries *Queries) []HeaderPredicate {
+type HeaderQuerySource interface {
+	PacketHeaderQueries() []HeaderQuery
+	FailureHeaderQueries() []FailureHeaderQuery
+}
+
+type HeaderQuery struct {
+	Name     string
+	To       string
+	Protocol string
+	DstPorts []int
+}
+
+type FailureHeaderQuery struct {
+	Name     string
+	To       string
+	Prefix   Prefix
+	Protocol string
+	DstPorts []int
+}
+
+func CollectHeaderPredicates(topo *Topology, queries HeaderQuerySource) []HeaderPredicate {
 	var out []HeaderPredicate
 	add := func(predicate HeaderPredicate) {
 		if predicate.Protocol == "" &&
@@ -107,8 +127,8 @@ func CollectHeaderPredicates(topo *Topology, queries *Queries) []HeaderPredicate
 		}
 	}
 	if queries != nil {
-		for _, check := range queries.PacketChecks {
-			for _, port := range check.DstPortValues() {
+		for _, check := range queries.PacketHeaderQueries() {
+			for _, port := range check.DstPorts {
 				predicate := HeaderPredicate{
 					Source:   "query-packet:" + check.Name,
 					Protocol: check.Protocol,
@@ -123,8 +143,8 @@ func CollectHeaderPredicates(topo *Topology, queries *Queries) []HeaderPredicate
 				}
 			}
 		}
-		for _, check := range queries.FailureChecks {
-			for _, port := range check.DstPortValues() {
+		for _, check := range queries.FailureHeaderQueries() {
+			for _, port := range check.DstPorts {
 				predicate := HeaderPredicate{
 					Source:   "query-failure:" + check.Name,
 					Protocol: check.Protocol,
@@ -148,7 +168,7 @@ func CollectHeaderPredicates(topo *Topology, queries *Queries) []HeaderPredicate
 	return out
 }
 
-func NewHeaderSpace(topo *Topology, queries *Queries, universe PrefixUniverse) HeaderSpace {
+func NewHeaderSpace(topo *Topology, queries HeaderQuerySource, universe PrefixUniverse) HeaderSpace {
 	return BuildHeaderSpaceFromPredicates(universe, CollectHeaderPredicates(topo, queries))
 }
 

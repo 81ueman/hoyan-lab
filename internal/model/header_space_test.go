@@ -96,7 +96,7 @@ func TestHeaderSpaceAvoidsUnusedDimensionCrossProduct(t *testing.T) {
 
 func TestCollectHeaderPredicatesIncludesQueries(t *testing.T) {
 	topo := &Topology{Nodes: []Node{{Name: "dst", Prefixes: MustPrefixes("10.0.0.0/24")}}}
-	queries := &Queries{PacketChecks: []PacketCheck{{Name: "web", To: "dst", Protocol: "tcp", DstPorts: []int{80, 443}}}}
+	queries := &testQueries{headers: []HeaderQuery{{Name: "web", To: "dst", Protocol: "tcp", DstPorts: []int{80, 443}}}}
 	predicates := CollectHeaderPredicates(topo, queries)
 	if got, want := len(predicates), 2; got != want {
 		t.Fatalf("len(predicates) = %d, want %d", got, want)

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 	"github.com/81ueman/hoyan-lab/internal/solver"
@@ -16,15 +17,15 @@ type VerifyOptions struct {
 	MaxPrefixClasses          int
 }
 
-func Run(topo *model.Topology, queries *model.Queries) Report {
+func Run(topo *model.Topology, queries *query.Queries) Report {
 	return RunWithOptions(topo, queries, VerifyOptions{})
 }
 
-func RunWithOptions(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {
+func RunWithOptions(topo *model.Topology, queries *query.Queries, opts VerifyOptions) Report {
 	return runPrefixClasses(topo, queries, opts)
 }
 
-func runPrefixClasses(topo *model.Topology, queries *model.Queries, opts VerifyOptions) Report {
+func runPrefixClasses(topo *model.Topology, queries *query.Queries, opts VerifyOptions) Report {
 	g := sim.NewGraph(topo)
 	universe, err := prefixUniverseForGraph(topo, queries, g, nil)
 	if err != nil {
@@ -126,7 +127,7 @@ func queryResultName(name string, port int, portCount int) string {
 	return fmt.Sprintf("%s:dst-port-%d", name, port)
 }
 
-func prefixUniverseForGraph(topo *model.Topology, queries *model.Queries, g *sim.Graph, extra []model.PrefixPredicate) (model.PrefixUniverse, error) {
+func prefixUniverseForGraph(topo *model.Topology, queries *query.Queries, g *sim.Graph, extra []model.PrefixPredicate) (model.PrefixUniverse, error) {
 	predicates := model.CollectPrefixPredicateMetadata(topo, queries)
 	predicates = append(predicates, sim.CollectRIBPrefixPredicates(g)...)
 	predicates = append(predicates, sim.CollectFIBPrefixPredicates(g)...)
@@ -148,7 +149,7 @@ func packetClasses(topo *model.Topology, universe model.PrefixUniverse, to strin
 	return classesForDestinationNode(topo, universe, to)
 }
 
-func failureClasses(topo *model.Topology, universe model.PrefixUniverse, q model.FailureCheck) []model.PrefixClassID {
+func failureClasses(topo *model.Topology, universe model.PrefixUniverse, q query.FailureCheck) []model.PrefixClassID {
 	if !q.Prefix.IsZero() {
 		return universe.ClassesMatching(model.ExactPrefixSet{Prefix: q.Prefix})
 	}

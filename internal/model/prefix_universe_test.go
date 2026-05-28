@@ -5,14 +5,42 @@ import (
 	"testing"
 )
 
+type testQueries struct {
+	routes   []RoutePrefixQuery
+	packets  []DestinationQuery
+	failures []FailureDestinationQuery
+	headers  []HeaderQuery
+	fHeaders []FailureHeaderQuery
+}
+
+func (q *testQueries) RoutePrefixQueries() []RoutePrefixQuery {
+	return q.routes
+}
+
+func (q *testQueries) PacketDestinationQueries() []DestinationQuery {
+	return q.packets
+}
+
+func (q *testQueries) FailureDestinationQueries() []FailureDestinationQuery {
+	return q.failures
+}
+
+func (q *testQueries) PacketHeaderQueries() []HeaderQuery {
+	return q.headers
+}
+
+func (q *testQueries) FailureHeaderQueries() []FailureHeaderQuery {
+	return q.fHeaders
+}
+
 func TestPrefixUniverseFromAdvertisedAndQueryPrefixes(t *testing.T) {
 	topo := &Topology{Nodes: []Node{
 		{Name: "src"},
 		{Name: "dst", Prefixes: MustPrefixes("10.0.0.0/24", "10.0.1.0/24")},
 	}}
-	queries := &Queries{
-		RouteChecks:  []RouteCheck{{Name: "route", From: "src", Prefix: MustPrefix("10.0.1.0/24")}},
-		PacketChecks: []PacketCheck{{Name: "packet", From: "src", To: "dst"}},
+	queries := &testQueries{
+		routes:  []RoutePrefixQuery{{Name: "route", Prefix: MustPrefix("10.0.1.0/24")}},
+		packets: []DestinationQuery{{Name: "packet", To: "dst"}},
 	}
 	universe, err := NewPrefixUniverse(topo, queries)
 	if err != nil {
@@ -238,7 +266,7 @@ func TestCollectPrefixPredicateMetadataSources(t *testing.T) {
 			Seq: 10, Action: ACLDeny, Match: PacketSpec{DstSet: ExactPrefixSet{Prefix: MustPrefix("192.0.2.0/24")}},
 		}}}},
 	}
-	queries := &Queries{RouteChecks: []RouteCheck{{Name: "route", Prefix: MustPrefix("10.0.0.0/24")}}}
+	queries := &testQueries{routes: []RoutePrefixQuery{{Name: "route", Prefix: MustPrefix("10.0.0.0/24")}}}
 	predicates := CollectPrefixPredicateMetadata(topo, queries)
 	var sources []string
 	for _, predicate := range predicates {
