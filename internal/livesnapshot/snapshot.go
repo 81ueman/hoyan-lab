@@ -13,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/configparse"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
 	"gopkg.in/yaml.v3"
@@ -117,13 +119,13 @@ func Marshal(snap *Snapshot) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func Build(ctx context.Context, topologyPath, lab string, runner ribcompare.Runner, rawDir string, fibOpts fibcompare.Options) (*Snapshot, error) {
-	topo, warnings, err := model.LoadLabTopologyWithOptions(topologyPath, model.LoadLabTopologyOptions{CollectWarnings: true})
+func Build(ctx context.Context, topologyPath, labName string, runner ribcompare.Runner, rawDir string, fibOpts fibcompare.Options) (*Snapshot, error) {
+	topo, warnings, err := lab.LoadTopologyWithOptions(topologyPath, lab.LoadOptions{CollectWarnings: true})
 	if err != nil {
 		return nil, err
 	}
-	if lab == "" {
-		lab = topo.Name
+	if labName == "" {
+		labName = topo.Name
 	}
 	effectiveRunner := runner
 	if rawDir != "" {
@@ -150,7 +152,7 @@ func Build(ctx context.Context, topologyPath, lab string, runner ribcompare.Runn
 	}
 	snap := &Snapshot{
 		Version:      Version,
-		Lab:          lab,
+		Lab:          labName,
 		TopologyPath: filepath.ToSlash(topologyPath),
 		TopologyHash: hashes.TopologyHash,
 		ConfigHashes: hashes.ConfigHashes,
@@ -349,7 +351,7 @@ func sortedNodeNames(nodes map[string]NodeSnapshot) []string {
 	return names
 }
 
-func warningStrings(warnings []model.UnsupportedStatement) []string {
+func warningStrings(warnings []configparse.UnsupportedStatement) []string {
 	out := make([]string, 0, len(warnings))
 	for _, warning := range warnings {
 		out = append(out, warning.String())

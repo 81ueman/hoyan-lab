@@ -12,6 +12,7 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/failure"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 	"github.com/spf13/cobra"
@@ -421,7 +422,7 @@ func runModelFIB(_ context.Context, opts modelInspectOptions, out io.Writer) err
 }
 
 func runModelPrefixClasses(_ context.Context, opts modelInspectOptions, out io.Writer) error {
-	topo, err := model.LoadLabTopology(opts.topologyPath)
+	topo, err := lab.LoadTopology(opts.topologyPath)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -572,7 +573,7 @@ func runModelSymbolicRoute(_ context.Context, opts modelInspectOptions, out io.W
 }
 
 func loadModelGraph(topologyPath string, strictConfig bool) (*model.Topology, *sim.Graph, error) {
-	topo, _, err := model.LoadLabTopologyWithOptions(topologyPath, model.LoadLabTopologyOptions{StrictConfig: strictConfig})
+	topo, _, err := lab.LoadTopologyWithOptions(topologyPath, lab.LoadOptions{StrictConfig: strictConfig})
 	if err != nil {
 		return nil, nil, err
 	}

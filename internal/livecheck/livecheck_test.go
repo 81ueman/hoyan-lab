@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
@@ -130,7 +131,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 
 func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 	topologyPath := "testdata/live.clab.yml"
-	topo, err := model.LoadLabTopology(topologyPath)
+	topo, err := lab.LoadTopology(topologyPath)
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}

@@ -1,4 +1,4 @@
-package model
+package model_test
 
 import (
 	"os"
@@ -6,12 +6,16 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/81ueman/hoyan-lab/internal/configparse"
+	"github.com/81ueman/hoyan-lab/internal/lab"
+	. "github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestLoadLabTopology(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	if len(topo.Nodes) != 18 {
 		t.Fatalf("nodes = %d, want 18", len(topo.Nodes))
@@ -32,9 +36,9 @@ func TestLoadLabTopology(t *testing.T) {
 }
 
 func TestLoadLabTopologyIncludesRouteMaps(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	coreBJ, ok := topo.Node("core-bj")
 	if !ok {
@@ -89,9 +93,9 @@ func TestLoadLabTopologyIncludesRouteMaps(t *testing.T) {
 }
 
 func TestLoadLabTopologyIncludesACLPoliciesWithoutPolicyFile(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	for _, tt := range []struct {
 		node  string
@@ -122,9 +126,9 @@ func TestLoadLabTopologyIncludesACLPoliciesWithoutPolicyFile(t *testing.T) {
 }
 
 func TestOriginLookups(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	node, ok := topo.OriginForPrefix("10.4.0.0/16")
 	if !ok || node != "hz-edge1" {
@@ -154,9 +158,9 @@ func TestOriginLookupsUseTypedCanonicalPrefixes(t *testing.T) {
 }
 
 func TestParseFRRConfig(t *testing.T) {
-	cfg, err := ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "bj-edge1", "frr.conf"))
+	cfg, err := configparse.ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "bj-edge1", "frr.conf"))
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if cfg.ASN != 65001 || cfg.RouterID != "10.255.1.1" {
 		t.Fatalf("BGP = ASN %d router-id %s", cfg.ASN, cfg.RouterID)
@@ -186,9 +190,9 @@ router ospf
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if !cfg.OSPF.Enabled || cfg.OSPF.RouterID != "10.255.1.1" {
 		t.Fatalf("OSPF = %#v, want enabled router-id", cfg.OSPF)
@@ -333,9 +337,9 @@ topology:
     - endpoints: ["r2:eth1", "sw1:eth2"]
     - endpoints: ["r3:eth1", "sw1:eth3"]
 `)
-	topo, err := LoadLabTopology(topologyPath)
+	topo, err := lab.LoadTopology(topologyPath)
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	if len(topo.Nodes) != 3 {
 		t.Fatalf("nodes = %d, want 3 routers and no transit node", len(topo.Nodes))
@@ -363,9 +367,9 @@ func TestParseFRROSPFStubNSSAAreasAndRedistribute(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if cfg.OSPF.Areas["1"].Kind != OSPFAreaStub {
 		t.Fatalf("area 1 = %#v, want stub", cfg.OSPF.Areas["1"])
@@ -393,9 +397,9 @@ func TestParseFRROSPFUnsupportedAreaOptionWarns(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0].Reason, "unsupported FRR OSPF area option") {
 		t.Fatalf("warnings = %#v, want unsupported area option warning", result.Warnings)
@@ -414,9 +418,9 @@ func TestParseNftablesConfig(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	acls, bindings, err := ParseNftablesACLConfig(path)
+	acls, bindings, err := configparse.ParseNftablesACLConfig(path)
 	if err != nil {
-		t.Fatalf("ParseNftablesACLConfig() error = %v", err)
+		t.Fatalf("configparse.ParseNftablesACLConfig() error = %v", err)
 	}
 	if len(acls) != 1 || len(acls[0].Rules) != 2 {
 		t.Fatalf("ACLs = %#v, want one ACL with two rules", acls)
@@ -478,16 +482,16 @@ func TestParseNftablesRejectsUnsupportedStatement(t *testing.T) {
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, _, err := ParseNftablesACLConfig(path)
+	_, _, err := configparse.ParseNftablesACLConfig(path)
 	if err == nil || !strings.Contains(err.Error(), "unsupported nftables ip match") {
-		t.Fatalf("ParseNftablesACLConfig() error = %v", err)
+		t.Fatalf("configparse.ParseNftablesACLConfig() error = %v", err)
 	}
 }
 
 func TestParseCoreBJRouteMapConfig(t *testing.T) {
-	cfg, err := ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "core-bj", "frr.conf"))
+	cfg, err := configparse.ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "core-bj", "frr.conf"))
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if prefixListByName(cfg.PrefixLists, "BJ-LOCAL") == nil {
 		t.Fatalf("BJ-LOCAL prefix-list not parsed: %#v", cfg.PrefixLists)
@@ -538,9 +542,9 @@ router bgp 65001
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig("frr", path)
+	cfg, err := configparse.ParseConfig("frr", path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if got, want := prefixListsWithoutMatches(cfg.PrefixLists), []PrefixList{
 		{Name: "PL-IN", Rules: []PrefixListRule{{Seq: 10, Action: "permit", Prefix: "10.0.0.0/24"}}},
@@ -587,7 +591,7 @@ func TestParseFRRRouteMapRejectsUnsupportedMatch(t *testing.T) {
 		t.Run(stmt, func(t *testing.T) {
 			_, err := parseFRRConfigTextResult(t, "route-map RM permit 10\n "+stmt+"\n set local-preference 200\n")
 			if err == nil || !strings.Contains(err.Error(), "unsupported FRR route-map match statement") {
-				t.Fatalf("ParseConfig() error = %v, want unsupported match", err)
+				t.Fatalf("configparse.ParseConfig() error = %v, want unsupported match", err)
 			}
 		})
 	}
@@ -605,9 +609,9 @@ route-map RM permit 10
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := ParseConfigWithWarnings("frr", path)
+	result, err := configparse.ParseConfigWithWarnings("frr", path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
 	if result.Config.Hostname != "r1" {
 		t.Fatalf("Hostname = %q, want r1", result.Config.Hostname)
@@ -616,7 +620,7 @@ route-map RM permit 10
 	if policy == nil || len(policy.Rules) != 1 || policy.Rules[0].SetLocalPref == nil || *policy.Rules[0].SetLocalPref != 200 {
 		t.Fatalf("RM = %#v", policy)
 	}
-	want := []UnsupportedStatement{
+	want := []configparse.UnsupportedStatement{
 		{Vendor: "frr", File: path, Line: 4, Text: "match source-protocol bgp", Reason: "unsupported FRR route-map match statement"},
 		{Vendor: "frr", File: path, Line: 5, Text: "set weight 50", Reason: "unsupported FRR route-map statement"},
 	}
@@ -648,17 +652,17 @@ topology:
 		t.Fatalf("WriteFile(topology) error = %v", err)
 	}
 
-	topo, warnings, err := LoadLabTopologyWithOptions(topologyPath, LoadLabTopologyOptions{CollectWarnings: true})
+	topo, warnings, err := lab.LoadTopologyWithOptions(topologyPath, lab.LoadOptions{CollectWarnings: true})
 	if err != nil {
-		t.Fatalf("LoadLabTopologyWithOptions(non-strict) error = %v", err)
+		t.Fatalf("lab.LoadTopologyWithOptions(non-strict) error = %v", err)
 	}
 	if topo == nil || len(warnings) != 1 {
 		t.Fatalf("non-strict topology=%#v warnings=%#v, want topology and one warning", topo, warnings)
 	}
 
-	_, warnings, err = LoadLabTopologyWithOptions(topologyPath, LoadLabTopologyOptions{StrictConfig: true})
+	_, warnings, err = lab.LoadTopologyWithOptions(topologyPath, lab.LoadOptions{StrictConfig: true})
 	if err == nil {
-		t.Fatalf("LoadLabTopologyWithOptions(strict) error = nil")
+		t.Fatalf("lab.LoadTopologyWithOptions(strict) error = nil")
 	}
 	if len(warnings) != 1 {
 		t.Fatalf("strict warnings = %#v, want one", warnings)
@@ -692,9 +696,9 @@ set / network-instance default protocols bgp neighbor 192.0.2.1 export-policy [ 
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig("srlinux", path)
+	cfg, err := configparse.ParseConfig("srlinux", path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if cfg.Hostname != "core1" || cfg.ASN != 65100 {
 		t.Fatalf("Config = %#v", cfg)
@@ -728,15 +732,15 @@ set / routing-policy policy IMPORT statement 10 action policy-result accept
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, err := ParseConfig("srlinux", path)
+	_, err := configparse.ParseConfig("srlinux", path)
 	if err == nil || !strings.Contains(err.Error(), "unsupported SR Linux routing-policy statement") {
-		t.Fatalf("ParseConfig() error = %v, want unsupported SR Linux routing-policy statement", err)
+		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported SR Linux routing-policy statement", err)
 	}
-	result, err := ParseConfigWithWarnings("srlinux", path)
+	result, err := configparse.ParseConfigWithWarnings("srlinux", path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
-	want := []UnsupportedStatement{{Vendor: "srlinux", File: path, Line: 2, Text: "set / routing-policy policy IMPORT statement 10 match protocol bgp", Reason: "unsupported SR Linux routing-policy statement"}}
+	want := []configparse.UnsupportedStatement{{Vendor: "srlinux", File: path, Line: 2, Text: "set / routing-policy policy IMPORT statement 10 match protocol bgp", Reason: "unsupported SR Linux routing-policy statement"}}
 	if !reflect.DeepEqual(result.Warnings, want) {
 		t.Fatalf("Warnings = %#v, want %#v", result.Warnings, want)
 	}
@@ -765,9 +769,9 @@ func TestParseConfigWithWarningsCurrentLabConfigs(t *testing.T) {
 		}
 		for _, path := range paths {
 			t.Run(path, func(t *testing.T) {
-				result, err := ParseConfigWithWarnings(tt.kind, path)
+				result, err := configparse.ParseConfigWithWarnings(tt.kind, path)
 				if err != nil {
-					t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+					t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 				}
 				if len(result.Warnings) != 0 {
 					t.Fatalf("Warnings = %#v, want none", result.Warnings)
@@ -778,9 +782,9 @@ func TestParseConfigWithWarningsCurrentLabConfigs(t *testing.T) {
 }
 
 func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "ospf-basic", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "ospf-basic", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	kinds := map[string]DeviceKind{}
 	for _, node := range topo.Nodes {
@@ -795,9 +799,9 @@ func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
 }
 
 func TestLoadOSPFVRFLabIncludesScopedProcesses(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "ospf-vrf", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "ospf-vrf", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	r1, ok := topo.Node("r1")
 	if !ok {
@@ -1124,9 +1128,9 @@ func TestValidateRejectsUnknownLinkInterface(t *testing.T) {
 }
 
 func TestParseCoreHZEgressRouteMapConfig(t *testing.T) {
-	cfg, err := ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "core-hz", "frr.conf"))
+	cfg, err := configparse.ParseConfig("frr", filepath.Join("..", "..", "labs", "base-wan", "configs", "frr", "core-hz", "frr.conf"))
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if prefixListByName(cfg.PrefixLists, "HZ-LOCAL") == nil {
 		t.Fatalf("HZ-LOCAL prefix-list not parsed: %#v", cfg.PrefixLists)
@@ -1142,9 +1146,9 @@ func TestParseCoreHZEgressRouteMapConfig(t *testing.T) {
 }
 
 func TestParseCEOSConfig(t *testing.T) {
-	cfg, err := ParseConfig("ceos", filepath.Join("..", "..", "labs", "base-wan", "configs", "ceos", "core-sh.cfg"))
+	cfg, err := configparse.ParseConfig("ceos", filepath.Join("..", "..", "labs", "base-wan", "configs", "ceos", "core-sh.cfg"))
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if cfg.ASN != 65100 || cfg.RouterID != "10.255.100.2" {
 		t.Fatalf("BGP = ASN %d router-id %s", cfg.ASN, cfg.RouterID)
@@ -1264,9 +1268,9 @@ topology:
 	if err := os.WriteFile(topologyPath, []byte(topology), 0o644); err != nil {
 		t.Fatalf("WriteFile(topology) error = %v", err)
 	}
-	topo, err := LoadLabTopology(topologyPath)
+	topo, err := lab.LoadTopology(topologyPath)
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	node, ok := topo.Node("ceos1")
 	if !ok {
@@ -1343,15 +1347,15 @@ router bgp 65001
 `
 	_, err := parseFRRConfigTextResult(t, config)
 	if err == nil || !strings.Contains(err.Error(), `unsupported FRR aggregate-address option "as-set"`) {
-		t.Fatalf("ParseConfig() error = %v, want unsupported aggregate-address option", err)
+		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported aggregate-address option", err)
 	}
 	path := filepath.Join(t.TempDir(), "frr.conf")
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	result, err := ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0].Reason, "unsupported FRR aggregate-address option") {
 		t.Fatalf("warnings = %#v, want aggregate option warning", result.Warnings)
@@ -1364,15 +1368,15 @@ func TestParseSRLinuxBGPAggregateWarnsUnsupported(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	_, err := ParseConfig(KindSRLinux, path)
+	_, err := configparse.ParseConfig(KindSRLinux, path)
 	if err == nil || !strings.Contains(err.Error(), "unsupported SR Linux BGP aggregate route statement") {
-		t.Fatalf("ParseConfig() error = %v, want unsupported SR Linux aggregate", err)
+		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported SR Linux aggregate", err)
 	}
-	result, err := ParseConfigWithWarnings(KindSRLinux, path)
+	result, err := configparse.ParseConfigWithWarnings(KindSRLinux, path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
-	want := []UnsupportedStatement{{Vendor: "srlinux", File: path, Line: 1, Text: config, Reason: "unsupported SR Linux BGP aggregate route statement"}}
+	want := []configparse.UnsupportedStatement{{Vendor: "srlinux", File: path, Line: 1, Text: config, Reason: "unsupported SR Linux BGP aggregate route statement"}}
 	if !reflect.DeepEqual(result.Warnings, want) {
 		t.Fatalf("Warnings = %#v, want %#v", result.Warnings, want)
 	}
@@ -1383,16 +1387,16 @@ func TestParseUnsupportedStaticRouteWarningAndStrictError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("ip route 10.0.0.0/24 192.0.2.1 250\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := ParseConfigWithWarnings(KindFRR, path)
+	result, err := configparse.ParseConfigWithWarnings(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfigWithWarnings() error = %v", err)
+		t.Fatalf("configparse.ParseConfigWithWarnings() error = %v", err)
 	}
 	if len(result.Warnings) != 1 {
 		t.Fatalf("warnings = %#v, want one unsupported static route warning", result.Warnings)
 	}
-	_, err = ParseConfig(KindFRR, path)
+	_, err = configparse.ParseConfig(KindFRR, path)
 	if err == nil {
-		t.Fatalf("ParseConfig() error = nil, want strict unsupported static route error")
+		t.Fatalf("configparse.ParseConfig() error = nil, want strict unsupported static route error")
 	}
 }
 
@@ -1413,9 +1417,9 @@ func TestParseFRRVRFInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := ParseConfig(KindFRR, path)
+	cfg, err := configparse.ParseConfig(KindFRR, path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if got := interfaceByName(cfg.Interfaces, "eth1").VRF; got != "tenant-a" {
 		t.Fatalf("eth1 VRF = %q, want tenant-a", got)
@@ -1444,9 +1448,9 @@ func TestParseCEOSVRFInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := ParseConfig(KindCEOS, path)
+	cfg, err := configparse.ParseConfig(KindCEOS, path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if got := interfaceByName(cfg.Interfaces, "Ethernet1").VRF; got != "tenant-a" {
 		t.Fatalf("Ethernet1 VRF = %q, want tenant-a", got)
@@ -1457,7 +1461,7 @@ func TestParseCEOSVRFInterfacesAndStaticRoutes(t *testing.T) {
 }
 
 func TestDeviceParserEntrypoints(t *testing.T) {
-	frr, err := FRRParser{}.Parse("frr.conf", `
+	frr, err := configparse.FRRParser{}.Parse("frr.conf", `
 hostname frr1
 interface eth1
  ip address 192.0.2.1/30
@@ -1469,32 +1473,32 @@ router bgp 65001
  exit-address-family
 `, false)
 	if err != nil {
-		t.Fatalf("FRRParser.Parse() error = %v", err)
+		t.Fatalf("configparse.FRRParser.Parse() error = %v", err)
 	}
 	if frr.Config.Hostname != "frr1" || len(frr.Config.Neighbors) != 1 {
 		t.Fatalf("FRR parser result = %#v", frr.Config)
 	}
 
-	ceos, err := CEOSParser{}.Parse("ceos.cfg", `
+	ceos, err := configparse.CEOSParser{}.Parse("ceos.cfg", `
 hostname ceos1
 interface Ethernet1
    vrf tenant-a
    ip address 192.0.2.1/30
 `, false)
 	if err != nil {
-		t.Fatalf("CEOSParser.Parse() error = %v", err)
+		t.Fatalf("configparse.CEOSParser.Parse() error = %v", err)
 	}
 	if ceos.Config.Hostname != "ceos1" || interfaceByName(ceos.Config.Interfaces, "Ethernet1").VRF != "tenant-a" {
 		t.Fatalf("cEOS parser result = %#v", ceos.Config)
 	}
 
-	srl, err := SRLinuxParser{}.Parse("srl.cfg", `
+	srl, err := configparse.SRLinuxParser{}.Parse("srl.cfg", `
 set / system name host-name srl1
 set / interface ethernet-1/1 subinterface 0 ipv4 address 192.0.2.1/30
 set / network-instance tenant-a interface ethernet-1/1.0
 `, false)
 	if err != nil {
-		t.Fatalf("SRLinuxParser.Parse() error = %v", err)
+		t.Fatalf("configparse.SRLinuxParser.Parse() error = %v", err)
 	}
 	if srl.Config.Hostname != "srl1" || interfaceByName(srl.Config.Interfaces, "ethernet-1/1").VRF != "tenant-a" {
 		t.Fatalf("SR Linux parser result = %#v", srl.Config)
@@ -1513,9 +1517,9 @@ func TestParseSRLinuxNetworkInstanceInterfacesAndStaticRoutes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := ParseConfig(KindSRLinux, path)
+	cfg, err := configparse.ParseConfig(KindSRLinux, path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if got := interfaceByName(cfg.Interfaces, "ethernet-1/1").VRF; got != "tenant-a" {
 		t.Fatalf("ethernet-1/1 VRF = %q, want tenant-a", got)
@@ -1526,17 +1530,17 @@ func TestParseSRLinuxNetworkInstanceInterfacesAndStaticRoutes(t *testing.T) {
 }
 
 func TestLoadVendorVRFLabs(t *testing.T) {
-	for _, lab := range []string{"vrf-ceos-basic", "vrf-srlinux-basic"} {
-		t.Run(lab, func(t *testing.T) {
-			topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", lab, "hoyan.clab.yml"))
+	for _, labName := range []string{"vrf-ceos-basic", "vrf-srlinux-basic"} {
+		t.Run(labName, func(t *testing.T) {
+			topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", labName, "hoyan.clab.yml"))
 			if err != nil {
-				t.Fatalf("LoadLabTopology() error = %v", err)
+				t.Fatalf("lab.LoadTopology() error = %v", err)
 			}
 			r1, ok := topo.Node("r1")
 			if !ok {
 				t.Fatalf("r1 missing")
 			}
-			if got := interfaceByName(r1.Interfaces, vendorVRFInterfaceName(lab, "tenant-a")).VRF; got != "tenant-a" {
+			if got := interfaceByName(r1.Interfaces, vendorVRFInterfaceName(labName, "tenant-a")).VRF; got != "tenant-a" {
 				t.Fatalf("tenant-a interface VRF = %q", got)
 			}
 			if len(r1.Routes) != 2 {
@@ -1607,14 +1611,14 @@ route-map RM permit 10
    set local-preference 200
 `)
 	if err == nil || !strings.Contains(err.Error(), "unsupported cEOS route-map match statement") {
-		t.Fatalf("ParseConfig() error = %v, want unsupported cEOS match", err)
+		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported cEOS match", err)
 	}
 }
 
 func TestParseSRLinuxConfig(t *testing.T) {
-	cfg, err := ParseConfig("srlinux", filepath.Join("..", "..", "labs", "base-wan", "configs", "srlinux", "core-gz.cfg"))
+	cfg, err := configparse.ParseConfig("srlinux", filepath.Join("..", "..", "labs", "base-wan", "configs", "srlinux", "core-gz.cfg"))
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if cfg.ASN != 65100 || cfg.RouterID != "10.255.100.3" {
 		t.Fatalf("BGP = ASN %d router-id %s", cfg.ASN, cfg.RouterID)
@@ -1652,9 +1656,9 @@ set / network-instance default protocols ospf instance default area 0.0.0.0 inte
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig("srlinux", path)
+	cfg, err := configparse.ParseConfig("srlinux", path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if !cfg.OSPF.Enabled || cfg.OSPF.RouterID != "10.255.1.1" {
 		t.Fatalf("OSPF = %#v, want enabled router-id", cfg.OSPF)
@@ -1680,9 +1684,9 @@ set / network-instance default protocols bgp neighbor 198.18.20.9 afi-safi ipv4-
 `), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	cfg, err := ParseConfig("srlinux", path)
+	cfg, err := configparse.ParseConfig("srlinux", path)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	if len(cfg.Neighbors) != 2 {
 		t.Fatalf("neighbors = %#v", cfg.Neighbors)
@@ -1754,40 +1758,40 @@ func neighborByAddress(neighbors []BGPNeighbor, addr string) *BGPNeighbor {
 	return nil
 }
 
-func parseFRRConfigText(t *testing.T, config string) ParsedConfig {
+func parseFRRConfigText(t *testing.T, config string) configparse.ParsedConfig {
 	t.Helper()
 	cfg, err := parseFRRConfigTextResult(t, config)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	return cfg
 }
 
-func parseFRRConfigTextResult(t *testing.T, config string) (ParsedConfig, error) {
+func parseFRRConfigTextResult(t *testing.T, config string) (configparse.ParsedConfig, error) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "frr.conf")
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	return ParseConfig("frr", path)
+	return configparse.ParseConfig("frr", path)
 }
 
-func parseCEOSConfigText(t *testing.T, config string) ParsedConfig {
+func parseCEOSConfigText(t *testing.T, config string) configparse.ParsedConfig {
 	t.Helper()
 	cfg, err := parseCEOSConfigTextResult(t, config)
 	if err != nil {
-		t.Fatalf("ParseConfig() error = %v", err)
+		t.Fatalf("configparse.ParseConfig() error = %v", err)
 	}
 	return cfg
 }
 
-func parseCEOSConfigTextResult(t *testing.T, config string) (ParsedConfig, error) {
+func parseCEOSConfigTextResult(t *testing.T, config string) (configparse.ParsedConfig, error) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "ceos.cfg")
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	return ParseConfig("ceos", path)
+	return configparse.ParseConfig("ceos", path)
 }
 
 func mkdirAll(t *testing.T, path string) {

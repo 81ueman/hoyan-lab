@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/controlplane"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 )
@@ -19,7 +20,7 @@ func (f runnerFunc) Run(ctx context.Context, name string, args ...string) ([]byt
 }
 
 func TestExpectedRoutesIncludesMultipleBgpPaths(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
