@@ -193,6 +193,13 @@ func PrependASN(asn uint32, path []uint32) []uint32 {
 	return out
 }
 
+func DefaultLocalPref(v int) int {
+	if v == 0 {
+		return 100
+	}
+	return v
+}
+
 func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEntry, route.RIBEntry) bool, reversePathTie bool) bool {
 	a = a.Normalize()
 	b = b.Normalize()
