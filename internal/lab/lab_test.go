@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/lab"
-	. "github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestLoadLabTopology(t *testing.T) {
@@ -108,7 +108,7 @@ func TestLoadLabTopologyIncludesACLPoliciesWithoutPolicyFile(t *testing.T) {
 		if acl == nil || binding == nil {
 			t.Fatalf("acl for %s %s not found in ACLs=%#v bindings=%#v", tt.node, tt.iface, topo.ACLs, topo.ACLBindings)
 		}
-		if acl.Name != "BLOCK-HTTP-TO-HZ" || binding.Direction != "egress" || len(acl.Rules) == 0 || acl.Rules[0].Action != ACLDeny || acl.Rules[0].Match.Protocol != "tcp" {
+		if acl.Name != "BLOCK-HTTP-TO-HZ" || binding.Direction != "egress" || len(acl.Rules) == 0 || acl.Rules[0].Action != model.ACLDeny || acl.Rules[0].Match.Protocol != "tcp" {
 			t.Fatalf("acl for %s %s = %#v binding=%#v", tt.node, tt.iface, acl, binding)
 		}
 		if acl.Rules[0].Match.DstSet == nil || !acl.Rules[0].Match.DstPort.Contains(80) {
@@ -194,7 +194,7 @@ topology:
 	if len(topo.Links) != 3 {
 		t.Fatalf("links = %#v, want complete graph across shared segment", topo.Links)
 	}
-	idx, err := BuildTopologyIndex(topo)
+	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
@@ -254,14 +254,14 @@ func TestLoadOSPFBasicLabIncludesNonFRRNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
-	kinds := map[string]DeviceKind{}
+	kinds := map[string]model.DeviceKind{}
 	for _, node := range topo.Nodes {
 		kinds[node.Name] = node.Kind
 		if !node.OSPF.Enabled {
 			t.Fatalf("%s OSPF disabled: %#v", node.Name, node.OSPF)
 		}
 	}
-	if kinds["r2"] != KindCEOS || kinds["r3"] != KindSRLinux {
+	if kinds["r2"] != model.KindCEOS || kinds["r3"] != model.KindSRLinux {
 		t.Fatalf("node kinds = %#v, want r2 cEOS and r3 SR Linux", kinds)
 	}
 }
@@ -275,7 +275,7 @@ func TestLoadOSPFVRFLabIncludesScopedProcesses(t *testing.T) {
 	if !ok {
 		t.Fatalf("r1 not found")
 	}
-	vrfs := map[NetworkInstanceID]bool{}
+	vrfs := map[model.NetworkInstanceID]bool{}
 	for _, process := range r1.OSPFProcesses {
 		vrfs[process.NetworkInstance] = process.Enabled
 	}
@@ -380,7 +380,7 @@ func TestLoadLabTopologyContainerNames(t *testing.T) {
 	}
 
 	sourceDir := absPath(t, filepath.Join("..", "..", "labs", "base-wan"))
-	data, err := RenderIsolatedTopology(mustReadFile(t, filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml")), TopologyRenderOptions{Suffix: "issue-21", SourceDir: sourceDir})
+	data, err := model.RenderIsolatedTopology(mustReadFile(t, filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml")), model.TopologyRenderOptions{Suffix: "issue-21", SourceDir: sourceDir})
 	if err != nil {
 		t.Fatalf("RenderIsolatedTopology() error = %v", err)
 	}
@@ -417,16 +417,16 @@ func vendorVRFInterfaceName(lab, vrf string) string {
 	return "ethernet-1/2"
 }
 
-func interfaceByName(interfaces []Interface, name string) Interface {
+func interfaceByName(interfaces []model.Interface, name string) model.Interface {
 	for _, iface := range interfaces {
 		if iface.Name == name {
 			return iface
 		}
 	}
-	return Interface{}
+	return model.Interface{}
 }
 
-func routePolicyByName(policies []RoutePolicy, name string) *RoutePolicy {
+func routePolicyByName(policies []model.RoutePolicy, name string) *model.RoutePolicy {
 	for i := range policies {
 		if policies[i].Name == name {
 			return &policies[i]
@@ -435,7 +435,7 @@ func routePolicyByName(policies []RoutePolicy, name string) *RoutePolicy {
 	return nil
 }
 
-func prefixListByName(prefixLists []PrefixList, name string) *PrefixList {
+func prefixListByName(prefixLists []model.PrefixList, name string) *model.PrefixList {
 	for i := range prefixLists {
 		if prefixLists[i].Name == name {
 			return &prefixLists[i]
@@ -444,7 +444,7 @@ func prefixListByName(prefixLists []PrefixList, name string) *PrefixList {
 	return nil
 }
 
-func aclByNodeInterface(topo *Topology, node, iface string) (*ACL, *ACLBinding) {
+func aclByNodeInterface(topo *model.Topology, node, iface string) (*model.ACL, *model.ACLBinding) {
 	for i := range topo.ACLBindings {
 		binding := &topo.ACLBindings[i]
 		if binding.Node != node || binding.Interface != iface {
@@ -459,7 +459,7 @@ func aclByNodeInterface(topo *Topology, node, iface string) (*ACL, *ACLBinding) 
 	return nil, nil
 }
 
-func neighborByAddress(neighbors []BGPNeighbor, addr string) *BGPNeighbor {
+func neighborByAddress(neighbors []model.BGPNeighbor, addr string) *model.BGPNeighbor {
 	for i := range neighbors {
 		if neighbors[i].Address == addr {
 			return &neighbors[i]

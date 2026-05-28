@@ -9,8 +9,7 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/configparse"
-	//lint:ignore ST1001 This package is a mechanical extraction of the legacy lab loader; issue #65 keeps behavior stable before follow-up cleanup.
-	. "github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,16 +47,16 @@ type clabTransitAttachment struct {
 	Intf string
 }
 
-func LoadTopology(clabPath string) (*Topology, error) {
+func LoadTopology(clabPath string) (*model.Topology, error) {
 	topo, _, err := LoadTopologyWithOptions(clabPath, LoadOptions{})
 	return topo, err
 }
 
-func LoadTopologyWithWarnings(clabPath string) (*Topology, []configparse.UnsupportedStatement, error) {
+func LoadTopologyWithWarnings(clabPath string) (*model.Topology, []configparse.UnsupportedStatement, error) {
 	return LoadTopologyWithOptions(clabPath, LoadOptions{CollectWarnings: true})
 }
 
-func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []configparse.UnsupportedStatement, error) {
+func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*model.Topology, []configparse.UnsupportedStatement, error) {
 	data, err := os.ReadFile(clabPath)
 	if err != nil {
 		return nil, nil, err
@@ -67,7 +66,7 @@ func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []co
 		return nil, nil, err
 	}
 	root := filepath.Dir(clabPath)
-	topo := &Topology{Name: raw.Name, ManagementSubnet: raw.Mgmt.IPv4Subnet}
+	topo := &model.Topology{Name: raw.Name, ManagementSubnet: raw.Mgmt.IPv4Subnet}
 	var warnings []configparse.UnsupportedStatement
 	collectWarnings := opts.CollectWarnings || opts.StrictConfig
 	names := make([]string, 0, len(raw.Topology.Nodes))
@@ -102,13 +101,13 @@ func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []co
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if parsedOSPFEnabled(parsed) && parsed.Loopback != "" {
-			loopbackPrefix, err := ParsePrefix(parsed.Loopback)
+			loopbackPrefix, err := model.ParsePrefix(parsed.Loopback)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s loopback: %w", name, err)
 			}
 			prefixes = appendUniquePrefix(prefixes, loopbackPrefix)
 		}
-		node := Node{
+		node := model.Node{
 			Name:           name,
 			ContainerName:  containerlabContainerName(raw.Prefix, raw.Name, name),
 			Kind:           kind,
@@ -132,19 +131,19 @@ func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []co
 		for ri := range node.Routes {
 			node.Routes[ri].Node = name
 			if node.Routes[ri].NetworkInstance == "" {
-				node.Routes[ri].NetworkInstance = NetworkInstanceDefault
+				node.Routes[ri].NetworkInstance = model.NetworkInstanceDefault
 			} else {
-				node.Routes[ri].NetworkInstance = NormalizeNetworkInstance(string(node.Routes[ri].NetworkInstance))
+				node.Routes[ri].NetworkInstance = model.NormalizeNetworkInstance(string(node.Routes[ri].NetworkInstance))
 			}
 			if node.Routes[ri].AFI == "" {
-				node.Routes[ri].AFI = AFIIPv4
+				node.Routes[ri].AFI = model.AFIIPv4
 			}
 		}
 		for ni := range node.Neighbors {
-			node.Neighbors[ni].NetworkInstance = NormalizeNetworkInstance(string(node.Neighbors[ni].NetworkInstance))
+			node.Neighbors[ni].NetworkInstance = model.NormalizeNetworkInstance(string(node.Neighbors[ni].NetworkInstance))
 		}
 		for ri := range node.Redistribute {
-			node.Redistribute[ri].NetworkInstance = NormalizeNetworkInstance(string(node.Redistribute[ri].NetworkInstance))
+			node.Redistribute[ri].NetworkInstance = model.NormalizeNetworkInstance(string(node.Redistribute[ri].NetworkInstance))
 		}
 		topo.Nodes = append(topo.Nodes, node)
 		for _, acl := range parsed.ACLs {
@@ -209,7 +208,7 @@ func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []co
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s-%s: %w", link.Endpoints[0], link.Endpoints[1], err)
 		}
-		topo.Links = append(topo.Links, Link{
+		topo.Links = append(topo.Links, model.Link{
 			Name:   linkName(aNode, aIntf, bNode, bIntf),
 			A:      aNode,
 			B:      bNode,
@@ -245,7 +244,7 @@ func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []co
 				if err != nil {
 					return nil, nil, fmt.Errorf("%s:%s-%s:%s via %s: %w", aRef.Node, aRef.Intf, bRef.Node, bRef.Intf, segment, err)
 				}
-				topo.Links = append(topo.Links, Link{
+				topo.Links = append(topo.Links, model.Link{
 					Name:   linkName(segment, aRef.Node+"-"+aRef.Intf, bRef.Node, bRef.Intf),
 					A:      aRef.Node,
 					B:      bRef.Node,
@@ -276,7 +275,7 @@ func parsedOSPFEnabled(parsed configparse.ParsedConfig) bool {
 	return false
 }
 
-func appendUniquePrefix(prefixes []Prefix, prefix Prefix) []Prefix {
+func appendUniquePrefix(prefixes []model.Prefix, prefix model.Prefix) []model.Prefix {
 	if prefix.IsZero() {
 		return prefixes
 	}
@@ -299,10 +298,10 @@ func containerlabContainerName(prefix *string, labName, nodeName string) string 
 	return effectivePrefix + "-" + labName + "-" + nodeName
 }
 
-func parsePrefixes(raw []string) ([]Prefix, error) {
-	out := make([]Prefix, 0, len(raw))
+func parsePrefixes(raw []string) ([]model.Prefix, error) {
+	out := make([]model.Prefix, 0, len(raw))
 	for _, p := range raw {
-		parsed, err := ParsePrefix(p)
+		parsed, err := model.ParsePrefix(p)
 		if err != nil {
 			return nil, fmt.Errorf("prefix %s: %w", p, err)
 		}
@@ -311,16 +310,16 @@ func parsePrefixes(raw []string) ([]Prefix, error) {
 	return out, nil
 }
 
-func normalizeKind(kind string) DeviceKind {
+func normalizeKind(kind string) model.DeviceKind {
 	switch kind {
 	case "linux":
-		return KindFRR
+		return model.KindFRR
 	case "arista_ceos":
-		return KindCEOS
+		return model.KindCEOS
 	case "nokia_srlinux":
-		return KindSRLinux
+		return model.KindSRLinux
 	default:
-		return DeviceKind(kind)
+		return model.DeviceKind(kind)
 	}
 }
 
@@ -365,9 +364,9 @@ func splitEndpoint(endpoint string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-func linkSubnet(a Node, aIntf string, b Node, bIntf string) (netip.Prefix, error) {
-	ap, aok := InterfaceAddress(a.Kind, a.Interfaces, aIntf)
-	bp, bok := InterfaceAddress(b.Kind, b.Interfaces, bIntf)
+func linkSubnet(a model.Node, aIntf string, b model.Node, bIntf string) (netip.Prefix, error) {
+	ap, aok := model.InterfaceAddress(a.Kind, a.Interfaces, aIntf)
+	bp, bok := model.InterfaceAddress(b.Kind, b.Interfaces, bIntf)
 	switch {
 	case aok && bok && ap.Masked() == bp.Masked():
 		return ap.Masked(), nil
@@ -386,13 +385,13 @@ func linkName(aNode, aIntf, bNode, bIntf string) string {
 	return strings.NewReplacer(":", "-", "_", "-").Replace(aNode + "-" + aIntf + "__" + bNode + "-" + bIntf)
 }
 
-func resolveNeighborNodes(topo *Topology) {
+func resolveNeighborNodes(topo *model.Topology) {
 	addrToNode := map[string]string{}
 	for _, n := range topo.Nodes {
 		for _, iface := range n.Interfaces {
 			pfx, err := netip.ParsePrefix(iface.Address)
 			if err == nil {
-				vrf := NormalizeNetworkInstance(string(iface.VRF))
+				vrf := model.NormalizeNetworkInstance(string(iface.VRF))
 				addrToNode[string(vrf)+"|"+pfx.Addr().String()] = n.Name
 			}
 		}
@@ -400,7 +399,7 @@ func resolveNeighborNodes(topo *Topology) {
 	for ni := range topo.Nodes {
 		for pi := range topo.Nodes[ni].Neighbors {
 			neighbor := topo.Nodes[ni].Neighbors[pi]
-			vrf := NormalizeNetworkInstance(string(neighbor.NetworkInstance))
+			vrf := model.NormalizeNetworkInstance(string(neighbor.NetworkInstance))
 			peer := addrToNode[string(vrf)+"|"+neighbor.Address]
 			topo.Nodes[ni].Neighbors[pi].PeerNode = peer
 		}
