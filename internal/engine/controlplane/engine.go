@@ -10,6 +10,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	routingpolicy "github.com/81ueman/hoyan-lab/internal/domain/routing/policy"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -158,7 +159,7 @@ func (e *Engine) redistributedRoutes(node model.Node) []domainroute.RIBEntry {
 			}
 			entry := e.bgpRouteFromConfiguredRoute(node, route)
 			if redist.RouteMap != "" {
-				decision := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, node, "", redist.RouteMap, entry)
+				decision := routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, node, "", redist.RouteMap, entry)
 				if !decision.Accept {
 					continue
 				}
@@ -474,7 +475,7 @@ func (e *Engine) walkBGP(route domainroute.RIBEntry) {
 		if !exported.Accept {
 			continue
 		}
-		exportPolicy := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, curNode, next, session.ExportPolicy, exported.Route)
+		exportPolicy := routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, curNode, next, session.ExportPolicy, exported.Route)
 		if !exportPolicy.Accept {
 			continue
 		}
@@ -488,7 +489,7 @@ func (e *Engine) walkBGP(route domainroute.RIBEntry) {
 		if !imported.Accept {
 			continue
 		}
-		importPolicy := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, nextNode, current, receiverSession.ImportPolicy, imported.Route)
+		importPolicy := routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, nextNode, current, receiverSession.ImportPolicy, imported.Route)
 		if !importPolicy.Accept {
 			continue
 		}

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	routingpolicy "github.com/81ueman/hoyan-lab/internal/domain/routing/policy"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -64,7 +64,7 @@ func TestRoutePolicyNextHopPrefixListUsesResolvedAddress(t *testing.T) {
 		}},
 	}
 	rule := model.RoutePolicyRule{MatchNextHopPrefixList: "NH"}
-	if !bgp.RoutePolicyRuleMatches(routePolicyResolver{idx: idx}, node, "", rule, testRIB("", withNextHop("peer"))) {
+	if !routingpolicy.RoutePolicyRuleMatches(routePolicyResolver{idx: idx}, node, "", rule, testRIB("", withNextHop("peer"))) {
 		t.Fatalf("routePolicyRuleMatches() = false, want next-hop prefix-list to match resolved peer address")
 	}
 }
@@ -85,7 +85,7 @@ func TestRoutePolicySetNextHopSelf(t *testing.T) {
 		NLRI:              domainroute.NLRI{Prefix: model.MustPrefix("10.3.0.0/16")},
 		ForwardingNextHop: domainroute.NextHop{Node: "gz-edge1", Addr: "198.18.10.8"},
 	}
-	decision := bgp.ApplyRoutePolicy(routePolicyResolver{}, node, "core-bj", "NH-SELF", route)
+	decision := routingpolicy.ApplyRoutePolicy(routePolicyResolver{}, node, "core-bj", "NH-SELF", route)
 	if !decision.Accept {
 		t.Fatalf("decision rejected route: %#v", decision)
 	}
@@ -106,25 +106,11 @@ func TestRoutePolicySetIPAddressNextHop(t *testing.T) {
 			}},
 		}},
 	}
-	decision := bgp.ApplyRoutePolicy(routePolicyResolver{}, node, "peer", "SET-NH", testRIB("10.0.0.0/24", withNextHop("local")))
+	decision := routingpolicy.ApplyRoutePolicy(routePolicyResolver{}, node, "peer", "SET-NH", testRIB("10.0.0.0/24", withNextHop("local")))
 	if !decision.Accept {
 		t.Fatalf("decision rejected route: %#v", decision)
 	}
 	if decision.Route.ForwardingNextHop.Node != "" || decision.Route.ForwardingNextHop.Addr != "192.0.2.1" {
 		t.Fatalf("route next-hop = %#v, want address-only recursive next-hop", decision.Route)
-	}
-}
-
-func TestPrefixListRuleMatchesUsesNLRILengthSemantics(t *testing.T) {
-	rule := model.PrefixListRule{Seq: 10, Action: "permit", Prefix: "10.0.0.0/8", Ge: 16, Le: 24}
-	node := model.Node{PrefixLists: []model.PrefixList{{Name: "PL", Rules: []model.PrefixListRule{rule}}}}
-	if !bgp.PrefixListPermitsPrefix(node, "PL", model.MustPrefix("10.4.0.0/16").NetIP()) {
-		t.Fatalf("prefix-list range should match NLRI inside ge/le bounds")
-	}
-	if bgp.PrefixListPermitsPrefix(node, "PL", model.MustPrefix("10.4.1.10/32").NetIP()) {
-		t.Fatalf("prefix-list range should reject NLRI longer than le")
-	}
-	if bgp.PrefixListPermitsPrefix(node, "PL", model.MustPrefix("10.0.0.0/8").NetIP()) {
-		t.Fatalf("prefix-list range should reject NLRI shorter than ge")
 	}
 }

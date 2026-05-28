@@ -1,4 +1,4 @@
-package bgp
+package policy
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -16,28 +17,28 @@ type PolicyNextHopResolver interface {
 	NextHopForSet(node string, nextHop string) route.NextHop
 }
 
-func ApplyRoutePolicy(resolver PolicyNextHopResolver, node model.Node, peerName string, policyName string, in route.RIBEntry) RouteDecision {
+func ApplyRoutePolicy(resolver PolicyNextHopResolver, node model.Node, peerName string, policyName string, in route.RIBEntry) bgp.RouteDecision {
 	in = in.Normalize()
 	if policyName == "" {
-		return RouteDecision{Route: in, Accept: true}
+		return bgp.RouteDecision{Route: in, Accept: true}
 	}
 	policy, ok := RoutePolicyByName(node, policyName)
 	if !ok {
-		return RouteDecision{Route: in, Accept: true}
+		return bgp.RouteDecision{Route: in, Accept: true}
 	}
 	for _, rule := range policy.Rules {
 		if !RoutePolicyRuleMatches(resolver, node, peerName, rule, in) {
 			continue
 		}
 		if strings.EqualFold(rule.Action, "deny") {
-			return RouteDecision{Route: in, Accept: false, Reason: "route-map deny"}
+			return bgp.RouteDecision{Route: in, Accept: false, Reason: "route-map deny"}
 		}
 		out := in
 		if rule.SetLocalPref != nil {
 			out.Attrs.LocalPref = *rule.SetLocalPref
 		}
 		if rule.SetLocalPrefDelta != nil {
-			out.Attrs.LocalPref = DefaultLocalPref(out.Attrs.LocalPref) + *rule.SetLocalPrefDelta
+			out.Attrs.LocalPref = bgp.DefaultLocalPref(out.Attrs.LocalPref) + *rule.SetLocalPrefDelta
 		}
 		if rule.SetMED != nil {
 			out.Attrs.MED = *rule.SetMED
@@ -66,9 +67,9 @@ func ApplyRoutePolicy(resolver PolicyNextHopResolver, node model.Node, peerName 
 		if rule.SetNextHop != "" {
 			out.ForwardingNextHop = resolver.NextHopForSet(node.Name, rule.SetNextHop)
 		}
-		return RouteDecision{Route: out.Normalize(), Accept: true}
+		return bgp.RouteDecision{Route: out.Normalize(), Accept: true}
 	}
-	return RouteDecision{Route: in, Accept: false, Reason: "route-map implicit deny"}
+	return bgp.RouteDecision{Route: in, Accept: false, Reason: "route-map implicit deny"}
 }
 
 func RoutePolicyRuleMatches(resolver PolicyNextHopResolver, node model.Node, peerName string, rule model.RoutePolicyRule, in route.RIBEntry) bool {
@@ -214,11 +215,4 @@ func appendUniqueStrings(xs []string, more ...string) []string {
 		}
 	}
 	return out
-}
-
-func DefaultLocalPref(v int) int {
-	if v == 0 {
-		return 100
-	}
-	return v
 }

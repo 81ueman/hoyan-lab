@@ -18,8 +18,9 @@ Packages should not import in the opposite direction. Domain packages model rout
 - `internal/domain/intent`: intent document and report schema.
 - `internal/domain/facts`: modeled fact row and canonical comparison types.
 - `internal/domain/routing/route`: shared simulated route/RIB entry attributes used by protocol rules and engines.
-- `internal/domain/routing/bgp`: BGP route decision, import/export behavior, vendor best-path differences, route-policy match/set logic, and AS-path/community helpers.
+- `internal/domain/routing/bgp`: BGP route decision, import/export behavior, vendor best-path differences, and BGP path attribute helpers.
 - `internal/domain/routing/ospf`: OSPF route type constants, interface/advertisement/path/SPF types, route ranking, and path helpers.
+- `internal/domain/routing/policy`: route-policy match/set logic and prefix-list, AS-path-list, and community-list evaluation.
 - `internal/engine`: control-plane and data-plane simulation orchestration. Engines decide when to apply domain protocol rules, mutate simulated RIB/FIB state, and run convergence loops; protocol law should stay in `internal/domain/routing`.
 - `internal/usecase`: application workflows that assemble engines, adapters, and reports, including verify, topology build, intent evaluation, live checks, snapshots, and RIB/FIB comparison.
 - `internal/adapter`: CLI, file formats, config parsers, concrete solver backends, SR Linux JSON command execution, and other boundary IO.
