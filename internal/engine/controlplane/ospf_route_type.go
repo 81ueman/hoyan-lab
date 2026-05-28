@@ -1,4 +1,4 @@
-package ospf
+package controlplane
 
 func ExternalRouteType(metricType int) string {
 	if ExternalMetricType(metricType) == 1 {

@@ -1,4 +1,4 @@
-package ospf
+package controlplane
 
 const (
 	RouteTypeIntraArea = "intra-area"

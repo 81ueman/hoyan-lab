@@ -2,7 +2,6 @@ package controlplane
 
 import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	domainospf "github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
 	routingpolicy "github.com/81ueman/hoyan-lab/internal/domain/routing/policy"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
@@ -22,7 +21,7 @@ func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProc
 				}
 				route = decision.Route.Normalize()
 			}
-			out = append(out, domainospf.RedistributedExternalRoute(node.Name, redist, route))
+			out = append(out, RedistributedExternalRoute(node.Name, redist, route))
 		}
 	}
 	return out

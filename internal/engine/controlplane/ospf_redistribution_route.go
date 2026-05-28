@@ -1,4 +1,4 @@
-package ospf
+package controlplane
 
 import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"

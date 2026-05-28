@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -204,8 +203,8 @@ func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEnt
 	a = a.Normalize()
 	b = b.Normalize()
 	if a.SourceKind == model.RouteSourceOSPF && b.SourceKind == model.RouteSourceOSPF {
-		if ospf.RouteTypeRank(a.RouteSource.OSPFRouteType) != ospf.RouteTypeRank(b.RouteSource.OSPFRouteType) {
-			return ospf.RouteTypeRank(a.RouteSource.OSPFRouteType) < ospf.RouteTypeRank(b.RouteSource.OSPFRouteType)
+		if ospfRouteTypeRank(a.RouteSource.OSPFRouteType) != ospfRouteTypeRank(b.RouteSource.OSPFRouteType) {
+			return ospfRouteTypeRank(a.RouteSource.OSPFRouteType) < ospfRouteTypeRank(b.RouteSource.OSPFRouteType)
 		}
 		if a.RouteSource.Metric != b.RouteSource.Metric {
 			return a.RouteSource.Metric < b.RouteSource.Metric
@@ -239,6 +238,21 @@ func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEnt
 		return len(a.Provenance.PathLinks) < len(b.Provenance.PathLinks)
 	}
 	return pathTie(a, b, reversePathTie)
+}
+
+func ospfRouteTypeRank(routeType string) int {
+	switch routeType {
+	case "", "intra-area":
+		return 0
+	case "inter-area":
+		return 1
+	case "external-type-1":
+		return 2
+	case "external-type-2":
+		return 3
+	default:
+		return 4
+	}
 }
 
 func pathTie(a, b route.RIBEntry, reverse bool) bool {

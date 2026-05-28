@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	domainospf "github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -92,7 +91,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 	}
 	engine := NewEngine(idx, map[string]map[string]map[string][]domainroute.RIBEntry{})
 	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
-	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState domainospf.InterfaceState) (string, bool) {
+	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState InterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
 			return "", false
 		}
@@ -195,10 +194,10 @@ func TestOSPFRedistributesConnectedWithRouteMapAndType1Metric(t *testing.T) {
 
 	rib := simulateOSPFTestRIB(t, topo)
 	route := bestOSPFTestRoute(t, rib, "r2", "198.18.1.0/24")
-	if route.RouteSource.OSPFRouteType != domainospf.RouteTypeExternal1 || route.RouteSource.Metric != 8 || route.ForwardingNextHop.Node != "r1" {
+	if route.RouteSource.OSPFRouteType != RouteTypeExternal1 || route.RouteSource.Metric != 8 || route.ForwardingNextHop.Node != "r1" {
 		t.Fatalf("redistributed connected route = %#v, want E1 metric 8 via r1", route)
 	}
-	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != domainospf.RouteTypeIntraArea {
+	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != RouteTypeIntraArea {
 		t.Fatalf("r1 loopback route = %#v, want normal intra-area route unaffected by route-map", routes)
 	}
 }
@@ -216,7 +215,7 @@ func TestOSPFRedistributesStaticType2MetricWithoutPathCost(t *testing.T) {
 
 	rib := simulateOSPFTestRIB(t, topo)
 	route := bestOSPFTestRoute(t, rib, "r2", "203.0.113.0/24")
-	if route.RouteSource.OSPFRouteType != domainospf.RouteTypeExternal2 || route.RouteSource.Metric != 33 {
+	if route.RouteSource.OSPFRouteType != RouteTypeExternal2 || route.RouteSource.Metric != 33 {
 		t.Fatalf("redistributed static route = %#v, want E2 metric 33", route)
 	}
 }
@@ -248,7 +247,7 @@ func TestOSPFRedistributesLearnedBGPRoute(t *testing.T) {
 
 	rib := simulateOSPFTestRIB(t, topo)
 	route := bestOSPFTestRoute(t, rib, "r2", "172.16.0.0/24")
-	if route.RouteSource.OSPFRouteType != domainospf.RouteTypeExternal2 || route.RouteSource.Metric != 12 || route.Provenance.OriginNode != "r1" {
+	if route.RouteSource.OSPFRouteType != RouteTypeExternal2 || route.RouteSource.Metric != 12 || route.Provenance.OriginNode != "r1" {
 		t.Fatalf("redistributed BGP route = %#v, want OSPF E2 from r1 metric 12", route)
 	}
 }
