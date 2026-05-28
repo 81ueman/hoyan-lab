@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
@@ -70,7 +71,7 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	if queriesPath == "" {
 		queriesPath = "labs/base-wan/intent/queries.yml"
 	}
-	queries, err := model.LoadQueries(queriesPath)
+	queries, err := query.Load(queriesPath)
 	if err != nil {
 		return err
 	}

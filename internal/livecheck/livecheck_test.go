@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
@@ -300,7 +301,7 @@ func TestRunDataplaneChecksProbesICMPAndTCP(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"}},
 	}
-	queries := &model.Queries{PacketChecks: []model.PacketCheck{
+	queries := &query.Queries{PacketChecks: []query.PacketCheck{
 		{Name: "icmp-ok", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &reachable},
 		{Name: "tcp-ok", From: "dst", To: "10.0.0.10", Protocol: "tcp", DstPorts: []int{80, 443}, ExpectReachable: &reachable},
 	}}
@@ -331,7 +332,7 @@ func TestRunDataplaneChecksFailsOnMismatch(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"}},
 	}
-	queries := &model.Queries{PacketChecks: []model.PacketCheck{{Name: "icmp-denied", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &unreachable}}}
+	queries := &query.Queries{PacketChecks: []query.PacketCheck{{Name: "icmp-denied", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &unreachable}}}
 	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		return []byte("ok"), nil
 	}}

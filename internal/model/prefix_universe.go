@@ -56,7 +56,29 @@ func (e OverlappingPrefixPredicateError) Error() string {
 	return fmt.Sprintf("overlapping prefix predicates are not supported yet: %s overlaps %s", e.Candidate.String(), e.Existing.String())
 }
 
-func CollectPrefixPredicates(topo *Topology, queries *Queries) []PrefixSet {
+type PrefixQuerySource interface {
+	RoutePrefixQueries() []RoutePrefixQuery
+	PacketDestinationQueries() []DestinationQuery
+	FailureDestinationQueries() []FailureDestinationQuery
+}
+
+type RoutePrefixQuery struct {
+	Name   string
+	Prefix Prefix
+}
+
+type DestinationQuery struct {
+	Name string
+	To   string
+}
+
+type FailureDestinationQuery struct {
+	Name   string
+	To     string
+	Prefix Prefix
+}
+
+func CollectPrefixPredicates(topo *Topology, queries PrefixQuerySource) []PrefixSet {
 	predicates := CollectPrefixPredicateMetadata(topo, queries)
 	out := make([]PrefixSet, 0, len(predicates))
 	for _, predicate := range predicates {
@@ -65,7 +87,7 @@ func CollectPrefixPredicates(topo *Topology, queries *Queries) []PrefixSet {
 	return out
 }
 
-func CollectPrefixPredicateMetadata(topo *Topology, queries *Queries) []PrefixPredicate {
+func CollectPrefixPredicateMetadata(topo *Topology, queries PrefixQuerySource) []PrefixPredicate {
 	var out []PrefixPredicate
 	add := func(source string, kind PrefixPredicateKind, set PrefixSet) {
 		if set == nil {
@@ -115,17 +137,17 @@ func CollectPrefixPredicateMetadata(topo *Topology, queries *Queries) []PrefixPr
 		}
 	}
 	if queries != nil {
-		for _, check := range queries.RouteChecks {
+		for _, check := range queries.RoutePrefixQueries() {
 			if !check.Prefix.IsZero() {
 				add("query-route:"+check.Name, PredicateNLRI, ExactPrefixSet{Prefix: check.Prefix})
 			}
 		}
-		for _, check := range queries.PacketChecks {
+		for _, check := range queries.PacketDestinationQueries() {
 			for _, set := range destinationPrefixSets(topo, check.To) {
 				add("query-packet:"+check.Name, PredicateAddressSpace, set)
 			}
 		}
-		for _, check := range queries.FailureChecks {
+		for _, check := range queries.FailureDestinationQueries() {
 			if !check.Prefix.IsZero() {
 				add("query-failure:"+check.Name, PredicateAddressSpace, ExactPrefixSet{Prefix: check.Prefix})
 				continue
@@ -210,7 +232,7 @@ func BuildPrefixUniverseFromPredicates(predicates []PrefixPredicate) (PrefixUniv
 	return universe, nil
 }
 
-func NewPrefixUniverse(topo *Topology, queries *Queries) (PrefixUniverse, error) {
+func NewPrefixUniverse(topo *Topology, queries PrefixQuerySource) (PrefixUniverse, error) {
 	return BuildPrefixUniverseFromPredicates(CollectPrefixPredicateMetadata(topo, queries))
 }
 

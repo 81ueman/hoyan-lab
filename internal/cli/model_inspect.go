@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/failure"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
@@ -470,7 +471,7 @@ func runModelPacketClasses(_ context.Context, opts modelInspectOptions, out io.W
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	queries, err := model.LoadQueries(opts.queriesPath)
+	queries, err := query.Load(opts.queriesPath)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -624,7 +625,7 @@ func modelPrefixUniverse(topo *model.Topology, graph *sim.Graph, request []model
 	return modelPrefixUniverseWithQueries(topo, nil, graph, request)
 }
 
-func modelPrefixUniverseWithQueries(topo *model.Topology, queries *model.Queries, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
+func modelPrefixUniverseWithQueries(topo *model.Topology, queries *query.Queries, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
 	predicates := model.CollectPrefixPredicateMetadata(topo, queries)
 	predicates = append(predicates, sim.CollectRIBPrefixPredicates(graph)...)
 	predicates = append(predicates, sim.CollectFIBPrefixPredicates(graph)...)

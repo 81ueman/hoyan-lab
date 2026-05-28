@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
@@ -13,9 +14,9 @@ func TestRunBundledQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
-		t.Fatalf("LoadQueries() error = %v", err)
+		t.Fatalf("query.Load() error = %v", err)
 	}
 	report := Run(topo, queries)
 	if len(report.Results) != 19 {
@@ -40,9 +41,9 @@ func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
-		t.Fatalf("LoadQueries() error = %v", err)
+		t.Fatalf("query.Load() error = %v", err)
 	}
 	report := RunWithOptions(topo, queries, VerifyOptions{})
 	if len(report.Results) <= 13 {
@@ -75,9 +76,9 @@ func TestRunWithOptionsCollapsesEquivalentPrefixClassResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	queries, err := model.LoadQueries(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
+	queries, err := query.Load(filepath.Join("..", "..", "labs", "base-wan", "intent", "queries.yml"))
 	if err != nil {
-		t.Fatalf("LoadQueries() error = %v", err)
+		t.Fatalf("query.Load() error = %v", err)
 	}
 	raw := RunWithOptions(topo, queries, VerifyOptions{})
 	collapsed := RunWithOptions(topo, queries, VerifyOptions{CollapseEquivalentResults: true})
@@ -123,7 +124,7 @@ func TestRouteCheckPrefixClassesEvaluateClassSpace(t *testing.T) {
 			Cost: 10,
 		}},
 	}
-	queries := &model.Queries{RouteChecks: []model.RouteCheck{{
+	queries := &query.Queries{RouteChecks: []query.RouteCheck{{
 		Name:        "src-to-wide-prefix",
 		From:        "src",
 		Prefix:      model.MustPrefix("10.0.0.0/16"),

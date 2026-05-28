@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/failure"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
-func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, queries *model.Queries, out io.Writer) error {
+func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, queries *query.Queries, out io.Writer) error {
 	if out == nil {
 		out = io.Discard
 	}
@@ -60,7 +61,7 @@ func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *mod
 	return nil
 }
 
-func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, check model.PacketCheck) (bool, error) {
+func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, check query.PacketCheck) (bool, error) {
 	src, ok := topo.Node(check.From)
 	if !ok {
 		return false, fmt.Errorf("source node %s not found", check.From)

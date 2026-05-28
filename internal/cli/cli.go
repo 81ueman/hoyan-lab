@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
 	"github.com/81ueman/hoyan-lab/internal/intent"
 	"github.com/81ueman/hoyan-lab/internal/livecheck"
@@ -250,7 +251,7 @@ func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) err
 	for _, warning := range warnings {
 		fmt.Fprintf(errOut, "warning: %s\n", warning)
 	}
-	queries, err := model.LoadQueries(opts.queriesPath)
+	queries, err := query.Load(opts.queriesPath)
 	if err != nil {
 		return err
 	}
