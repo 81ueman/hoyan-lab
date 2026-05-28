@@ -956,10 +956,6 @@ func ospfInterface(ospf *OSPFProcess, name string) *OSPFInterface {
 	return &oi
 }
 
-func ospfInterfaceVRF(kind DeviceKind, ifaces []Interface, name string) NetworkInstanceID {
-	return ProfileFor(kind).ConfigProfile().OSPFInterfaceVRF(ifaces, name)
-}
-
 func parseFRRLikeOSPFVRF(fields []string) NetworkInstanceID {
 	for i := 2; i+1 < len(fields); i++ {
 		if fields[i] == "vrf" {
@@ -1867,10 +1863,6 @@ func prefixSetOrNil(prefix Prefix) PrefixSet {
 		return nil
 	}
 	return ExactPrefixSet{Prefix: prefix}
-}
-
-func defaultACLAction(kind DeviceKind, fallback ACLDefaultAction) ACLDefaultAction {
-	return ProfileFor(kind).ACLProfile().DefaultACLAction(fallback)
 }
 
 func parseSRLinuxACL(aclPolicies map[string]map[int]*parsedACLRule, path string, lineNo int, raw string, fields []string) error {
