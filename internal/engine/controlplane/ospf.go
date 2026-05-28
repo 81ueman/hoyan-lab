@@ -3,7 +3,6 @@ package controlplane
 import (
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	domainospf "github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
@@ -20,14 +19,14 @@ func (e *Engine) installOSPFRoutesVRF(vrf model.NetworkInstanceID) {
 	if len(advertisements) == 0 {
 		return
 	}
-	areas := domainospf.NodeAreas(states)
-	abrs := domainospf.ABRs(areas)
+	areas := NodeAreas(states)
+	abrs := ABRs(areas)
 	for _, src := range e.idx.Topology.Nodes {
 		if _, ok := processes[src.Name]; !ok {
 			continue
 		}
 		anyPaths := e.ospfCandidatePathsAnyArea(src.Name, states)
-		areaPaths := map[string]map[string][]domainospf.Path{}
+		areaPaths := map[string]map[string][]Path{}
 		for area := range areas[src.Name] {
 			areaPaths[area] = e.ospfCandidatePaths(src.Name, area, states)
 		}
@@ -41,7 +40,7 @@ func (e *Engine) installOSPFRoutesVRF(vrf model.NetworkInstanceID) {
 			}
 			if adv.External || adv.DefaultArea != "" {
 				for _, path := range anyPaths[adv.Node] {
-					if !domainospf.AdvertisementAllowed(src, adv, path, processes) {
+					if !AdvertisementAllowed(src, adv, path, processes) {
 						continue
 					}
 					e.installRemoteOSPFRoute(src.Name, adv, path, "")
@@ -49,28 +48,28 @@ func (e *Engine) installOSPFRoutesVRF(vrf model.NetworkInstanceID) {
 				continue
 			}
 			for _, path := range areaPaths[adv.Area][adv.Node] {
-				if domainospf.AdvertisementAllowed(src, adv, path, processes) {
-					e.installRemoteOSPFRoute(src.Name, adv, path, domainospf.RouteTypeIntraArea)
+				if AdvertisementAllowed(src, adv, path, processes) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, RouteTypeIntraArea)
 				}
 			}
 			for _, path := range e.ospfInterAreaPaths(src.Name, adv, states, areas, abrs) {
-				if domainospf.AdvertisementAllowed(src, adv, path, processes) {
-					e.installRemoteOSPFRoute(src.Name, adv, path, domainospf.RouteTypeInterArea)
+				if AdvertisementAllowed(src, adv, path, processes) {
+					e.installRemoteOSPFRoute(src.Name, adv, path, RouteTypeInterArea)
 				}
 			}
 		}
 	}
 }
 
-func (e *Engine) installRemoteOSPFRoute(src string, adv domainospf.Advertisement, path domainospf.Path, routeType string) {
+func (e *Engine) installRemoteOSPFRoute(src string, adv Advertisement, path Path, routeType string) {
 	if len(path.Nodes) < 2 {
 		return
 	}
 	metric := path.Cost + adv.Cost
 	if adv.External {
-		routeType = domainospf.RouteTypeExternal2
+		routeType = RouteTypeExternal2
 		if adv.MetricType == 1 {
-			routeType = domainospf.RouteTypeExternal1
+			routeType = RouteTypeExternal1
 		} else {
 			metric = adv.Cost
 		}
@@ -82,7 +81,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv domainospf.Advertisement
 	}
 	cond := path.Cond
 	if cond == nil {
-		cond = failure.And(domainospf.PathCondition(path)...)
+		cond = failure.And(PathCondition(path)...)
 	}
 	if adv.Source.Condition != nil {
 		cond = failure.And(cond, adv.Source.Condition)
@@ -110,7 +109,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv domainospf.Advertisement
 	e.addRIB(src, adv.Prefix, entry)
 }
 
-func (e *Engine) installLocalOSPFRoute(node model.Node, adv domainospf.Advertisement, states map[string]domainospf.InterfaceState) {
+func (e *Engine) installLocalOSPFRoute(node model.Node, adv Advertisement, states map[string]InterfaceState) {
 	route := model.ConfiguredRoute{
 		Node:            node.Name,
 		NetworkInstance: adv.NetworkInstance,
@@ -119,7 +118,7 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv domainospf.Advertise
 		Kind:            model.RouteSourceOSPF,
 		AdminDistance:   110,
 		Metric:          adv.Cost,
-		OSPFRouteType:   domainospf.RouteTypeIntraArea,
+		OSPFRouteType:   RouteTypeIntraArea,
 		Interface:       ospfInterfaceForPrefix(states, adv.Prefix),
 	}
 	cond := failure.NodeVar(node.Name)

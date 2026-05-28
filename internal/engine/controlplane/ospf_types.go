@@ -1,4 +1,4 @@
-package ospf
+package controlplane
 
 import (
 	"net/netip"
