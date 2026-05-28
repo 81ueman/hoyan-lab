@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"testing"
 
-	deviceadapter "github.com/81ueman/hoyan-lab/internal/adapter/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
@@ -356,7 +355,7 @@ func TestBGPDecisionOptionsControlMEDScope(t *testing.T) {
 }
 
 func TestBGPDecisionOptionsDocumentUnsupportedRouterIDTieBreak(t *testing.T) {
-	behavior := deviceadapter.NewFRRBehavior()
+	behavior := device.NewFRRBehavior()
 	options := behavior.DecisionOptions()
 	if options.CompareRouterID {
 		t.Fatalf("router-id tie-break should remain explicitly unsupported until routes carry router-id attributes")
@@ -389,7 +388,7 @@ func TestDefaultBGPDecisionProcessEquivalent(t *testing.T) {
 }
 
 func TestCEOSSelectRoutesKeepsUnreachableNextHopForBgpRIB(t *testing.T) {
-	behavior := deviceadapter.NewCEOSBehavior()
+	behavior := device.NewCEOSBehavior()
 	device := model.Node{Name: "ceos", ASN: 65000}
 	routes := []domainroute.RIBEntry{
 		testRIB("10.0.0.0/24", withFrom("peer1"), withNextHop("remote"), withLocalPref(300)),
@@ -423,7 +422,7 @@ func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 		t.Fatalf("generic invalid route should not be installed in FIB")
 	}
 
-	ceos := deviceadapter.NewCEOSBehavior()
+	ceos := device.NewCEOSBehavior()
 	ceosDevice := model.Node{Name: "ceos", Kind: model.KindCEOS, ASN: 65000}
 	unresolved := testRIB(prefix.String(), withFrom("peer"), withNextHop("remote"))
 	direct := testRIB(prefix.String(), withFrom("peer"), withNextHop("peer"))
@@ -438,7 +437,7 @@ func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 		t.Fatalf("cEOS local route should be valid")
 	}
 
-	srl := deviceadapter.NewSRLinuxBehavior()
+	srl := device.NewSRLinuxBehavior()
 	imported := srl.ImportRoute(model.Node{Name: "rx", ASN: 65000}, model.Node{Name: "tx", ASN: 65100}, model.BGPNeighbor{}, testRIB(prefix.String(), withASPath(65100, 65000)))
 	if !imported.Accept || !imported.Route.Attrs.Invalid {
 		t.Fatalf("SR Linux AS-loop route should be retained as invalid: %#v", imported)

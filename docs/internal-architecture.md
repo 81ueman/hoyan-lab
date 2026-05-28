@@ -11,12 +11,13 @@ Packages should not import in the opposite direction. Domain packages model rout
 ## Package Roles
 
 - `internal/domain/model`: topology, packet, prefix, protocol, and route model types.
+- `internal/domain/device`: pure device behavior contracts and vendor-specific behavior differences.
 - `internal/domain/failure`: failure-domain conditions and failure-set helpers.
 - `internal/domain/symbolic`: pure symbolic expression types.
 - `internal/domain/solver`: solver-facing problem and answer types.
 - `internal/domain/query`: offline verification query schema.
 - `internal/domain/intent`: intent document and report schema.
-- `internal/domain/facts`: modeled fact row and canonical comparison types.
+- `internal/domain/observation`: modeled observation rows and canonical comparison types for RIB/FIB facts.
 - `internal/domain/routing/route`: shared simulated route/RIB entry attributes used by protocol rules and engines.
 - `internal/domain/routing/bgp`: BGP route decision, import/export behavior, vendor best-path differences, and BGP path attribute helpers.
 - `internal/domain/routing/ospf`: OSPF route type constants, interface/advertisement/path/SPF types, route ranking, and path helpers.
@@ -38,5 +39,5 @@ Control-plane convergence remains in `internal/engine/controlplane`: iterative m
 3. Move containerlab parsing into `internal/adapter/labfile` and topology assembly into `internal/usecase/topology`.
 4. Move Cobra commands under `internal/adapter/cli` and keep application orchestration in `internal/usecase`.
 5. Extract pure BGP and OSPF decision logic into `internal/domain/routing`.
-6. Move query, intent, and facts schemas into `internal/domain`, with YAML loading in `internal/adapter/*file` and evaluation/build workflows in `internal/usecase`.
+6. Move query, intent, and observation schemas into `internal/domain`, with YAML loading in `internal/adapter/*file` and evaluation/build workflows in `internal/usecase`.
 7. Move RIB/FIB comparison workflows into `internal/usecase/ribcompare` and `internal/usecase/fibcompare`; keep SR Linux command execution under `internal/adapter/srlinuxjson`.
