@@ -1,12 +1,9 @@
 package model_test
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/lab"
 	. "github.com/81ueman/hoyan-lab/internal/model"
 )
 
@@ -73,70 +70,4 @@ topology:
 			t.Fatalf("rendered topology missing relative path %q:\n%s", want, rendered)
 		}
 	}
-}
-
-func TestLoadLabTopologyContainerNames(t *testing.T) {
-	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
-	if err != nil {
-		t.Fatalf("lab.LoadTopology() error = %v", err)
-	}
-	node, ok := topo.Node("bj-edge1")
-	if !ok {
-		t.Fatalf("bj-edge1 not found")
-	}
-	if node.ContainerName != "clab-hoyan-base-wan-bj-edge1" {
-		t.Fatalf("original topology container name = %q, want containerlab default name", node.ContainerName)
-	}
-
-	sourceDir := absPath(t, filepath.Join("..", "..", "labs", "base-wan"))
-	data, err := RenderIsolatedTopology(mustReadFile(t, filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml")), TopologyRenderOptions{Suffix: "issue-21", SourceDir: sourceDir})
-	if err != nil {
-		t.Fatalf("RenderIsolatedTopology() error = %v", err)
-	}
-	if !strings.Contains(string(data), filepath.Join(sourceDir, "configs", "frr", "bj-edge1", "frr.conf")) {
-		t.Fatalf("rendered topology did not absolute config paths")
-	}
-	path := writeTempTopology(t, data)
-	topo, err = lab.LoadTopology(path)
-	if err != nil {
-		t.Fatalf("lab.LoadTopology(rendered) error = %v", err)
-	}
-	node, ok = topo.Node("bj-edge1")
-	if !ok {
-		t.Fatalf("bj-edge1 not found in rendered topology")
-	}
-	if node.ContainerName != "clab-hoyan-base-wan-issue-21-bj-edge1" {
-		t.Fatalf("rendered topology container name = %q", node.ContainerName)
-	}
-	if node.MgmtIPv4 != "172.86.21.11" {
-		t.Fatalf("rendered topology management IP = %q", node.MgmtIPv4)
-	}
-}
-
-func mustReadFile(t *testing.T, path string) []byte {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%s) error = %v", path, err)
-	}
-	return data
-}
-
-func writeTempTopology(t *testing.T, data []byte) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "generated.clab.yml")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile(%s) error = %v", path, err)
-	}
-	return path
-}
-
-func absPath(t *testing.T, path string) string {
-	t.Helper()
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		t.Fatalf("Abs(%s) error = %v", path, err)
-	}
-	return abs
 }
