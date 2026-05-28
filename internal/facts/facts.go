@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/sim"
 )
@@ -46,7 +47,7 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 		snapshotName = "current"
 	}
 	labPath = resolveLabPath(labPath)
-	topo, _, err := model.LoadLabTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), model.LoadLabTopologyOptions{})
+	topo, _, err := lab.LoadTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), lab.LoadOptions{})
 	if err != nil {
 		return Snapshot{}, err
 	}

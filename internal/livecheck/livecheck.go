@@ -13,6 +13,7 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
@@ -63,7 +64,7 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	if isZeroCompareOptions(compareOptions) {
 		compareOptions = ribcompare.DefaultBgpRibCompareOptions()
 	}
-	topo, _, err := model.LoadLabTopologyWithOptions(opts.Topology, model.LoadLabTopologyOptions{StrictConfig: opts.StrictConfig})
+	topo, _, err := lab.LoadTopologyWithOptions(opts.Topology, lab.LoadOptions{StrictConfig: opts.StrictConfig})
 	if err != nil {
 		return err
 	}

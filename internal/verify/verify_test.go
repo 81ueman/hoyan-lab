@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestRunBundledQueries(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
@@ -37,7 +38,7 @@ func TestRunBundledQueries(t *testing.T) {
 }
 
 func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
@@ -72,7 +73,7 @@ func TestRunWithOptionsExpandsPrefixClasses(t *testing.T) {
 }
 
 func TestRunWithOptionsCollapsesEquivalentPrefixClassResults(t *testing.T) {
-	topo, err := model.LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/check/query"
 	"github.com/81ueman/hoyan-lab/internal/fibcompare"
 	"github.com/81ueman/hoyan-lab/internal/intent"
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/livesnapshot"
 	"github.com/81ueman/hoyan-lab/internal/model"
@@ -241,7 +242,7 @@ type verifyOptions struct {
 }
 
 func runVerify(_ context.Context, opts verifyOptions, out, errOut io.Writer) error {
-	topo, warnings, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{
+	topo, warnings, err := lab.LoadTopologyWithOptions(opts.topologyPath, lab.LoadOptions{
 		CollectWarnings: true,
 		StrictConfig:    opts.strictConfig,
 	})
@@ -495,7 +496,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	if _, ok := livesnapshot.ParseHashPolicy(opts.snapshotHashPolicy); !ok {
 		return ExitError{Code: 2, Err: fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")}
 	}
-	topo, _, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
+	topo, _, err := lab.LoadTopologyWithOptions(opts.topologyPath, lab.LoadOptions{StrictConfig: opts.strictConfig})
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -573,7 +574,7 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 	if _, ok := livesnapshot.ParseHashPolicy(opts.snapshotHashPolicy); !ok {
 		return ExitError{Code: 2, Err: fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")}
 	}
-	topo, _, err := model.LoadLabTopologyWithOptions(opts.topologyPath, model.LoadLabTopologyOptions{StrictConfig: opts.strictConfig})
+	topo, _, err := lab.LoadTopologyWithOptions(opts.topologyPath, lab.LoadOptions{StrictConfig: opts.strictConfig})
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}

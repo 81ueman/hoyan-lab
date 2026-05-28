@@ -1,10 +1,13 @@
-package model
+package model_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/81ueman/hoyan-lab/internal/lab"
+	. "github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func TestRenderIsolatedTopologyUsesSuffixForNamesAndMgmtSubnet(t *testing.T) {
@@ -73,9 +76,9 @@ topology:
 }
 
 func TestLoadLabTopologyContainerNames(t *testing.T) {
-	topo, err := LoadLabTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("lab.LoadTopology() error = %v", err)
 	}
 	node, ok := topo.Node("bj-edge1")
 	if !ok {
@@ -94,9 +97,9 @@ func TestLoadLabTopologyContainerNames(t *testing.T) {
 		t.Fatalf("rendered topology did not absolute config paths")
 	}
 	path := writeTempTopology(t, data)
-	topo, err = LoadLabTopology(path)
+	topo, err = lab.LoadTopology(path)
 	if err != nil {
-		t.Fatalf("LoadLabTopology(rendered) error = %v", err)
+		t.Fatalf("lab.LoadTopology(rendered) error = %v", err)
 	}
 	node, ok = topo.Node("bj-edge1")
 	if !ok {

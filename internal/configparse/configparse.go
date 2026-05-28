@@ -1,4 +1,4 @@
-package model
+package configparse
 
 import (
 	"bufio"
@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	//lint:ignore ST1001 This package is a mechanical extraction of the legacy parser; issue #64 keeps behavior stable before follow-up cleanup.
+	. "github.com/81ueman/hoyan-lab/internal/model"
 )
 
 type ParsedConfig struct {
@@ -122,6 +125,14 @@ func ParseConfig(kind DeviceKind, path string) (ParsedConfig, error) {
 
 func ParseConfigWithWarnings(kind DeviceKind, path string) (ParseResult, error) {
 	return parseConfig(kind, path, true)
+}
+
+type ParseOptions struct {
+	CollectWarnings bool
+}
+
+func ParseConfigWithOptions(kind DeviceKind, path string, opts ParseOptions) (ParseResult, error) {
+	return parseConfig(kind, path, opts.CollectWarnings)
 }
 
 func ParseNftablesACLConfig(path string) ([]ACL, []ACLBinding, error) {

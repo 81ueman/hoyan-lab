@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
 )
@@ -22,7 +23,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	}
 
 	topologyPath := filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml")
-	topo, err := model.LoadLabTopology(topologyPath)
+	topo, err := lab.LoadTopology(topologyPath)
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}

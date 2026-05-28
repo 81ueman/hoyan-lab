@@ -1,4 +1,4 @@
-package model
+package lab
 
 import (
 	"fmt"
@@ -8,6 +8,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/configparse"
+	//lint:ignore ST1001 This package is a mechanical extraction of the legacy lab loader; issue #65 keeps behavior stable before follow-up cleanup.
+	. "github.com/81ueman/hoyan-lab/internal/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,7 +38,7 @@ type clabNode struct {
 	StartupConfig string   `yaml:"startup-config"`
 }
 
-type LoadLabTopologyOptions struct {
+type LoadOptions struct {
 	CollectWarnings bool
 	StrictConfig    bool
 }
@@ -45,16 +48,16 @@ type clabTransitAttachment struct {
 	Intf string
 }
 
-func LoadLabTopology(clabPath string) (*Topology, error) {
-	topo, _, err := LoadLabTopologyWithOptions(clabPath, LoadLabTopologyOptions{})
+func LoadTopology(clabPath string) (*Topology, error) {
+	topo, _, err := LoadTopologyWithOptions(clabPath, LoadOptions{})
 	return topo, err
 }
 
-func LoadLabTopologyWithWarnings(clabPath string) (*Topology, []UnsupportedStatement, error) {
-	return LoadLabTopologyWithOptions(clabPath, LoadLabTopologyOptions{CollectWarnings: true})
+func LoadTopologyWithWarnings(clabPath string) (*Topology, []configparse.UnsupportedStatement, error) {
+	return LoadTopologyWithOptions(clabPath, LoadOptions{CollectWarnings: true})
 }
 
-func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*Topology, []UnsupportedStatement, error) {
+func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*Topology, []configparse.UnsupportedStatement, error) {
 	data, err := os.ReadFile(clabPath)
 	if err != nil {
 		return nil, nil, err
@@ -65,7 +68,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 	}
 	root := filepath.Dir(clabPath)
 	topo := &Topology{Name: raw.Name, ManagementSubnet: raw.Mgmt.IPv4Subnet}
-	var warnings []UnsupportedStatement
+	var warnings []configparse.UnsupportedStatement
 	collectWarnings := opts.CollectWarnings || opts.StrictConfig
 	names := make([]string, 0, len(raw.Topology.Nodes))
 	for name := range raw.Topology.Nodes {
@@ -88,7 +91,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		if !filepath.IsAbs(fullConfigPath) {
 			fullConfigPath = filepath.Join(root, configPath)
 		}
-		result, err := parseConfig(kind, fullConfigPath, collectWarnings)
+		result, err := configparse.ParseConfigWithOptions(kind, fullConfigPath, configparse.ParseOptions{CollectWarnings: collectWarnings})
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
@@ -158,7 +161,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 			if !filepath.IsAbs(fullNftPath) {
 				fullNftPath = filepath.Join(root, nftPath)
 			}
-			acls, bindings, err := ParseNftablesACLConfig(fullNftPath)
+			acls, bindings, err := configparse.ParseNftablesACLConfig(fullNftPath)
 			if err != nil {
 				return nil, nil, fmt.Errorf("%s nftables: %w", name, err)
 			}
@@ -173,7 +176,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 		}
 	}
 	if opts.StrictConfig && len(warnings) > 0 {
-		return nil, warnings, UnsupportedConfigError{Warnings: warnings}
+		return nil, warnings, configparse.UnsupportedConfigError{Warnings: warnings}
 	}
 	transitAttachments := map[string][]clabTransitAttachment{}
 	for i, link := range raw.Topology.Links {
@@ -261,7 +264,7 @@ func LoadLabTopologyWithOptions(clabPath string, opts LoadLabTopologyOptions) (*
 	return topo, warnings, nil
 }
 
-func parsedOSPFEnabled(parsed ParsedConfig) bool {
+func parsedOSPFEnabled(parsed configparse.ParsedConfig) bool {
 	if parsed.OSPF.Enabled {
 		return true
 	}
