@@ -22,16 +22,7 @@ func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProc
 				}
 				route = decision.Route.Normalize()
 			}
-			sourceRoute := route.RouteSource
-			sourceRoute.Node = node.Name
-			sourceRoute.Kind = model.RouteSourceOSPF
-			sourceRoute.AdminDistance = 110
-			sourceRoute.MetricType = domainospf.ExternalMetricType(redist.MetricType)
-			sourceRoute.OSPFRouteType = domainospf.ExternalRouteType(sourceRoute.MetricType)
-			sourceRoute.Metric = domainospf.ExternalMetric(redist, route)
-			route.SourceKind = model.RouteSourceOSPF
-			route.RouteSource = sourceRoute
-			out = append(out, route.Normalize())
+			out = append(out, domainospf.RedistributedExternalRoute(node.Name, redist, route))
 		}
 	}
 	return out

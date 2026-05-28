@@ -8,7 +8,6 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
 const (
@@ -17,34 +16,6 @@ const (
 )
 
 type SPFQueue []SPFQueueItem
-
-func ExternalMetric(redist model.OSPFRedistribution, in route.RIBEntry) int {
-	in = in.Normalize()
-	if redist.Metric > 0 {
-		return redist.Metric
-	}
-	if in.Attrs.MED > 0 {
-		return in.Attrs.MED
-	}
-	if in.RouteSource.Metric > 0 {
-		return in.RouteSource.Metric
-	}
-	return 20
-}
-
-func ExternalRouteType(metricType int) string {
-	if ExternalMetricType(metricType) == 1 {
-		return RouteTypeExternal1
-	}
-	return RouteTypeExternal2
-}
-
-func ExternalMetricType(metricType int) int {
-	if metricType == 1 {
-		return 1
-	}
-	return 2
-}
 
 func ExternalArea(process model.OSPFProcess, states map[string]InterfaceState) string {
 	for _, state := range states {
