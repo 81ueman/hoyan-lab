@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/check/query"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/failure"
 	"github.com/81ueman/hoyan-lab/internal/model"
 	"github.com/81ueman/hoyan-lab/internal/ribcompare"
-	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, queries *query.Queries, out io.Writer) error {

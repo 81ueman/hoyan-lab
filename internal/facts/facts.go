@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/lab"
 	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 type RIBRow struct {

@@ -11,7 +11,7 @@ import (
 
 func loadGraph(t *testing.T) *Graph {
 	t.Helper()
-	topo, err := lab.LoadTopology(filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, err := lab.LoadTopology(filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}

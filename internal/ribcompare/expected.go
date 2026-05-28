@@ -1,8 +1,8 @@
 package ribcompare
 
 import (
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/sim"
 )
 
 func Expected(topo *model.Topology) []NormalizedBgpRoute {
