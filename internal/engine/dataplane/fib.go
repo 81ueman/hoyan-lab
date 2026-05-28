@@ -5,9 +5,11 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 type Path struct {
@@ -47,13 +49,13 @@ type FIBEntry struct {
 
 type Engine struct {
 	idx *model.TopologyIndex
-	rib map[string]map[string]map[string][]controlplane.RIBEntry
+	rib map[string]map[string]map[string][]domainroute.RIBEntry
 	fib map[string]map[string][]FIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]controlplane.RIBEntry, fib map[string]map[string][]FIBEntry) *Engine {
+func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]domainroute.RIBEntry, fib map[string]map[string][]FIBEntry) *Engine {
 	if rib == nil {
-		rib = map[string]map[string]map[string][]controlplane.RIBEntry{}
+		rib = map[string]map[string]map[string][]domainroute.RIBEntry{}
 	}
 	if fib == nil {
 		fib = map[string]map[string][]FIBEntry{}
@@ -71,7 +73,7 @@ func (e *Engine) DeriveFIB() {
 		for vrf, byPrefix := range byVRF {
 			var entries []FIBEntry
 			for _, routes := range byPrefix {
-				routes = append([]controlplane.RIBEntry(nil), routes...)
+				routes = append([]domainroute.RIBEntry(nil), routes...)
 				sort.SliceStable(routes, func(i, j int) bool {
 					ai, aj := fibAdminDistance(routes[i]), fibAdminDistance(routes[j])
 					if ai == aj {
@@ -80,7 +82,7 @@ func (e *Engine) DeriveFIB() {
 					return ai < aj
 				})
 				seenSelected := map[string]bool{}
-				var installed []controlplane.RIBEntry
+				var installed []domainroute.RIBEntry
 				var groups []fibRouteGroup
 				for _, route := range routes {
 					route = route.Normalize()
@@ -147,7 +149,7 @@ func (e *Engine) DeriveFIB() {
 	}
 }
 
-func fibAdminDistance(route controlplane.RIBEntry) int {
+func fibAdminDistance(route domainroute.RIBEntry) int {
 	route = route.Normalize()
 	if route.RouteSource.AdminDistance != 0 || route.SourceKind == model.RouteSourceConnected {
 		return route.RouteSource.AdminDistance
@@ -165,13 +167,13 @@ func fibAdminDistance(route controlplane.RIBEntry) int {
 }
 
 type fibRouteGroup struct {
-	route      controlplane.RIBEntry
+	route      domainroute.RIBEntry
 	rank       int
 	id         string
 	equivalent bool
 }
 
-func routeGroupFor(decision controlplane.BGPDecisionProcess, node model.Node, groups []fibRouteGroup, route controlplane.RIBEntry) (fibRouteGroup, bool) {
+func routeGroupFor(decision bgp.DecisionProcess, node model.Node, groups []fibRouteGroup, route domainroute.RIBEntry) (fibRouteGroup, bool) {
 	prefix := route.NLRI.Prefix.String()
 	for _, group := range groups {
 		if decision.Equivalent(node, group.route, route) {

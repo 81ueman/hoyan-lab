@@ -7,78 +7,23 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	domainospf "github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
-type ospfInterfaceState struct {
-	Node            string
-	Name            string
-	NetworkInstance model.NetworkInstanceID
-	Prefix          netip.Prefix
-	Area            string
-	Cost            int
-	Passive         bool
-	NetworkType     string
-}
-
-type ospfAdvertisement struct {
-	Node            string
-	NetworkInstance model.NetworkInstanceID
-	Prefix          model.Prefix
-	Cost            int
-	Area            string
-	External        bool
-	MetricType      int
-	ExternalArea    string
-	DefaultArea     string
-	Source          RIBEntry
-}
-
-type ospfPath struct {
-	Cost  int
-	Nodes []string
-	Links []string
-	Areas []string
-	Cond  failure.Cond
-}
-
-type ospfAdjacency struct {
-	From string
-	To   string
-	Link string
-	Area string
-	Cost int
-}
-
-type ospfSPFNode struct {
-	Cost         int
-	Predecessors []ospfSPFPredecessor
-}
-
-type ospfSPFPredecessor struct {
-	Node string
-	Link string
-	Area string
-}
-
-type ospfSPFQueueItem struct {
-	Node string
-	Cost int
-}
-
-type ospfSPFQueue []ospfSPFQueueItem
-
-type ospfAdjacencyFilter func(ospfInterfaceState, ospfInterfaceState) (string, bool)
+type ospfSPFQueue []domainospf.SPFQueueItem
 
 const ospfMaxPathsPerDestination = 8
 
 const (
-	ospfRouteTypeIntraArea = "intra-area"
-	ospfRouteTypeInterArea = "inter-area"
-	ospfRouteTypeExternal1 = "external-type-1"
-	ospfRouteTypeExternal2 = "external-type-2"
-	ospfBackboneArea       = "0"
+	ospfRouteTypeIntraArea = domainospf.RouteTypeIntraArea
+	ospfRouteTypeInterArea = domainospf.RouteTypeInterArea
+	ospfRouteTypeExternal1 = domainospf.RouteTypeExternal1
+	ospfRouteTypeExternal2 = domainospf.RouteTypeExternal2
+	ospfBackboneArea       = domainospf.BackboneArea
 )
 
 func (e *Engine) installOSPFRoutes() {
@@ -101,7 +46,7 @@ func (e *Engine) installOSPFRoutesVRF(vrf model.NetworkInstanceID) {
 			continue
 		}
 		anyPaths := e.ospfCandidatePathsAnyArea(src.Name, states)
-		areaPaths := map[string]map[string][]ospfPath{}
+		areaPaths := map[string]map[string][]domainospf.Path{}
 		for area := range areas[src.Name] {
 			areaPaths[area] = e.ospfCandidatePaths(src.Name, area, states)
 		}
@@ -187,7 +132,7 @@ func ospfProcessesForNode(node model.Node) []model.OSPFProcess {
 	return out
 }
 
-func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path ospfPath, routeType string) {
+func (e *Engine) installRemoteOSPFRoute(src string, adv domainospf.Advertisement, path domainospf.Path, routeType string) {
 	if len(path.Nodes) < 2 {
 		return
 	}
@@ -222,11 +167,11 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 		Metric:          metric,
 		OSPFRouteType:   routeType,
 	}
-	entry := RIBEntry{
-		NLRI:              RouteNLRI{Prefix: adv.Prefix},
-		Attrs:             BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-		Provenance:        RouteProvenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
-		ForwardingNextHop: RouteNextHop{Node: nextHop, Addr: nextHopAddr},
+	entry := domainroute.RIBEntry{
+		NLRI:              domainroute.NLRI{Prefix: adv.Prefix},
+		Attrs:             domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIGP, LocalPref: 100},
+		Provenance:        domainroute.Provenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
+		ForwardingNextHop: domainroute.NextHop{Node: nextHop, Addr: nextHopAddr},
 		SourceKind:        model.RouteSourceOSPF,
 		RouteSource:       route,
 		BaseCond:          cond,
@@ -235,7 +180,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv ospfAdvertisement, path 
 	e.addRIB(src, adv.Prefix, entry)
 }
 
-func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, states map[string]ospfInterfaceState) {
+func (e *Engine) installLocalOSPFRoute(node model.Node, adv domainospf.Advertisement, states map[string]domainospf.InterfaceState) {
 	route := model.ConfiguredRoute{
 		Node:            node.Name,
 		NetworkInstance: adv.NetworkInstance,
@@ -248,10 +193,10 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, s
 		Interface:       ospfInterfaceForPrefix(states, adv.Prefix),
 	}
 	cond := failure.NodeVar(node.Name)
-	entry := RIBEntry{
-		NLRI:        RouteNLRI{Prefix: adv.Prefix},
-		Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-		Provenance:  RouteProvenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
+	entry := domainroute.RIBEntry{
+		NLRI:        domainroute.NLRI{Prefix: adv.Prefix},
+		Attrs:       domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIGP, LocalPref: 100},
+		Provenance:  domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 		SourceKind:  model.RouteSourceOSPF,
 		RouteSource: route,
 		BaseCond:    cond,
@@ -260,7 +205,7 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv ospfAdvertisement, s
 	e.addRIB(node.Name, adv.Prefix, entry)
 }
 
-func ospfInterfaceForPrefix(states map[string]ospfInterfaceState, prefix model.Prefix) string {
+func ospfInterfaceForPrefix(states map[string]domainospf.InterfaceState, prefix model.Prefix) string {
 	for _, state := range states {
 		if model.PrefixFromNetIP(state.Prefix).Equal(prefix) {
 			return state.Name
@@ -269,8 +214,8 @@ func ospfInterfaceForPrefix(states map[string]ospfInterfaceState, prefix model.P
 	return ""
 }
 
-func (e *Engine) ospfInterfaceStates(vrf model.NetworkInstanceID, processes map[string]model.OSPFProcess) map[string]map[string]ospfInterfaceState {
-	out := map[string]map[string]ospfInterfaceState{}
+func (e *Engine) ospfInterfaceStates(vrf model.NetworkInstanceID, processes map[string]model.OSPFProcess) map[string]map[string]domainospf.InterfaceState {
+	out := map[string]map[string]domainospf.InterfaceState{}
 	for _, node := range e.idx.Topology.Nodes {
 		process, ok := processes[node.Name]
 		if !ok {
@@ -286,7 +231,7 @@ func (e *Engine) ospfInterfaceStates(vrf model.NetworkInstanceID, processes map[
 				continue
 			}
 			if out[node.Name] == nil {
-				out[node.Name] = map[string]ospfInterfaceState{}
+				out[node.Name] = map[string]domainospf.InterfaceState{}
 			}
 			out[node.Name][iface.Name] = ifState
 		}
@@ -294,12 +239,12 @@ func (e *Engine) ospfInterfaceStates(vrf model.NetworkInstanceID, processes map[
 	return out
 }
 
-func ospfInterfaceFor(node model.Node, process model.OSPFProcess, vrf model.NetworkInstanceID, iface model.Interface, pfx netip.Prefix) (ospfInterfaceState, bool) {
+func ospfInterfaceFor(node model.Node, process model.OSPFProcess, vrf model.NetworkInstanceID, iface model.Interface, pfx netip.Prefix) (domainospf.InterfaceState, bool) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	if model.NormalizeNetworkInstance(string(iface.VRF)) != vrf {
-		return ospfInterfaceState{}, false
+		return domainospf.InterfaceState{}, false
 	}
-	state := ospfInterfaceState{Node: node.Name, Name: iface.Name, NetworkInstance: vrf, Prefix: pfx.Masked(), Cost: 1}
+	state := domainospf.InterfaceState{Node: node.Name, Name: iface.Name, NetworkInstance: vrf, Prefix: pfx.Masked(), Cost: 1}
 	for _, configured := range process.Interfaces {
 		if !model.EquivalentInterfaceName(node.Kind, configured.Name, iface.Name) {
 			continue
@@ -325,7 +270,7 @@ func ospfInterfaceFor(node model.Node, process model.OSPFProcess, vrf model.Netw
 		}
 	}
 	if state.Area == "" {
-		return ospfInterfaceState{}, false
+		return domainospf.InterfaceState{}, false
 	}
 	if isOSPFLoopbackInterface(iface.Name) {
 		state.Cost = 0
@@ -346,8 +291,8 @@ func isOSPFLoopbackInterface(name string) bool {
 	return name == "lo" || strings.HasPrefix(name, "lo") || strings.HasPrefix(name, "loopback")
 }
 
-func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceState, processes map[string]model.OSPFProcess) []ospfAdvertisement {
-	var out []ospfAdvertisement
+func (e *Engine) ospfAdvertisements(states map[string]map[string]domainospf.InterfaceState, processes map[string]model.OSPFProcess) []domainospf.Advertisement {
+	var out []domainospf.Advertisement
 	seen := map[string]bool{}
 	for node, byIface := range states {
 		for _, state := range byIface {
@@ -357,7 +302,7 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 				continue
 			}
 			seen[key] = true
-			out = append(out, ospfAdvertisement{Node: node, NetworkInstance: state.NetworkInstance, Prefix: prefix, Cost: state.Cost, Area: state.Area})
+			out = append(out, domainospf.Advertisement{Node: node, NetworkInstance: state.NetworkInstance, Prefix: prefix, Cost: state.Cost, Area: state.Area})
 		}
 	}
 	for _, node := range e.idx.Topology.Nodes {
@@ -367,7 +312,7 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 		}
 		for _, route := range e.ospfRedistributedRoutes(node, process) {
 			area := ospfExternalArea(process, states[node.Name])
-			out = append(out, ospfAdvertisement{
+			out = append(out, domainospf.Advertisement{
 				Node:            node.Name,
 				NetworkInstance: process.NetworkInstance,
 				Prefix:          route.RouteSource.Prefix,
@@ -388,7 +333,7 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 			if !ospfNodeAttachedToArea(states[node.Name], area.ID) {
 				continue
 			}
-			out = append(out, ospfAdvertisement{Node: node.Name, NetworkInstance: process.NetworkInstance, Prefix: model.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
+			out = append(out, domainospf.Advertisement{Node: node.Name, NetworkInstance: process.NetworkInstance, Prefix: model.MustPrefix("0.0.0.0/0"), Cost: 1, DefaultArea: area.ID})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -400,8 +345,8 @@ func (e *Engine) ospfAdvertisements(states map[string]map[string]ospfInterfaceSt
 	return out
 }
 
-func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProcess) []RIBEntry {
-	var out []RIBEntry
+func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProcess) []domainroute.RIBEntry {
+	var out []domainroute.RIBEntry
 	for _, redist := range process.Redistribute {
 		for _, route := range e.ospfRedistributionCandidates(node, process.NetworkInstance, redist.Kind) {
 			route = route.Normalize()
@@ -409,7 +354,7 @@ func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProc
 				continue
 			}
 			if redist.RouteMap != "" {
-				decision := applyRoutePolicy(e.idx, node, "", redist.RouteMap, route)
+				decision := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, node, "", redist.RouteMap, route)
 				if !decision.Accept {
 					continue
 				}
@@ -430,9 +375,9 @@ func (e *Engine) ospfRedistributedRoutes(node model.Node, process model.OSPFProc
 	return out
 }
 
-func (e *Engine) ospfRedistributionCandidates(node model.Node, vrf model.NetworkInstanceID, kind model.RouteSourceKind) []RIBEntry {
+func (e *Engine) ospfRedistributionCandidates(node model.Node, vrf model.NetworkInstanceID, kind model.RouteSourceKind) []domainroute.RIBEntry {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	var out []RIBEntry
+	var out []domainroute.RIBEntry
 	switch kind {
 	case model.RouteSourceConnected, model.RouteSourceStatic:
 		for _, route := range e.redistributionCandidates(node, kind) {
@@ -465,7 +410,7 @@ func (e *Engine) ospfRedistributionCandidates(node model.Node, vrf model.Network
 	return out
 }
 
-func ospfExternalMetric(redist model.OSPFRedistribution, route RIBEntry) int {
+func ospfExternalMetric(redist model.OSPFRedistribution, route domainroute.RIBEntry) int {
 	route = route.Normalize()
 	if redist.Metric > 0 {
 		return redist.Metric
@@ -493,7 +438,7 @@ func ospfExternalMetricType(metricType int) int {
 	return 2
 }
 
-func ospfExternalArea(process model.OSPFProcess, states map[string]ospfInterfaceState) string {
+func ospfExternalArea(process model.OSPFProcess, states map[string]domainospf.InterfaceState) string {
 	for _, state := range states {
 		if area := process.Areas[state.Area]; area.Kind == model.OSPFAreaNSSA {
 			return state.Area
@@ -502,7 +447,7 @@ func ospfExternalArea(process model.OSPFProcess, states map[string]ospfInterface
 	return ""
 }
 
-func ospfNodeAttachedToArea(states map[string]ospfInterfaceState, area string) bool {
+func ospfNodeAttachedToArea(states map[string]domainospf.InterfaceState, area string) bool {
 	for _, state := range states {
 		if state.Area == area {
 			return true
@@ -511,7 +456,7 @@ func ospfNodeAttachedToArea(states map[string]ospfInterfaceState, area string) b
 	return false
 }
 
-func ospfNodeAttachedToOtherArea(states map[string]ospfInterfaceState, area string) bool {
+func ospfNodeAttachedToOtherArea(states map[string]domainospf.InterfaceState, area string) bool {
 	for _, state := range states {
 		if state.Area != "" && state.Area != area {
 			return true
@@ -520,7 +465,7 @@ func ospfNodeAttachedToOtherArea(states map[string]ospfInterfaceState, area stri
 	return false
 }
 
-func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPath, processes map[string]model.OSPFProcess) bool {
+func ospfAdvertisementAllowed(src model.Node, adv domainospf.Advertisement, path domainospf.Path, processes map[string]model.OSPFProcess) bool {
 	if adv.DefaultArea != "" {
 		return pathUsesOnlyArea(path, adv.DefaultArea)
 	}
@@ -544,7 +489,7 @@ func ospfAdvertisementAllowed(src model.Node, adv ospfAdvertisement, path ospfPa
 	return !ospfNodeInStubOrNSSA(processes[src.Name])
 }
 
-func pathUsesOnlyArea(path ospfPath, area string) bool {
+func pathUsesOnlyArea(path domainospf.Path, area string) bool {
 	if len(path.Areas) == 0 {
 		return false
 	}
@@ -565,7 +510,7 @@ func ospfNodeInStubOrNSSA(process model.OSPFProcess) bool {
 	return false
 }
 
-func ospfAreaForPathArea(processes map[string]model.OSPFProcess, path ospfPath, areaID string) model.OSPFArea {
+func ospfAreaForPathArea(processes map[string]model.OSPFProcess, path domainospf.Path, areaID string) model.OSPFArea {
 	for _, nodeName := range path.Nodes {
 		process, ok := processes[nodeName]
 		if !ok {
@@ -579,7 +524,7 @@ func ospfAreaForPathArea(processes map[string]model.OSPFProcess, path ospfPath, 
 	return model.OSPFArea{ID: areaID, Kind: model.OSPFAreaNormal}
 }
 
-func ospfNodeAreas(states map[string]map[string]ospfInterfaceState) map[string]map[string]bool {
+func ospfNodeAreas(states map[string]map[string]domainospf.InterfaceState) map[string]map[string]bool {
 	out := map[string]map[string]bool{}
 	for node, byIface := range states {
 		for _, state := range byIface {
@@ -605,8 +550,8 @@ func ospfABRs(areas map[string]map[string]bool) map[string]bool {
 	return out
 }
 
-func (e *Engine) ospfCandidatePaths(src, area string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
-	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+func (e *Engine) ospfCandidatePaths(src, area string, states map[string]map[string]domainospf.InterfaceState) map[string][]domainospf.Path {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState domainospf.InterfaceState) (string, bool) {
 		if fromState.Area != area || toState.Area != area {
 			return "", false
 		}
@@ -614,8 +559,8 @@ func (e *Engine) ospfCandidatePaths(src, area string, states map[string]map[stri
 	})
 }
 
-func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[string]ospfInterfaceState) map[string][]ospfPath {
-	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState ospfInterfaceState) (string, bool) {
+func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[string]domainospf.InterfaceState) map[string][]domainospf.Path {
+	return e.ospfCandidatePathsWithArea(src, states, func(fromState, toState domainospf.InterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
 			return "", false
 		}
@@ -623,14 +568,14 @@ func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[str
 	})
 }
 
-func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string][]ospfPath {
-	out := map[string][]ospfPath{}
+func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]domainospf.InterfaceState, allowed domainospf.AdjacencyFilter) map[string][]domainospf.Path {
+	out := map[string][]domainospf.Path{}
 	for _, firstHop := range e.ospfAdjacencies(src, states, allowed) {
 		spf := e.ospfShortestPathTree(firstHop.To, src, states, allowed)
 		condMemo := map[string]failure.Cond{}
 		for dst, state := range spf {
 			if dst == firstHop.To {
-				path := ospfPath{
+				path := domainospf.Path{
 					Cost:  firstHop.Cost,
 					Nodes: []string{src, firstHop.To},
 					Links: []string{firstHop.Link},
@@ -647,7 +592,7 @@ func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[st
 			if !ok {
 				continue
 			}
-			path := ospfPath{
+			path := domainospf.Path{
 				Cost:  firstHop.Cost + state.Cost,
 				Nodes: append([]string{src}, nodes...),
 				Links: append([]string{firstHop.Link}, links...),
@@ -664,15 +609,15 @@ func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[st
 	return out
 }
 
-func (e *Engine) ospfInterAreaPaths(src string, adv ospfAdvertisement, states map[string]map[string]ospfInterfaceState, areas map[string]map[string]bool, abrs map[string]bool) []ospfPath {
+func (e *Engine) ospfInterAreaPaths(src string, adv domainospf.Advertisement, states map[string]map[string]domainospf.InterfaceState, areas map[string]map[string]bool, abrs map[string]bool) []domainospf.Path {
 	if areas[src][adv.Area] {
 		return nil
 	}
 	srcAreas := sortedAreaKeys(areas[src])
-	var out []ospfPath
+	var out []domainospf.Path
 	for _, srcArea := range srcAreas {
 		srcPaths := e.ospfCandidatePaths(src, srcArea, states)
-		backbonePathsBySrcABR := map[string]map[string][]ospfPath{}
+		backbonePathsBySrcABR := map[string]map[string][]domainospf.Path{}
 		for _, srcABR := range ospfAreaBoundaries(src, srcArea, areas, abrs) {
 			toSrcABR := ospfZeroPath(src, srcABR, srcPaths)
 			if len(toSrcABR.Nodes) == 0 {
@@ -721,23 +666,23 @@ func ospfAreaBoundaries(node, area string, areas map[string]map[string]bool, abr
 	return out
 }
 
-func ospfZeroPath(src, dst string, paths map[string][]ospfPath) ospfPath {
+func ospfZeroPath(src, dst string, paths map[string][]domainospf.Path) domainospf.Path {
 	if src == dst {
-		return ospfPath{Nodes: []string{src}}
+		return domainospf.Path{Nodes: []string{src}}
 	}
 	if len(paths[dst]) == 0 {
-		return ospfPath{}
+		return domainospf.Path{}
 	}
 	return paths[dst][0]
 }
 
-func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
-	var out ospfPath
+func concatOSPFPaths(parts ...domainospf.Path) (domainospf.Path, bool) {
+	var out domainospf.Path
 	seen := map[string]bool{}
 	var conds []failure.Cond
 	for i, part := range parts {
 		if len(part.Nodes) == 0 {
-			return ospfPath{}, false
+			return domainospf.Path{}, false
 		}
 		out.Cost += part.Cost
 		if part.Cond != nil {
@@ -747,7 +692,7 @@ func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
 			out.Nodes = append(out.Nodes, part.Nodes...)
 		} else {
 			if out.Nodes[len(out.Nodes)-1] != part.Nodes[0] {
-				return ospfPath{}, false
+				return domainospf.Path{}, false
 			}
 			out.Nodes = append(out.Nodes, part.Nodes[1:]...)
 		}
@@ -756,7 +701,7 @@ func concatOSPFPaths(parts ...ospfPath) (ospfPath, bool) {
 	}
 	for _, node := range out.Nodes {
 		if seen[node] {
-			return ospfPath{}, false
+			return domainospf.Path{}, false
 		}
 		seen[node] = true
 	}
@@ -775,7 +720,7 @@ func sortedAreaKeys(m map[string]bool) []string {
 	return out
 }
 
-func sortOSPFPaths(paths []ospfPath) {
+func sortOSPFPaths(paths []domainospf.Path) {
 	sort.Slice(paths, func(i, j int) bool {
 		if paths[i].Cost != paths[j].Cost {
 			return paths[i].Cost < paths[j].Cost
@@ -784,22 +729,22 @@ func sortOSPFPaths(paths []ospfPath) {
 	})
 }
 
-func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) map[string]ospfSPFNode {
-	dist := map[string]ospfSPFNode{}
+func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]map[string]domainospf.InterfaceState, allowed domainospf.AdjacencyFilter) map[string]domainospf.SPFNode {
+	dist := map[string]domainospf.SPFNode{}
 	for _, node := range e.idx.Topology.Nodes {
 		if len(states[node.Name]) == 0 || node.Name == excluded {
 			continue
 		}
-		dist[node.Name] = ospfSPFNode{Cost: math.MaxInt}
+		dist[node.Name] = domainospf.SPFNode{Cost: math.MaxInt}
 	}
 	if _, ok := dist[src]; !ok {
 		return dist
 	}
-	dist[src] = ospfSPFNode{Cost: 0}
+	dist[src] = domainospf.SPFNode{Cost: 0}
 	q := &ospfSPFQueue{{Node: src}}
 	heap.Init(q)
 	for q.Len() > 0 {
-		item := heap.Pop(q).(ospfSPFQueueItem)
+		item := heap.Pop(q).(domainospf.SPFQueueItem)
 		current := dist[item.Node]
 		if item.Cost != current.Cost {
 			continue
@@ -813,13 +758,13 @@ func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]ma
 				continue
 			}
 			cost := item.Cost + adj.Cost
-			pred := ospfSPFPredecessor{Node: item.Node, Link: adj.Link, Area: adj.Area}
+			pred := domainospf.SPFPredecessor{Node: item.Node, Link: adj.Link, Area: adj.Area}
 			switch {
 			case cost < next.Cost:
 				next.Cost = cost
-				next.Predecessors = []ospfSPFPredecessor{pred}
+				next.Predecessors = []domainospf.SPFPredecessor{pred}
 				dist[adj.To] = next
-				heap.Push(q, ospfSPFQueueItem{Node: adj.To, Cost: cost})
+				heap.Push(q, domainospf.SPFQueueItem{Node: adj.To, Cost: cost})
 			case cost == next.Cost:
 				next.Predecessors = append(next.Predecessors, pred)
 				sort.Slice(next.Predecessors, func(i, j int) bool {
@@ -835,15 +780,15 @@ func (e *Engine) ospfShortestPathTree(src, excluded string, states map[string]ma
 	return dist
 }
 
-func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) []ospfAdjacency {
-	var out []ospfAdjacency
+func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]domainospf.InterfaceState, allowed domainospf.AdjacencyFilter) []domainospf.Adjacency {
+	var out []domainospf.Adjacency
 	for _, edge := range e.idx.Adj[model.NodeID(from)] {
 		to := string(edge.To)
 		cost, area, ok := ospfAdjacencyCost(e.idx, from, to, edge.Link, states, allowed)
 		if !ok {
 			continue
 		}
-		out = append(out, ospfAdjacency{From: from, To: to, Link: edge.Link.Name, Area: area, Cost: cost})
+		out = append(out, domainospf.Adjacency{From: from, To: to, Link: edge.Link.Name, Area: area, Cost: cost})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].To == out[j].To {
@@ -854,7 +799,7 @@ func (e *Engine) ospfAdjacencies(from string, states map[string]map[string]ospfI
 	return out
 }
 
-func ospfRepresentativePath(src, dst string, spf map[string]ospfSPFNode) ([]string, []string, []string, bool) {
+func ospfRepresentativePath(src, dst string, spf map[string]domainospf.SPFNode) ([]string, []string, []string, bool) {
 	if src == dst {
 		return []string{src}, nil, nil, true
 	}
@@ -870,7 +815,7 @@ func ospfRepresentativePath(src, dst string, spf map[string]ospfSPFNode) ([]stri
 	return append(nodes, dst), append(links, pred.Link), append(areas, pred.Area), true
 }
 
-func ospfSPFCondition(src, dst string, spf map[string]ospfSPFNode, memo map[string]failure.Cond) failure.Cond {
+func ospfSPFCondition(src, dst string, spf map[string]domainospf.SPFNode, memo map[string]failure.Cond) failure.Cond {
 	if cond, ok := memo[dst]; ok {
 		return cond
 	}
@@ -892,7 +837,7 @@ func ospfSPFCondition(src, dst string, spf map[string]ospfSPFNode, memo map[stri
 	return cond
 }
 
-func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]ospfInterfaceState, allowed ospfAdjacencyFilter) (int, string, bool) {
+func ospfAdjacencyCost(idx *model.TopologyIndex, from, to string, link model.Link, states map[string]map[string]domainospf.InterfaceState, allowed domainospf.AdjacencyFilter) (int, string, bool) {
 	fromRef, ok := idx.InterfaceOnLink(from, link.Name)
 	if !ok {
 		return 0, "", false
@@ -937,7 +882,7 @@ func normalizeOSPFNetworkType(raw string) string {
 	}
 }
 
-func pathCondition(path ospfPath) []failure.Cond {
+func pathCondition(path domainospf.Path) []failure.Cond {
 	conds := make([]failure.Cond, 0, len(path.Nodes)+len(path.Links))
 	for _, node := range path.Nodes {
 		conds = append(conds, failure.NodeVar(node))
@@ -960,7 +905,7 @@ func (q ospfSPFQueue) Less(i, j int) bool {
 func (q ospfSPFQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
 
 func (q *ospfSPFQueue) Push(x any) {
-	*q = append(*q, x.(ospfSPFQueueItem))
+	*q = append(*q, x.(domainospf.SPFQueueItem))
 }
 
 func (q *ospfSPFQueue) Pop() any {

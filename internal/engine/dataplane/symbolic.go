@@ -5,15 +5,16 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
 type SymbolicPacketState struct {
 	Node             string
 	IngressInterface string
-	Packet           controlplane.PacketMessage
+	Packet           device.PacketMessage
 	Cond             failure.Cond
 	Path             Path
 }
@@ -355,7 +356,7 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst mo
 	}
 	spec = spec.WithNormalizedPorts()
 	spec.DstSet = dst
-	packet := controlplane.PacketMessage{Node: from, Spec: spec}
+	packet := device.PacketMessage{Node: from, Spec: spec}
 	var reasons []SymbolicUnreachableReason
 	addUnreachableReason(&reasons, SymbolicUnreachableReason{
 		Kind:    UnreachableNodeFailed,
@@ -399,7 +400,7 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst mo
 	}
 }
 
-func routePath(idx *model.TopologyIndex, route controlplane.RIBEntry) Path {
+func routePath(idx *model.TopologyIndex, route domainroute.RIBEntry) Path {
 	route = route.Normalize()
 	nodes := append([]string(nil), route.Provenance.PathNodes...)
 	links := append([]string(nil), route.Provenance.PathLinks...)
@@ -585,7 +586,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 	}
 }
 
-func (e *Engine) appendBlockedPolicyPath(blocked *[]SymbolicPacketBlockedPath, path Path, cond failure.Cond, decision controlplane.PolicyDecision, node, iface, stage string) {
+func (e *Engine) appendBlockedPolicyPath(blocked *[]SymbolicPacketBlockedPath, path Path, cond failure.Cond, decision device.PolicyDecision, node, iface, stage string) {
 	if blocked == nil {
 		return
 	}
