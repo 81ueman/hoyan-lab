@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func CollectRIBPrefixPredicates(g *Graph) []model.PrefixPredicate {

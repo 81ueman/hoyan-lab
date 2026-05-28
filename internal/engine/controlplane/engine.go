@@ -6,90 +6,21 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
-
-type RIBEntry struct {
-	NLRI                  RouteNLRI
-	Attrs                 BGPAttributes
-	Provenance            RouteProvenance
-	ForwardingNextHop     RouteNextHop
-	SourceKind            model.RouteSourceKind
-	RouteSource           model.ConfiguredRoute
-	AggregateContributors []string
-	BaseCond              failure.Cond
-	Condition             failure.Cond
-	SelectedCond          failure.Cond
-}
-
-type RouteNLRI struct {
-	Prefix model.Prefix
-}
-
-type BGPOriginCode string
-
-const (
-	BGPOriginIGP        BGPOriginCode = "igp"
-	BGPOriginEGP        BGPOriginCode = "egp"
-	BGPOriginIncomplete BGPOriginCode = "incomplete"
-)
-
-type BGPAttributes struct {
-	ASPath      []uint32
-	Communities []string
-	OriginCode  BGPOriginCode
-	LocalPref   int
-	MED         int
-	LearnedIBGP bool
-	Invalid     bool
-}
-
-type RouteProvenance struct {
-	OriginNode string
-	FromNode   string
-	PathNodes  []string
-	PathLinks  []string
-}
-
-// RouteNextHop keeps simulated forwarding next-hop node identity separate from
-// the resolved address used when comparing against live device RIB output.
-type RouteNextHop struct {
-	Node string
-	Addr string
-}
-
-func (h RouteNextHop) Valid() bool {
-	return h.Node != "" || h.Addr != ""
-}
-
-func (r RIBEntry) Normalize() RIBEntry {
-	if r.Attrs.OriginCode == "" {
-		r.Attrs.OriginCode = BGPOriginIGP
-	}
-	if r.SourceKind == "" {
-		r.SourceKind = model.RouteSourceBGP
-	}
-	if r.RouteSource.Kind == "" {
-		r.RouteSource.Kind = r.SourceKind
-	}
-	if r.RouteSource.NetworkInstance == "" {
-		r.RouteSource.NetworkInstance = model.NetworkInstanceDefault
-	}
-	if r.RouteSource.Prefix.IsZero() {
-		r.RouteSource.Prefix = r.NLRI.Prefix
-	}
-	return r
-}
 
 type Engine struct {
 	idx *model.TopologyIndex
-	rib map[string]map[string]map[string][]RIBEntry
+	rib map[string]map[string]map[string][]domainroute.RIBEntry
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]RIBEntry) *Engine {
+func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]domainroute.RIBEntry) *Engine {
 	if rib == nil {
-		rib = map[string]map[string]map[string][]RIBEntry{}
+		rib = map[string]map[string]map[string][]domainroute.RIBEntry{}
 	}
 	return &Engine{idx: idx, rib: rib}
 }
@@ -108,10 +39,10 @@ func (e *Engine) Simulate() {
 		if bgpEnabled(origin) {
 			for _, prefix := range origin.Prefixes {
 				originCond := failure.NodeVar(origin.Name)
-				route := RIBEntry{
-					NLRI:        RouteNLRI{Prefix: prefix},
-					Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-					Provenance:  RouteProvenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
+				route := domainroute.RIBEntry{
+					NLRI:        domainroute.NLRI{Prefix: prefix},
+					Attrs:       domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIGP, LocalPref: 100},
+					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
 					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200},
 					BaseCond:    originCond,
@@ -132,10 +63,10 @@ func (e *Engine) Simulate() {
 					network.AFI = model.AFIIPv4
 				}
 				originCond := failure.NodeVar(origin.Name)
-				route := RIBEntry{
-					NLRI:        RouteNLRI{Prefix: network.Prefix},
-					Attrs:       BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-					Provenance:  RouteProvenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
+				route := domainroute.RIBEntry{
+					NLRI:        domainroute.NLRI{Prefix: network.Prefix},
+					Attrs:       domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIGP, LocalPref: 100},
+					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
 					RouteSource: network,
 					BaseCond:    originCond,
@@ -203,10 +134,10 @@ func (e *Engine) installConfiguredRoute(node model.Node, route model.ConfiguredR
 		route.AdminDistance = 1
 	}
 	cond := failure.NodeVar(node.Name)
-	entry := RIBEntry{
-		NLRI:              RouteNLRI{Prefix: route.Prefix},
-		Attrs:             BGPAttributes{OriginCode: BGPOriginIncomplete},
-		Provenance:        RouteProvenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
+	entry := domainroute.RIBEntry{
+		NLRI:              domainroute.NLRI{Prefix: route.Prefix},
+		Attrs:             domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIncomplete},
+		Provenance:        domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 		ForwardingNextHop: e.configuredRouteNextHop(node.Name, route),
 		SourceKind:        route.Kind,
 		RouteSource:       route,
@@ -216,8 +147,8 @@ func (e *Engine) installConfiguredRoute(node model.Node, route model.ConfiguredR
 	e.addRIB(node.Name, route.Prefix, entry)
 }
 
-func (e *Engine) redistributedRoutes(node model.Node) []RIBEntry {
-	var out []RIBEntry
+func (e *Engine) redistributedRoutes(node model.Node) []domainroute.RIBEntry {
+	var out []domainroute.RIBEntry
 	for _, redist := range node.Redistribute {
 		for _, route := range e.redistributionCandidates(node, redist.Kind) {
 			redistVRF := model.NormalizeNetworkInstance(string(redist.NetworkInstance))
@@ -227,7 +158,7 @@ func (e *Engine) redistributedRoutes(node model.Node) []RIBEntry {
 			}
 			entry := e.bgpRouteFromConfiguredRoute(node, route)
 			if redist.RouteMap != "" {
-				decision := applyRoutePolicy(e.idx, node, "", redist.RouteMap, entry)
+				decision := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, node, "", redist.RouteMap, entry)
 				if !decision.Accept {
 					continue
 				}
@@ -255,12 +186,12 @@ func (e *Engine) redistributionCandidates(node model.Node, kind model.RouteSourc
 	return out
 }
 
-func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.ConfiguredRoute) RIBEntry {
+func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.ConfiguredRoute) domainroute.RIBEntry {
 	cond := failure.NodeVar(node.Name)
-	entry := RIBEntry{
-		NLRI:       RouteNLRI{Prefix: route.Prefix},
-		Attrs:      BGPAttributes{OriginCode: BGPOriginIncomplete, LocalPref: 100},
-		Provenance: RouteProvenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
+	entry := domainroute.RIBEntry{
+		NLRI:       domainroute.NLRI{Prefix: route.Prefix},
+		Attrs:      domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIncomplete, LocalPref: 100},
+		Provenance: domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 		SourceKind: model.RouteSourceBGP,
 		RouteSource: model.ConfiguredRoute{
 			Node:            node.Name,
@@ -277,8 +208,8 @@ func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.Config
 	return entry.Normalize()
 }
 
-func (e *Engine) aggregateRoutes(node model.Node) []RIBEntry {
-	var out []RIBEntry
+func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
+	var out []domainroute.RIBEntry
 	for _, route := range node.Routes {
 		if route.Kind != model.RouteSourceAggregate || route.Prefix.IsZero() {
 			continue
@@ -297,10 +228,10 @@ func (e *Engine) aggregateRoutes(node model.Node) []RIBEntry {
 		if !ok {
 			continue
 		}
-		entry := RIBEntry{
-			NLRI:                  RouteNLRI{Prefix: route.Prefix},
-			Attrs:                 BGPAttributes{OriginCode: BGPOriginIGP, LocalPref: 100},
-			Provenance:            RouteProvenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
+		entry := domainroute.RIBEntry{
+			NLRI:                  domainroute.NLRI{Prefix: route.Prefix},
+			Attrs:                 domainroute.BGPAttributes{OriginCode: domainroute.BGPOriginIGP, LocalPref: 100},
+			Provenance:            domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 			SourceKind:            model.RouteSourceAggregate,
 			RouteSource:           route,
 			AggregateContributors: contributors,
@@ -357,9 +288,9 @@ func isMoreSpecificWithin(candidate, aggregate model.Prefix) bool {
 	return candidate.Bits() > aggregate.Bits() && aggregate.Contains(candidate.Addr())
 }
 
-func (e *Engine) configuredRouteNextHop(node string, route model.ConfiguredRoute) RouteNextHop {
+func (e *Engine) configuredRouteNextHop(node string, route model.ConfiguredRoute) domainroute.NextHop {
 	if route.NextHop == "" {
-		return RouteNextHop{}
+		return domainroute.NextHop{}
 	}
 	wantVRF := model.NormalizeNetworkInstance(string(route.NetworkInstance))
 	localNode, _ := e.idx.Node(node)
@@ -369,10 +300,10 @@ func (e *Engine) configuredRouteNextHop(node string, route model.ConfiguredRoute
 			continue
 		}
 		if addr, ok := e.idx.PeerAddress(node, string(adj.To)); ok && addr.String() == route.NextHop {
-			return RouteNextHop{Node: string(adj.To), Addr: route.NextHop}
+			return domainroute.NextHop{Node: string(adj.To), Addr: route.NextHop}
 		}
 	}
-	return RouteNextHop{Addr: route.NextHop}
+	return domainroute.NextHop{Addr: route.NextHop}
 }
 
 func interfaceVRF(node model.Node, name string) model.NetworkInstanceID {
@@ -421,7 +352,7 @@ func (e *Engine) SelectRoutes() {
 	}
 }
 
-func routeSelectionFamily(route RIBEntry) model.RouteSourceKind {
+func routeSelectionFamily(route domainroute.RIBEntry) model.RouteSourceKind {
 	route = route.Normalize()
 	if route.SourceKind == model.RouteSourceBGP || route.SourceKind == model.RouteSourceAggregate {
 		return model.RouteSourceBGP
@@ -503,10 +434,10 @@ func (e *Engine) MaxRouteDepth() int {
 	return maxDepth
 }
 
-func (e *Engine) ParentRoute(route RIBEntry) (RIBEntry, bool) {
+func (e *Engine) ParentRoute(route domainroute.RIBEntry) (domainroute.RIBEntry, bool) {
 	route = route.Normalize()
 	if route.Provenance.FromNode == "" || len(route.Provenance.PathNodes) < 2 {
-		return RIBEntry{}, false
+		return domainroute.RIBEntry{}, false
 	}
 	parentNodes := strings.Join(route.Provenance.PathNodes[:len(route.Provenance.PathNodes)-1], ">")
 	for _, candidate := range e.rib[route.Provenance.FromNode][string(route.RouteSource.NetworkInstance)][route.NLRI.Prefix.String()] {
@@ -518,10 +449,10 @@ func (e *Engine) ParentRoute(route RIBEntry) (RIBEntry, bool) {
 			return candidate, true
 		}
 	}
-	return RIBEntry{}, false
+	return domainroute.RIBEntry{}, false
 }
 
-func (e *Engine) walkBGP(route RIBEntry) {
+func (e *Engine) walkBGP(route domainroute.RIBEntry) {
 	route = route.Normalize()
 	current := route.Provenance.PathNodes[len(route.Provenance.PathNodes)-1]
 	curNode, _ := e.idx.Node(current)
@@ -534,7 +465,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		}
 		nextNode, _ := e.idx.Node(next)
 		nextBehavior := BehaviorFor(nextNode.Kind)
-		exportMsg := ControlMessage{From: current, To: next, Prefix: route.NLRI.Prefix.String(), Route: route}
+		exportMsg := device.ControlMessage{From: current, To: next, Prefix: route.NLRI.Prefix.String(), Route: route}
 		if !curBehavior.CheckControlEgress(curNode, exportMsg) {
 			continue
 		}
@@ -543,12 +474,12 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		if !exported.Accept {
 			continue
 		}
-		exportPolicy := applyRoutePolicy(e.idx, curNode, next, session.ExportPolicy, exported.Route)
+		exportPolicy := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, curNode, next, session.ExportPolicy, exported.Route)
 		if !exportPolicy.Accept {
 			continue
 		}
 		exported.Route = exportPolicy.Route
-		importMsg := ControlMessage{From: current, To: next, Prefix: exported.Route.NLRI.Prefix.String(), Route: exported.Route}
+		importMsg := device.ControlMessage{From: current, To: next, Prefix: exported.Route.NLRI.Prefix.String(), Route: exported.Route}
 		if !nextBehavior.CheckControlIngress(nextNode, importMsg) {
 			continue
 		}
@@ -557,7 +488,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		if !imported.Accept {
 			continue
 		}
-		importPolicy := applyRoutePolicy(e.idx, nextNode, current, receiverSession.ImportPolicy, imported.Route)
+		importPolicy := bgp.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, nextNode, current, receiverSession.ImportPolicy, imported.Route)
 		if !importPolicy.Accept {
 			continue
 		}
@@ -576,7 +507,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 		entry.Provenance.PathLinks = append([]string(nil), nextLinks...)
 		entry.BaseCond = nextCond
 		entry.Condition = nextCond
-		entry.Attrs.LocalPref = defaultLocalPref(entry.Attrs.LocalPref)
+		entry.Attrs.LocalPref = bgp.DefaultLocalPref(entry.Attrs.LocalPref)
 		entry = entry.Normalize()
 
 		e.addRIB(next, entry.NLRI.Prefix, entry)
@@ -587,7 +518,7 @@ func (e *Engine) walkBGP(route RIBEntry) {
 	}
 }
 
-func (e *Engine) applyAggregateSuppression(node model.Node, route RIBEntry) RIBEntry {
+func (e *Engine) applyAggregateSuppression(node model.Node, route domainroute.RIBEntry) domainroute.RIBEntry {
 	route = route.Normalize()
 	for _, aggregate := range node.Routes {
 		if aggregate.Kind != model.RouteSourceAggregate || !aggregate.SummaryOnly {
@@ -623,7 +554,7 @@ func (e *Engine) bgpSession(a, b string, vrf model.NetworkInstanceID) (model.BGP
 	return model.BGPNeighbor{}, false
 }
 
-func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
+func (e *Engine) addRIB(node string, prefix model.Prefix, entry domainroute.RIBEntry) {
 	entry = entry.Normalize()
 	if prefix.IsZero() {
 		prefix = entry.NLRI.Prefix
@@ -631,10 +562,10 @@ func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
 	vrf := model.NormalizeNetworkInstance(string(entry.RouteSource.NetworkInstance))
 	entry.RouteSource.NetworkInstance = vrf
 	if e.rib[node] == nil {
-		e.rib[node] = map[string]map[string][]RIBEntry{}
+		e.rib[node] = map[string]map[string][]domainroute.RIBEntry{}
 	}
 	if e.rib[node][string(vrf)] == nil {
-		e.rib[node][string(vrf)] = map[string][]RIBEntry{}
+		e.rib[node][string(vrf)] = map[string][]domainroute.RIBEntry{}
 	}
 	key := prefix.String()
 	for _, existing := range e.rib[node][string(vrf)][key] {
@@ -645,16 +576,7 @@ func (e *Engine) addRIB(node string, prefix model.Prefix, entry RIBEntry) {
 	e.rib[node][string(vrf)][key] = append(e.rib[node][string(vrf)][key], entry)
 }
 
-func EquivalentInstalledRoute(decision BGPDecisionProcess, node model.Node, installed []RIBEntry, route RIBEntry) bool {
-	for _, existing := range installed {
-		if decision.Equivalent(node, existing, route) {
-			return true
-		}
-	}
-	return false
-}
-
-func routeKey(r RIBEntry) string {
+func routeKey(r domainroute.RIBEntry) string {
 	r = r.Normalize()
 	valid := "valid"
 	if r.Attrs.Invalid {
@@ -670,20 +592,4 @@ func containsString(xs []string, x string) bool {
 		}
 	}
 	return false
-}
-
-func containsASN(xs []uint32, x uint32) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
-	}
-	return false
-}
-
-func prependASN(asn uint32, path []uint32) []uint32 {
-	out := make([]uint32, 0, len(path)+1)
-	out = append(out, asn)
-	out = append(out, path...)
-	return out
 }

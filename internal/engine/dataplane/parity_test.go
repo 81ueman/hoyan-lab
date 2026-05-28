@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
+	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 )
 
 func AssertSymbolicConcreteParity(t *testing.T, engine *Engine, from, to, protocol string, cases []failure.Set) {
@@ -220,7 +221,7 @@ func TestPacketReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T
 
 	forbidden := concreteBreakingFailureCombos(engine, from, to, protocol, elements, maxFailures)
 	symbolicResult := engine.SymbolicPacketReachability(from, to, protocol)
-	symbolicAns, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	symbolicAns, err := (enumerate.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
@@ -246,7 +247,7 @@ func TestRouteReachabilityFailureEnumerationMatchesSymbolicBackend(t *testing.T)
 
 	forbidden := concreteBreakingRouteFailureCombos(engine, from, prefix, elements, maxFailures)
 	symbolicResult := engine.SymbolicRouteReachability(from, prefix)
-	symbolicAns, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	symbolicAns, err := (enumerate.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
@@ -379,17 +380,17 @@ func routeRedundantPathEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
 		"src": {
 			string(model.NetworkInstanceDefault): {pfx.String(): {
 				{
-					NLRI:         controlplane.RouteNLRI{Prefix: pfx},
-					Provenance:   controlplane.RouteProvenance{OriginNode: "dst", PathNodes: []string{"dst", "primary", "src"}, PathLinks: []string{"primary-dst", "src-primary"}},
+					NLRI:         domainroute.NLRI{Prefix: pfx},
+					Provenance:   domainroute.Provenance{OriginNode: "dst", PathNodes: []string{"dst", "primary", "src"}, PathLinks: []string{"primary-dst", "src-primary"}},
 					SelectedCond: failure.And(failure.LinkVar("src-primary"), failure.LinkVar("primary-dst")),
 				},
 				{
-					NLRI:         controlplane.RouteNLRI{Prefix: pfx},
-					Provenance:   controlplane.RouteProvenance{OriginNode: "dst", PathNodes: []string{"dst", "backup", "src"}, PathLinks: []string{"backup-dst", "src-backup"}},
+					NLRI:         domainroute.NLRI{Prefix: pfx},
+					Provenance:   domainroute.Provenance{OriginNode: "dst", PathNodes: []string{"dst", "backup", "src"}, PathLinks: []string{"backup-dst", "src-backup"}},
 					SelectedCond: failure.And(failure.LinkVar("src-backup"), failure.LinkVar("backup-dst")),
 				},
 			}},

@@ -3,18 +3,20 @@ package controlplane
 import (
 	"sync"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
+	deviceadapter "github.com/81ueman/hoyan-lab/internal/adapter/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-var behaviorRegistry = map[model.DeviceKind]DeviceBehavior{
-	model.KindFRR:     NewFRRBehavior(),
-	model.KindCEOS:    NewCEOSBehavior(),
-	model.KindSRLinux: NewSRLinuxBehavior(),
+var behaviorRegistry = map[model.DeviceKind]device.DeviceBehavior{
+	model.KindFRR:     deviceadapter.NewFRRBehavior(),
+	model.KindCEOS:    deviceadapter.NewCEOSBehavior(),
+	model.KindSRLinux: deviceadapter.NewSRLinuxBehavior(),
 }
 
 var behaviorRegistryMu sync.RWMutex
 
-func RegisterBehavior(kind model.DeviceKind, behavior DeviceBehavior) func() {
+func RegisterBehavior(kind model.DeviceKind, behavior device.DeviceBehavior) func() {
 	behaviorRegistryMu.Lock()
 	defer behaviorRegistryMu.Unlock()
 	old, hadOld := behaviorRegistry[kind]
@@ -30,16 +32,16 @@ func RegisterBehavior(kind model.DeviceKind, behavior DeviceBehavior) func() {
 	}
 }
 
-func BehaviorFor(kind model.DeviceKind) DeviceBehavior {
+func BehaviorFor(kind model.DeviceKind) device.DeviceBehavior {
 	return behaviorFor(kind)
 }
 
-func behaviorFor(kind model.DeviceKind) DeviceBehavior {
+func behaviorFor(kind model.DeviceKind) device.DeviceBehavior {
 	behaviorRegistryMu.RLock()
 	b, ok := behaviorRegistry[kind]
 	behaviorRegistryMu.RUnlock()
 	if ok {
 		return b
 	}
-	return NewGenericBehavior(kind)
+	return device.NewGenericBehavior(kind)
 }

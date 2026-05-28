@@ -3,8 +3,10 @@ package dataplane
 import (
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/solver"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/z3"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 )
 
 func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.T) {
@@ -21,7 +23,7 @@ func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing
 	}
 
 	symbolicResult := engine.SymbolicPacketReachability(from, to, protocol)
-	enumerated, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	enumerated, err := (enumerate.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
@@ -29,7 +31,7 @@ func TestPacketReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing
 	if err != nil {
 		t.Fatalf("enumerating symbolic SolveSymbolic() error = %v", err)
 	}
-	z3Symbolic, err := (solver.Z3Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	z3Symbolic, err := (z3.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
@@ -54,7 +56,7 @@ func TestRouteReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.
 	}
 
 	symbolicResult := engine.SymbolicRouteReachability(from, prefix)
-	enumerated, err := (solver.EnumeratingBackend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	enumerated, err := (enumerate.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),
@@ -62,7 +64,7 @@ func TestRouteReachabilityFailureEnumerationMatchesZ3SymbolicBackend(t *testing.
 	if err != nil {
 		t.Fatalf("enumerating route SolveSymbolic() error = %v", err)
 	}
-	z3Symbolic, err := (solver.Z3Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
+	z3Symbolic, err := (z3.Backend{}).SolveSymbolic(solver.SymbolicFailureProblem{
 		Elements:    elements,
 		MaxFailures: maxFailures,
 		Goal:        failure.BoolExpr(symbolicResult.Unreachable),

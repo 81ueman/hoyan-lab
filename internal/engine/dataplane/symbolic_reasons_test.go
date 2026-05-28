@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func TestSymbolicUnreachableReasonsUseSelectedCandidateCondition(t *testing.T) {

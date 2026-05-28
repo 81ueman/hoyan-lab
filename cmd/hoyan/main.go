@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/81ueman/hoyan-lab/internal/cli"
+	"github.com/81ueman/hoyan-lab/internal/adapter/cli"
 )
 
 func main() {

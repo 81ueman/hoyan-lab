@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
 func testFIB(raw map[string][]FIBEntry) map[string]map[string][]FIBEntry {
@@ -28,13 +28,13 @@ func TestRouteReachableUsesSelectedCondition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
 		"a": {string(model.NetworkInstanceDefault): {"10.0.0.0/24": {{
-			NLRI:              controlplane.RouteNLRI{Prefix: model.MustPrefix("10.0.0.0/24")},
-			Provenance:        controlplane.RouteProvenance{PathNodes: []string{"b", "a"}, PathLinks: []string{"a-b"}},
+			NLRI:              domainroute.NLRI{Prefix: model.MustPrefix("10.0.0.0/24")},
+			Provenance:        domainroute.Provenance{PathNodes: []string{"b", "a"}, PathLinks: []string{"a-b"}},
 			SelectedCond:      failure.LinkVar("a-b"),
 			RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-			ForwardingNextHop: controlplane.RouteNextHop{Node: "b"},
+			ForwardingNextHop: domainroute.NextHop{Node: "b"},
 		}}}},
 	}
 	e := NewEngine(idx, rib, map[string]map[string][]FIBEntry{})
@@ -781,16 +781,16 @@ func testACLBindings(name, node, iface, direction string) []model.ACLBinding {
 
 func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
-	equivalentRoutes := []controlplane.RIBEntry{
-		{NLRI: controlplane.RouteNLRI{Prefix: prefix}, Provenance: controlplane.RouteProvenance{OriginNode: "a", PathNodes: []string{"a", "rx"}}, Attrs: controlplane.BGPAttributes{LocalPref: 100, ASPath: []uint32{65100}}, SelectedCond: failure.LinkVar("path-a"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
-		{NLRI: controlplane.RouteNLRI{Prefix: prefix}, Provenance: controlplane.RouteProvenance{OriginNode: "b", PathNodes: []string{"b", "rx"}}, Attrs: controlplane.BGPAttributes{LocalPref: 100, ASPath: []uint32{65200}}, SelectedCond: failure.LinkVar("path-b"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
+	equivalentRoutes := []domainroute.RIBEntry{
+		{NLRI: domainroute.NLRI{Prefix: prefix}, Provenance: domainroute.Provenance{OriginNode: "a", PathNodes: []string{"a", "rx"}}, Attrs: domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65100}}, SelectedCond: failure.LinkVar("path-a"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
+		{NLRI: domainroute.NLRI{Prefix: prefix}, Provenance: domainroute.Provenance{OriginNode: "b", PathNodes: []string{"b", "rx"}}, Attrs: domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65200}}, SelectedCond: failure.LinkVar("path-b"), RouteSource: model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault}},
 	}
 
 	frrIdx, err := model.BuildTopologyIndex(&model.Topology{Nodes: []model.Node{{Name: "rx", Kind: model.KindFRR, ASN: 65000}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	frrRIB := map[string]map[string]map[string][]controlplane.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}}
+	frrRIB := map[string]map[string]map[string][]domainroute.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
 	frrFIB := map[string]map[string][]FIBEntry{}
 	NewEngine(frrIdx, frrRIB, frrFIB).DeriveFIB()
 	if got := len(frrFIB["rx"][string(model.NetworkInstanceDefault)]); got != 1 {
@@ -802,7 +802,7 @@ func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	genericRIB := map[string]map[string]map[string][]controlplane.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]controlplane.RIBEntry(nil), equivalentRoutes...)}}}
+	genericRIB := map[string]map[string]map[string][]domainroute.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
 	genericFIB := map[string]map[string][]FIBEntry{}
 	NewEngine(genericIdx, genericRIB, genericFIB).DeriveFIB()
 	if got := len(genericFIB["rx"][string(model.NetworkInstanceDefault)]); got != 2 {
@@ -826,10 +826,10 @@ func TestDeriveFIBMarksAddressOnlyNextHopUnresolved(t *testing.T) {
 		t.Fatal(err)
 	}
 	fib := map[string]map[string][]FIBEntry{}
-	NewEngine(idx, map[string]map[string]map[string][]controlplane.RIBEntry{
+	NewEngine(idx, map[string]map[string]map[string][]domainroute.RIBEntry{
 		"rx": {string(model.NetworkInstanceDefault): {prefix.String(): {{
-			NLRI:              controlplane.RouteNLRI{Prefix: prefix},
-			ForwardingNextHop: controlplane.RouteNextHop{Addr: "192.0.2.1"},
+			NLRI:              domainroute.NLRI{Prefix: prefix},
+			ForwardingNextHop: domainroute.NextHop{Addr: "192.0.2.1"},
 			SelectedCond:      failure.True(),
 		}}}},
 	}, fib).DeriveFIB()
@@ -847,19 +847,19 @@ func TestDeriveFIBMarksBlackholeRouteAsDiscard(t *testing.T) {
 	idx := mustTopologyIndex(&model.Topology{
 		Nodes: []model.Node{{Name: "src", Kind: model.KindFRR}},
 	})
-	rib := map[string]map[string]map[string][]controlplane.RIBEntry{
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
 		"src": {
 			string(model.NetworkInstanceDefault): {prefix.String(): {
 				{
-					NLRI:         controlplane.RouteNLRI{Prefix: prefix},
+					NLRI:         domainroute.NLRI{Prefix: prefix},
 					SourceKind:   model.RouteSourceBlackhole,
 					RouteSource:  model.ConfiguredRoute{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0"},
 					SelectedCond: failure.True(),
 				},
 				{
-					NLRI:              controlplane.RouteNLRI{Prefix: prefix},
+					NLRI:              domainroute.NLRI{Prefix: prefix},
 					SourceKind:        model.RouteSourceBGP,
-					ForwardingNextHop: controlplane.RouteNextHop{Node: "remote"},
+					ForwardingNextHop: domainroute.NextHop{Node: "remote"},
 					SelectedCond:      failure.True(),
 				},
 			}},

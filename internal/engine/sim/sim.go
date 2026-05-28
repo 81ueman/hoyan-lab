@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/z3"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
+	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
 	"github.com/81ueman/hoyan-lab/internal/engine/dataplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
-	"github.com/81ueman/hoyan-lab/internal/solver"
 )
 
-type RIBEntry = controlplane.RIBEntry
+type RIBEntry = domainroute.RIBEntry
 type FIBEntry = dataplane.FIBEntry
 type Path = dataplane.Path
 type SymbolicFIBCandidate = dataplane.SymbolicFIBCandidate
@@ -27,13 +30,6 @@ type FailureSet = failure.Set
 type FailureContext = failure.Context
 type FailureSearchOptions = failure.SearchOptions
 type Cond = failure.Cond
-type ControlMessage = controlplane.ControlMessage
-type PacketMessage = controlplane.PacketMessage
-type BGPRouteDecision = controlplane.BGPRouteDecision
-type BGPBehavior = controlplane.BGPBehavior
-type BGPDecisionProcess = controlplane.BGPDecisionProcess
-type BGPDecisionOptions = controlplane.BGPDecisionOptions
-type DeviceBehavior = controlplane.DeviceBehavior
 
 type Graph struct {
 	topo      *model.Topology
@@ -73,34 +69,6 @@ func NodeVar(name string) Cond {
 func And(cs ...Cond) Cond { return failure.And(cs...) }
 func Or(cs ...Cond) Cond  { return failure.Or(cs...) }
 func Not(c Cond) Cond     { return failure.Not(c) }
-
-func RegisterBehavior(kind model.DeviceKind, behavior DeviceBehavior) func() {
-	return controlplane.RegisterBehavior(kind, behavior)
-}
-func BehaviorFor(kind model.DeviceKind) DeviceBehavior {
-	return controlplane.BehaviorFor(kind)
-}
-func NewGenericBehavior(kind model.DeviceKind) DeviceBehavior {
-	return controlplane.NewGenericBehavior(kind)
-}
-func NewFRRBehavior() DeviceBehavior {
-	return controlplane.NewFRRBehavior()
-}
-func NewCEOSBehavior() DeviceBehavior {
-	return controlplane.NewCEOSBehavior()
-}
-func NewSRLinuxBehavior() DeviceBehavior {
-	return controlplane.NewSRLinuxBehavior()
-}
-func DefaultBGPDecisionProcess() BGPDecisionProcess {
-	return controlplane.DefaultBGPDecisionProcess()
-}
-func DefaultBGPDecisionOptions() BGPDecisionOptions {
-	return controlplane.DefaultBGPDecisionOptions()
-}
-func NewBGPDecisionProcess(options BGPDecisionOptions) BGPDecisionProcess {
-	return controlplane.NewBGPDecisionProcess(options)
-}
 
 func NewGraph(topo *model.Topology) *Graph {
 	idx, err := model.BuildTopologyIndex(topo)
@@ -341,11 +309,11 @@ func (g *Graph) symbolicFailureProblem(from string, target SymbolicTarget, opts 
 }
 
 func solveSymbolicFailureProblem(problem solver.SymbolicFailureProblem) (solver.Answer, error) {
-	ans, err := solver.DefaultBackend().SolveSymbolic(problem)
-	if err != nil {
-		return ans, err
+	ans, err := z3.DefaultBackend().SolveSymbolic(problem)
+	if err == nil {
+		return ans, nil
 	}
-	return ans, nil
+	return (enumerate.Backend{}).SolveSymbolic(problem)
 }
 
 type Target interface {

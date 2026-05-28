@@ -4,13 +4,17 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
+	deviceadapter "github.com/81ueman/hoyan-lab/internal/adapter/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
-type testRIBOption func(*RIBEntry)
+type testRIBOption func(*domainroute.RIBEntry)
 
-func testRIB(prefix string, opts ...testRIBOption) RIBEntry {
-	route := RIBEntry{}
+func testRIB(prefix string, opts ...testRIBOption) domainroute.RIBEntry {
+	route := domainroute.RIBEntry{}
 	if prefix != "" {
 		route.NLRI.Prefix = model.MustPrefix(prefix)
 	}
@@ -21,61 +25,61 @@ func testRIB(prefix string, opts ...testRIBOption) RIBEntry {
 }
 
 func withNextHop(node string) testRIBOption {
-	return func(route *RIBEntry) {
-		route.ForwardingNextHop = RouteNextHop{Node: node}
+	return func(route *domainroute.RIBEntry) {
+		route.ForwardingNextHop = domainroute.NextHop{Node: node}
 	}
 }
 
 func withNextHopAddr(addr string) testRIBOption {
-	return func(route *RIBEntry) {
-		route.ForwardingNextHop = RouteNextHop{Addr: addr}
+	return func(route *domainroute.RIBEntry) {
+		route.ForwardingNextHop = domainroute.NextHop{Addr: addr}
 	}
 }
 
 func withASPath(path ...uint32) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Attrs.ASPath = append([]uint32(nil), path...)
 	}
 }
 
 func withLocalPref(localPref int) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Attrs.LocalPref = localPref
 	}
 }
 
 func withMED(med int) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Attrs.MED = med
 	}
 }
 
 func withOrigin(origin string) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Provenance.OriginNode = origin
 	}
 }
 
 func withFrom(from string) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Provenance.FromNode = from
 	}
 }
 
-func withOriginCode(origin BGPOriginCode) testRIBOption {
-	return func(route *RIBEntry) {
+func withOriginCode(origin domainroute.BGPOriginCode) testRIBOption {
+	return func(route *domainroute.RIBEntry) {
 		route.Attrs.OriginCode = origin
 	}
 }
 
 func withIBGP() testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Attrs.LearnedIBGP = true
 	}
 }
 
 func withPath(nodes, links []string) testRIBOption {
-	return func(route *RIBEntry) {
+	return func(route *domainroute.RIBEntry) {
 		route.Provenance.PathNodes = append([]string(nil), nodes...)
 		route.Provenance.PathLinks = append([]string(nil), links...)
 	}
@@ -83,14 +87,14 @@ func withPath(nodes, links []string) testRIBOption {
 
 func TestRIBEntryNormalizeSeparatesRouteModelFields(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
-	route := RIBEntry{
-		NLRI:              RouteNLRI{Prefix: prefix},
-		Attrs:             BGPAttributes{ASPath: []uint32{65100}, OriginCode: BGPOriginEGP, LocalPref: 150, MED: 20, LearnedIBGP: true},
-		Provenance:        RouteProvenance{OriginNode: "origin-node", FromNode: "peer-node", PathNodes: []string{"origin-node", "peer-node", "rx"}, PathLinks: []string{"a", "b"}},
-		ForwardingNextHop: RouteNextHop{Node: "peer-node"},
+	route := domainroute.RIBEntry{
+		NLRI:              domainroute.NLRI{Prefix: prefix},
+		Attrs:             domainroute.BGPAttributes{ASPath: []uint32{65100}, OriginCode: domainroute.BGPOriginEGP, LocalPref: 150, MED: 20, LearnedIBGP: true},
+		Provenance:        domainroute.Provenance{OriginNode: "origin-node", FromNode: "peer-node", PathNodes: []string{"origin-node", "peer-node", "rx"}, PathLinks: []string{"a", "b"}},
+		ForwardingNextHop: domainroute.NextHop{Node: "peer-node"},
 	}.Normalize()
 
-	if route.Provenance.OriginNode != "origin-node" || route.Attrs.OriginCode != BGPOriginEGP {
+	if route.Provenance.OriginNode != "origin-node" || route.Attrs.OriginCode != domainroute.BGPOriginEGP {
 		t.Fatalf("origin node/code = %q/%q, want separated origin-node/egp", route.Provenance.OriginNode, route.Attrs.OriginCode)
 	}
 	if route.Provenance.OriginNode == string(route.Attrs.OriginCode) {
@@ -115,21 +119,21 @@ func TestInterfaceMatchesAliases(t *testing.T) {
 		{kind: model.KindSRLinux, policy: "ethernet-1/4.0", packet: "e1-4"},
 		{kind: model.KindSRLinux, policy: "e1-4", packet: "ethernet-1/4.0"},
 	} {
-		if !interfaceMatches(tt.kind, tt.policy, tt.packet) {
-			t.Fatalf("interfaceMatches(%s, %q, %q) = false, want true", tt.kind, tt.policy, tt.packet)
+		if !device.InterfaceMatches(tt.kind, tt.policy, tt.packet) {
+			t.Fatalf("device.InterfaceMatches(%s, %q, %q) = false, want true", tt.kind, tt.policy, tt.packet)
 		}
 	}
-	if interfaceMatches(model.KindFRR, "eth1", "Ethernet1") {
-		t.Fatalf("interfaceMatches(FRR, eth1, Ethernet1) = true, want false")
+	if device.InterfaceMatches(model.KindFRR, "eth1", "Ethernet1") {
+		t.Fatalf("device.InterfaceMatches(FRR, eth1, Ethernet1) = true, want false")
 	}
-	if interfaceMatches(model.KindFRR, "eth1", "eth2") {
-		t.Fatalf("interfaceMatches(eth1, eth2) = true, want false")
+	if device.InterfaceMatches(model.KindFRR, "eth1", "eth2") {
+		t.Fatalf("device.InterfaceMatches(eth1, eth2) = true, want false")
 	}
 }
 
 func TestEvaluateDataACLFirstMatchAndDefaultAction(t *testing.T) {
 	pfx := model.MustPrefix("10.0.0.0/24")
-	packet := PacketMessage{Spec: model.PacketSpec{
+	packet := device.PacketMessage{Spec: model.PacketSpec{
 		DstSet:          model.ExactPrefixSet{Prefix: pfx},
 		Protocol:        "tcp",
 		DstPort:         model.ExactPort(80),
@@ -174,7 +178,7 @@ func TestEvaluateDataACLFirstMatchAndDefaultAction(t *testing.T) {
 }
 
 func TestBaseBGPExportRoute(t *testing.T) {
-	behavior := NewGenericBehavior("generic")
+	behavior := device.NewGenericBehavior("generic")
 	ebgpFrom := model.Node{Name: "r1", ASN: 65001}
 	ebgpTo := model.Node{Name: "r2", ASN: 65002}
 	ibgpTo := model.Node{Name: "r3", ASN: 65001}
@@ -184,7 +188,7 @@ func TestBaseBGPExportRoute(t *testing.T) {
 		from        model.Node
 		to          model.Node
 		session     model.BGPNeighbor
-		route       RIBEntry
+		route       domainroute.RIBEntry
 		accept      bool
 		nextHop     string
 		nextHopNode string
@@ -281,7 +285,7 @@ func TestBaseBGPExportRoute(t *testing.T) {
 }
 
 func TestBaseBGPImportRoute(t *testing.T) {
-	behavior := NewGenericBehavior("generic")
+	behavior := device.NewGenericBehavior("generic")
 	to := model.Node{Name: "r2", ASN: 65002}
 	from := model.Node{Name: "r1", ASN: 65001}
 
@@ -308,9 +312,9 @@ func TestBaseBGPImportRoute(t *testing.T) {
 
 func TestDefaultBGPDecisionProcessOrdering(t *testing.T) {
 	receiver := model.Node{Name: "rx", ASN: 65000}
-	decision := DefaultBGPDecisionProcess()
+	decision := bgp.DefaultProcess()
 
-	assertLess := func(name string, better, worse RIBEntry) {
+	assertLess := func(name string, better, worse domainroute.RIBEntry) {
 		t.Helper()
 		if !decision.Less(receiver, better, worse) {
 			t.Fatalf("%s: better route was not ordered first", name)
@@ -323,7 +327,7 @@ func TestDefaultBGPDecisionProcessOrdering(t *testing.T) {
 	assertLess("local-pref", testRIB("", withLocalPref(200)), testRIB("", withLocalPref(100)))
 	assertLess("local-origin", testRIB("", withOrigin("rx"), withLocalPref(100)), testRIB("", withOrigin("remote"), withLocalPref(100)))
 	assertLess("as-path-length", testRIB("", withASPath(65100)), testRIB("", withASPath(65100, 65200)))
-	assertLess("origin-code", testRIB("", withASPath(65100), withOriginCode(BGPOriginIGP), withMED(20)), testRIB("", withASPath(65100), withOriginCode(BGPOriginIncomplete), withMED(10)))
+	assertLess("origin-code", testRIB("", withASPath(65100), withOriginCode(domainroute.BGPOriginIGP), withMED(20)), testRIB("", withASPath(65100), withOriginCode(domainroute.BGPOriginIncomplete), withMED(10)))
 	assertLess("med", testRIB("", withASPath(65100), withMED(10)), testRIB("", withASPath(65100), withMED(20)))
 	assertLess("ebgp-over-ibgp", testRIB("", withASPath(65100)), testRIB("", withASPath(65100), withIBGP()))
 	assertLess("shorter-link-path", testRIB("", withASPath(65100), withPath([]string{"a"}, []string{"a"})), testRIB("", withASPath(65100), withPath([]string{"a", "b"}, []string{"a", "b"})))
@@ -332,8 +336,8 @@ func TestDefaultBGPDecisionProcessOrdering(t *testing.T) {
 
 func TestBGPDecisionOptionsControlMEDScope(t *testing.T) {
 	receiver := model.Node{Name: "rx", ASN: 65000}
-	always := NewBGPDecisionProcess(BGPDecisionOptions{AlwaysCompareMED: true})
-	sameNeighborOnly := NewBGPDecisionProcess(BGPDecisionOptions{})
+	always := bgp.NewDecisionProcess(bgp.DecisionOptions{AlwaysCompareMED: true})
+	sameNeighborOnly := bgp.NewDecisionProcess(bgp.DecisionOptions{})
 
 	lowMEDDifferentNeighbor := testRIB("", withASPath(65100), withMED(10), withPath([]string{"z"}, nil))
 	highMEDDifferentNeighbor := testRIB("", withASPath(65200), withMED(20), withPath([]string{"a"}, nil))
@@ -352,7 +356,7 @@ func TestBGPDecisionOptionsControlMEDScope(t *testing.T) {
 }
 
 func TestBGPDecisionOptionsDocumentUnsupportedRouterIDTieBreak(t *testing.T) {
-	behavior := NewFRRBehavior()
+	behavior := deviceadapter.NewFRRBehavior()
 	options := behavior.DecisionOptions()
 	if options.CompareRouterID {
 		t.Fatalf("router-id tie-break should remain explicitly unsupported until routes carry router-id attributes")
@@ -364,7 +368,7 @@ func TestBGPDecisionOptionsDocumentUnsupportedRouterIDTieBreak(t *testing.T) {
 
 func TestDefaultBGPDecisionProcessEquivalent(t *testing.T) {
 	receiver := model.Node{Name: "rx", ASN: 65000}
-	decision := DefaultBGPDecisionProcess()
+	decision := bgp.DefaultProcess()
 	a := testRIB("", withLocalPref(100), withASPath(65100), withMED(10), withPath([]string{"a"}, []string{"a"}))
 	b := testRIB("", withLocalPref(100), withASPath(65200), withMED(10), withPath([]string{"b"}, []string{"b"}))
 	if !decision.Equivalent(receiver, a, b) {
@@ -378,16 +382,16 @@ func TestDefaultBGPDecisionProcessEquivalent(t *testing.T) {
 	if !decision.Equivalent(receiver, a, d) {
 		t.Fatalf("routes with equal BGP attributes before tie-break should be equivalent")
 	}
-	e := testRIB("", withLocalPref(100), withASPath(65100), withOriginCode(BGPOriginIncomplete), withMED(10))
+	e := testRIB("", withLocalPref(100), withASPath(65100), withOriginCode(domainroute.BGPOriginIncomplete), withMED(10))
 	if decision.Equivalent(receiver, a, e) {
 		t.Fatalf("routes with different origin-code should not be equivalent")
 	}
 }
 
 func TestCEOSSelectRoutesKeepsUnreachableNextHopForBgpRIB(t *testing.T) {
-	behavior := NewCEOSBehavior()
+	behavior := deviceadapter.NewCEOSBehavior()
 	device := model.Node{Name: "ceos", ASN: 65000}
-	routes := []RIBEntry{
+	routes := []domainroute.RIBEntry{
 		testRIB("10.0.0.0/24", withFrom("peer1"), withNextHop("remote"), withLocalPref(300)),
 		testRIB("10.0.0.0/24", withFrom("peer2"), withNextHop("peer2"), withLocalPref(200)),
 		testRIB("10.0.0.0/24", withFrom("peer3"), withLocalPref(100)),
@@ -403,7 +407,7 @@ func TestCEOSSelectRoutesKeepsUnreachableNextHopForBgpRIB(t *testing.T) {
 
 func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
-	generic := NewGenericBehavior(model.DeviceKind("generic"))
+	generic := device.NewGenericBehavior(model.DeviceKind("generic"))
 	genericDevice := model.Node{Name: "generic", Kind: model.DeviceKind("generic"), ASN: 65000}
 	validRoute := testRIB(prefix.String(), withFrom("peer"), withNextHop("remote"))
 	invalidRoute := validRoute
@@ -419,7 +423,7 @@ func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 		t.Fatalf("generic invalid route should not be installed in FIB")
 	}
 
-	ceos := NewCEOSBehavior()
+	ceos := deviceadapter.NewCEOSBehavior()
 	ceosDevice := model.Node{Name: "ceos", Kind: model.KindCEOS, ASN: 65000}
 	unresolved := testRIB(prefix.String(), withFrom("peer"), withNextHop("remote"))
 	direct := testRIB(prefix.String(), withFrom("peer"), withNextHop("peer"))
@@ -434,7 +438,7 @@ func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 		t.Fatalf("cEOS local route should be valid")
 	}
 
-	srl := NewSRLinuxBehavior()
+	srl := deviceadapter.NewSRLinuxBehavior()
 	imported := srl.ImportRoute(model.Node{Name: "rx", ASN: 65000}, model.Node{Name: "tx", ASN: 65100}, model.BGPNeighbor{}, testRIB(prefix.String(), withASPath(65100, 65000)))
 	if !imported.Accept || !imported.Route.Attrs.Invalid {
 		t.Fatalf("SR Linux AS-loop route should be retained as invalid: %#v", imported)
@@ -445,7 +449,7 @@ func TestDeviceBehaviorRouteValidityHooks(t *testing.T) {
 }
 
 func TestRegisterBehaviorReturnsRestoreFunction(t *testing.T) {
-	restore := RegisterBehavior("test-kind", NewGenericBehavior("registered-kind"))
+	restore := RegisterBehavior("test-kind", device.NewGenericBehavior("registered-kind"))
 	if BehaviorFor("test-kind").Kind() != "registered-kind" {
 		t.Fatalf("registered behavior was not returned")
 	}
@@ -455,7 +459,7 @@ func TestRegisterBehaviorReturnsRestoreFunction(t *testing.T) {
 	}
 
 	old := BehaviorFor("frr")
-	restore = RegisterBehavior("frr", NewGenericBehavior("temporary-frr"))
+	restore = RegisterBehavior("frr", device.NewGenericBehavior("temporary-frr"))
 	if BehaviorFor("frr").Kind() != "temporary-frr" {
 		t.Fatalf("replacement behavior was not returned")
 	}

@@ -3,9 +3,11 @@ package dataplane
 import (
 	"net/netip"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/device"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
 )
 
 func (e *Engine) RouteReachable(from, prefix string, failures failure.Set) (Path, bool) {
@@ -21,7 +23,7 @@ func (e *Engine) RouteReachableVRF(from, vrf, prefix string, failures failure.Se
 	if ctx.NodeFailed(model.NodeID(from)) {
 		return Path{}, false
 	}
-	var best *controlplane.RIBEntry
+	var best *domainroute.RIBEntry
 	for _, r := range e.rib[from][string(model.NormalizeNetworkInstance(vrf))][pfx.String()] {
 		r = r.Normalize()
 		if r.SelectedCond != nil && r.SelectedCond.Eval(ctx) {
@@ -109,7 +111,7 @@ func (e *Engine) packetReachableFrom(state packetReachableState) (Path, bool, st
 	packetSpec := state.spec.WithNormalizedPorts()
 	packetSpec.DstSet = model.ExactPrefixSet{Prefix: model.PrefixFromNetIP(state.dstPrefix)}
 	packetSpec.IngressInterface = state.ingressInterface
-	packet := controlplane.PacketMessage{Node: state.current, Spec: packetSpec}
+	packet := device.PacketMessage{Node: state.current, Spec: packetSpec}
 	if decision := e.dataACLDecision(currentNode, packet, "ingress"); decision.Denied {
 		return state.full, false, decision.Reason
 	}
@@ -139,7 +141,7 @@ func (e *Engine) packetReachableFrom(state packetReachableState) (Path, bool, st
 	return state.full, false, firstReason
 }
 
-func (e *Engine) tryPacketCandidate(state packetReachableState, nextVisited map[string]bool, packet controlplane.PacketMessage, currentNode model.Node, rule FIBEntry) (Path, bool, string) {
+func (e *Engine) tryPacketCandidate(state packetReachableState, nextVisited map[string]bool, packet device.PacketMessage, currentNode model.Node, rule FIBEntry) (Path, bool, string) {
 	if rule.Discard {
 		return state.full, false, "discard route selected"
 	}
@@ -184,12 +186,12 @@ func (e *Engine) tryPacketCandidate(state packetReachableState, nextVisited map[
 	})
 }
 
-func (e *Engine) dataACLDecision(node model.Node, packet controlplane.PacketMessage, stage string) controlplane.PolicyDecision {
+func (e *Engine) dataACLDecision(node model.Node, packet device.PacketMessage, stage string) device.PolicyDecision {
 	behavior := controlplane.BehaviorFor(node.Kind)
 	if e != nil && e.idx != nil && e.idx.Topology != nil {
 		return behavior.EvaluateDataACL(node, packet, stage, e.idx.Topology.ACLs, e.idx.Topology.ACLBindings)
 	}
-	return controlplane.PolicyDecision{}
+	return device.PolicyDecision{}
 }
 
 func (e *Engine) FailureContext(failures failure.Set) failure.Context {

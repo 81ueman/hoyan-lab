@@ -5,9 +5,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
-	"github.com/81ueman/hoyan-lab/internal/failure"
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
 func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
@@ -16,8 +16,8 @@ func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
 		"r1": {
 			"default": {
 				prefix.String(): {{
-					NLRI:       controlplane.RouteNLRI{Prefix: prefix},
-					Provenance: controlplane.RouteProvenance{OriginNode: "origin"},
+					NLRI:       domainroute.NLRI{Prefix: prefix},
+					Provenance: domainroute.Provenance{OriginNode: "origin"},
 				}},
 			},
 		},
@@ -75,8 +75,8 @@ func TestRIBAndFIBPredicatesPreserveSourcesWithoutExtraClassBoundaries(t *testin
 			"r1": {
 				"default": {
 					prefix.String(): {{
-						NLRI:       controlplane.RouteNLRI{Prefix: prefix},
-						Provenance: controlplane.RouteProvenance{OriginNode: "dst"},
+						NLRI:       domainroute.NLRI{Prefix: prefix},
+						Provenance: domainroute.Provenance{OriginNode: "dst"},
 					}},
 				},
 			},

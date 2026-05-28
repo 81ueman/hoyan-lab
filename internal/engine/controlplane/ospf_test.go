@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainospf "github.com/81ueman/hoyan-lab/internal/domain/routing/ospf"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
 func TestOSPFPrefersLowerMetricAndKeepsFallback(t *testing.T) {
@@ -88,9 +90,9 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	engine := NewEngine(idx, map[string]map[string]map[string][]RIBEntry{})
+	engine := NewEngine(idx, map[string]map[string]map[string][]domainroute.RIBEntry{})
 	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
-	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState ospfInterfaceState) (string, bool) {
+	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState domainospf.InterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
 			return "", false
 		}
@@ -251,7 +253,7 @@ func TestOSPFRedistributesLearnedBGPRoute(t *testing.T) {
 	}
 }
 
-func bestOSPFTestRoute(t *testing.T, rib map[string]map[string][]RIBEntry, node, prefix string) RIBEntry {
+func bestOSPFTestRoute(t *testing.T, rib map[string]map[string][]domainroute.RIBEntry, node, prefix string) domainroute.RIBEntry {
 	t.Helper()
 	routes := rib[node][prefix]
 	if len(routes) == 0 {
@@ -280,7 +282,7 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]RIBEntry{}
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
 	NewEngine(idx, rib).Simulate()
 	if routes := rib["r1"]["tenant-a"]["10.10.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
 		t.Fatalf("r1 tenant-a route to 10.10.0.1/32 = %#v, want OSPF", routes)
@@ -296,15 +298,15 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 	}
 }
 
-func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[string][]RIBEntry {
+func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[string][]domainroute.RIBEntry {
 	t.Helper()
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]RIBEntry{}
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
 	NewEngine(idx, rib).Simulate()
-	out := map[string]map[string][]RIBEntry{}
+	out := map[string]map[string][]domainroute.RIBEntry{}
 	for node, byVRF := range rib {
 		out[node] = byVRF[string(model.NetworkInstanceDefault)]
 	}
@@ -317,7 +319,7 @@ func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]RIBEntry{}
+	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
 	NewEngine(idx, rib).Simulate()
 	routes := rib["r1"][string(model.NetworkInstanceDefault)]["10.255.12.12/32"]
 	if len(routes) != 11 {
