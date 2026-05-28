@@ -6,17 +6,17 @@ import (
 	"sort"
 	"strings"
 
-	domainfacts "github.com/81ueman/hoyan-lab/internal/domain/facts"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
-type RIBRow = domainfacts.RIBRow
-type FIBRow = domainfacts.FIBRow
-type CanonicalRIBRow = domainfacts.CanonicalRIBRow
+type RIBRow = observation.RIBRow
+type FIBRow = observation.FIBRow
+type CanonicalRIBRow = observation.CanonicalRIBRow
 
-var CanonicalRIBRows = domainfacts.CanonicalRIBRows
+var CanonicalRIBRows = observation.CanonicalRIBRows
 
 type Snapshot struct {
 	Name     string

@@ -1,16 +1,15 @@
-package deviceadapter
+package device
 
 import (
-	"github.com/81ueman/hoyan-lab/internal/domain/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/bgp"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
-type ceosBehavior struct{ device.BaseBehavior }
+type ceosBehavior struct{ BaseBehavior }
 
-func NewCEOSBehavior() device.DeviceBehavior {
-	return ceosBehavior{device.NewBaseBehavior(model.KindCEOS, bgp.NewNeverEquivalentDecisionProcess(bgp.DefaultDecisionOptions()))}
+func NewCEOSBehavior() DeviceBehavior {
+	return ceosBehavior{NewBaseBehavior(model.KindCEOS, bgp.NewNeverEquivalentDecisionProcess(bgp.DefaultDecisionOptions()))}
 }
 
 func (b ceosBehavior) SelectRoutes(device model.Node, routes []domainroute.RIBEntry) []domainroute.RIBEntry {

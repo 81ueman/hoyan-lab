@@ -3,15 +3,14 @@ package controlplane
 import (
 	"sync"
 
-	deviceadapter "github.com/81ueman/hoyan-lab/internal/adapter/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 var behaviorRegistry = map[model.DeviceKind]device.DeviceBehavior{
-	model.KindFRR:     deviceadapter.NewFRRBehavior(),
-	model.KindCEOS:    deviceadapter.NewCEOSBehavior(),
-	model.KindSRLinux: deviceadapter.NewSRLinuxBehavior(),
+	model.KindFRR:     device.NewFRRBehavior(),
+	model.KindCEOS:    device.NewCEOSBehavior(),
+	model.KindSRLinux: device.NewSRLinuxBehavior(),
 }
 
 var behaviorRegistryMu sync.RWMutex
