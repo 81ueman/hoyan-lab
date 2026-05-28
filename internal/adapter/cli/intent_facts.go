@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
 
@@ -222,14 +220,4 @@ func resolveIntentInput(cmd *cobra.Command, opts intentOptions) (string, error) 
 		return filepath.Join(labDir, labIntentPath), nil
 	}
 	return "", fmt.Errorf("--file or --lab is required")
-}
-
-func writeFormatJSONOnly(out io.Writer, format string, value any) error {
-	if format != "json" {
-		return ExitError{Code: 2, Err: fmt.Errorf("--format must be %q", "json")}
-	}
-	enc := json.NewEncoder(out)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	return enc.Encode(value)
 }
