@@ -15,7 +15,7 @@ type aclAttachments struct {
 	Bindings []model.ACLBinding
 }
 
-func buildNodes(raw labfile.File, root string, opts LoadOptions) ([]model.Node, aclAttachments, map[string]bool, []configparse.UnsupportedStatement, error) {
+func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigParser) ([]model.Node, aclAttachments, map[string]bool, []configparse.UnsupportedStatement, error) {
 	names := make([]string, 0, len(raw.Topology.Nodes))
 	for name := range raw.Topology.Nodes {
 		names = append(names, name)
@@ -35,7 +35,7 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions) ([]model.Node, 
 			continue
 		}
 
-		node, nodeAttachments, nodeWarnings, err := buildNode(raw, root, name, cnode, collectWarnings)
+		node, nodeAttachments, nodeWarnings, err := buildNode(raw, root, name, cnode, collectWarnings, parser)
 		if err != nil {
 			return nil, aclAttachments{}, nil, nil, err
 		}
@@ -48,14 +48,14 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions) ([]model.Node, 
 	return nodes, attachments, transitNodes, warnings, nil
 }
 
-func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectWarnings bool) (model.Node, aclAttachments, []configparse.UnsupportedStatement, error) {
+func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectWarnings bool, parser ConfigParser) (model.Node, aclAttachments, []configparse.UnsupportedStatement, error) {
 	kind := normalizeKind(cnode.Kind)
 	configPath := resolveConfigPath(cnode)
 	if configPath == "" {
 		return model.Node{}, aclAttachments{}, nil, fmt.Errorf("node %s has no startup config or frr.conf bind", name)
 	}
 
-	result, err := configparse.ParseConfigWithOptions(kind, absolutePath(root, configPath), configparse.ParseOptions{CollectWarnings: collectWarnings})
+	result, err := parser.Parse(kind, absolutePath(root, configPath), configparse.ParseOptions{CollectWarnings: collectWarnings})
 	if err != nil {
 		return model.Node{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
 	}
@@ -96,7 +96,7 @@ func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectW
 	}
 	normalizeNodeRouting(&node)
 
-	attachments, err := buildACLAttachments(root, name, cnode, parsed)
+	attachments, err := buildACLAttachments(root, name, cnode, parsed, parser)
 	if err != nil {
 		return model.Node{}, aclAttachments{}, nil, err
 	}
@@ -104,7 +104,7 @@ func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectW
 	return node, attachments, result.Warnings, nil
 }
 
-func buildACLAttachments(root, name string, cnode labfile.Node, parsed configparse.ParsedConfig) (aclAttachments, error) {
+func buildACLAttachments(root, name string, cnode labfile.Node, parsed configparse.ParsedConfig, parser ConfigParser) (aclAttachments, error) {
 	var attachments aclAttachments
 	for _, acl := range parsed.ACLs {
 		acl.Node = name
@@ -119,7 +119,7 @@ func buildACLAttachments(root, name string, cnode labfile.Node, parsed configpar
 	if nftPath == "" {
 		return attachments, nil
 	}
-	acls, bindings, err := configparse.ParseNftablesACLConfig(absolutePath(root, nftPath))
+	acls, bindings, err := parser.ParseNftablesACL(absolutePath(root, nftPath))
 	if err != nil {
 		return aclAttachments{}, fmt.Errorf("%s nftables: %w", name, err)
 	}
