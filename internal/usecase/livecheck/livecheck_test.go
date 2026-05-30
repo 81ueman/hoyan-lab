@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
@@ -139,7 +141,7 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
-	hashes, err := livesnapshot.InputHashes(topologyPath)
+	hashes, err := inputhash.InputHashes(topologyPath)
 	if err != nil {
 		t.Fatalf("InputHashes() error = %v", err)
 	}
@@ -166,7 +168,7 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 		snap.Nodes[node.Name] = ns
 	}
 	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
-	if err := livesnapshot.Save(snapshotPath, snap); err != nil {
+	if err := snapshotfile.Save(snapshotPath, snap); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {

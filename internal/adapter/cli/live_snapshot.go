@@ -6,9 +6,12 @@ import (
 	"io"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/gitmeta"
+	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 	"github.com/spf13/cobra"
@@ -60,7 +63,12 @@ func runLiveSnapshot(ctx context.Context, opts liveSnapshotOptions, out io.Write
 	if opts.rawDir != "" {
 		runner = liveexec.NewRawRecordingRunner(runner, opts.rawDir)
 	}
-	snap, err := livesnapshot.New(liverib.NewCollector(runner), livefib.NewCollector(runner)).Build(ctx, opts.topologyPath, opts.labPath, observationfib.Options{
+	snap, err := livesnapshot.New(
+		liverib.NewCollector(runner),
+		livefib.NewCollector(runner),
+		livesnapshot.WithHashProvider(inputhash.NewProvider()),
+		livesnapshot.WithCommitProvider(gitmeta.NewProvider()),
+	).Build(ctx, opts.topologyPath, opts.labPath, observationfib.Options{
 		AllowUnsupported: opts.fibAllowUnsupported,
 		UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.fibUnresolvedPolicy),
 	})
@@ -68,14 +76,14 @@ func runLiveSnapshot(ctx context.Context, opts liveSnapshotOptions, out io.Write
 		return ExitError{Code: 2, Err: err}
 	}
 	if opts.outputPath == "" || opts.outputPath == "-" {
-		data, err := livesnapshot.Marshal(snap)
+		data, err := snapshotfile.Marshal(snap)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
 		_, err = out.Write(data)
 		return err
 	}
-	if err := livesnapshot.Save(opts.outputPath, snap); err != nil {
+	if err := snapshotfile.Save(opts.outputPath, snap); err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
 	fmt.Fprintf(out, "wrote live snapshot %s\n", opts.outputPath)

@@ -2,135 +2,84 @@ package livesnapshot
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
-	"gopkg.in/yaml.v3"
 )
 
-const Version = "hoyan.live_snapshot.v1"
-
-type Snapshot struct {
-	Version      string                  `json:"version"`
-	Lab          string                  `json:"lab,omitempty"`
-	TopologyPath string                  `json:"topology_path,omitempty"`
-	TopologyHash string                  `json:"topology_hash,omitempty"`
-	ConfigHashes map[string]string       `json:"config_hashes,omitempty"`
-	GitCommit    string                  `json:"git_commit,omitempty"`
-	CollectedAt  time.Time               `json:"collected_at"`
-	Nodes        map[string]NodeSnapshot `json:"nodes"`
-	Warnings     []string                `json:"warnings,omitempty"`
-}
-
-type NodeSnapshot struct {
-	Kind          model.DeviceKind                    `json:"kind"`
-	BGPRIB        []observationrib.NormalizedRoute    `json:"bgp_rib,omitempty"`
-	RouteTable    []observationrib.NormalizedRoute    `json:"route_table,omitempty"`
-	FIB           []observationfib.NormalizedFIBRoute `json:"fib,omitempty"`
-	UnresolvedFIB []observationfib.UnresolvedRoute    `json:"unresolved_fib,omitempty"`
-	Raw           map[string]json.RawMessage          `json:"raw,omitempty"`
-}
-
-type HashPolicy string
+const Version = snapshotdomain.Version
 
 const (
-	HashPolicyWarn   HashPolicy = "warn"
-	HashPolicyFail   HashPolicy = "fail"
-	HashPolicyIgnore HashPolicy = "ignore"
+	HashPolicyWarn   = snapshotdomain.HashPolicyWarn
+	HashPolicyFail   = snapshotdomain.HashPolicyFail
+	HashPolicyIgnore = snapshotdomain.HashPolicyIgnore
 )
 
-type HashMismatch struct {
-	Path string
-	Want string
-	Got  string
+type Snapshot = snapshotdomain.Snapshot
+type NodeSnapshot = snapshotdomain.NodeSnapshot
+type HashPolicy = snapshotdomain.HashPolicy
+type HashMismatch = snapshotdomain.HashMismatch
+type HashCheckResult = snapshotdomain.HashCheckResult
+type InputHashSet = snapshotdomain.InputHashSet
+
+type HashProvider interface {
+	InputHashes(topologyPath string) (snapshotdomain.InputHashSet, error)
 }
 
-type HashCheckResult struct {
-	Mismatches []HashMismatch
-	Missing    []string
+type CommitProvider interface {
+	Commit() string
+}
+
+type Option func(*Usecase)
+
+type Usecase struct {
+	ribCollector   observationrib.Collector
+	fibCollector   observationfib.Collector
+	hashProvider   HashProvider
+	commitProvider CommitProvider
+	now            func() time.Time
+}
+
+func New(ribCollector observationrib.Collector, fibCollector observationfib.Collector, opts ...Option) Usecase {
+	u := Usecase{
+		ribCollector: ribCollector,
+		fibCollector: fibCollector,
+		now:          func() time.Time { return time.Now().UTC() },
+	}
+	for _, opt := range opts {
+		opt(&u)
+	}
+	return u
+}
+
+func WithHashProvider(provider HashProvider) Option {
+	return func(u *Usecase) {
+		u.hashProvider = provider
+	}
+}
+
+func WithCommitProvider(provider CommitProvider) Option {
+	return func(u *Usecase) {
+		u.commitProvider = provider
+	}
+}
+
+func WithClock(now func() time.Time) Option {
+	return func(u *Usecase) {
+		u.now = now
+	}
 }
 
 func ParseHashPolicy(raw string) (HashPolicy, bool) {
-	switch HashPolicy(strings.ToLower(strings.TrimSpace(raw))) {
-	case "", HashPolicyWarn:
-		return HashPolicyWarn, true
-	case HashPolicyFail:
-		return HashPolicyFail, true
-	case HashPolicyIgnore:
-		return HashPolicyIgnore, true
-	default:
-		return HashPolicy(raw), false
-	}
-}
-
-func Load(path string) (*Snapshot, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var snap Snapshot
-	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, err
-	}
-	if snap.Version == "" {
-		return nil, fmt.Errorf("snapshot %s has no version", path)
-	}
-	if snap.Nodes == nil {
-		snap.Nodes = map[string]NodeSnapshot{}
-	}
-	return &snap, nil
-}
-
-type Usecase struct {
-	ribCollector observationrib.Collector
-	fibCollector observationfib.Collector
-}
-
-func New(ribCollector observationrib.Collector, fibCollector observationfib.Collector) Usecase {
-	return Usecase{
-		ribCollector: ribCollector,
-		fibCollector: fibCollector,
-	}
-}
-
-func Save(path string, snap *Snapshot) error {
-	if path == "" || path == "-" {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		return enc.Encode(snap)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := Marshal(snap)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
-}
-
-func Marshal(snap *Snapshot) ([]byte, error) {
-	data, err := json.MarshalIndent(snap, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(data, '\n'), nil
+	return snapshotdomain.ParseHashPolicy(raw)
 }
 
 func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpts observationfib.Options) (*Snapshot, error) {
@@ -157,7 +106,8 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 		return nil, err
 	}
 	fibResult := observationfib.AnalyzeComparableRoutes(topo, fib, fibOpts)
-	hashes, err := InputHashes(topologyPath)
+
+	hashes, err := u.inputHashes(topologyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +117,8 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 		TopologyPath: filepath.ToSlash(topologyPath),
 		TopologyHash: hashes.TopologyHash,
 		ConfigHashes: hashes.ConfigHashes,
-		GitCommit:    gitCommit(),
-		CollectedAt:  time.Now().UTC(),
+		GitCommit:    u.commit(),
+		CollectedAt:  u.now(),
 		Nodes:        map[string]NodeSnapshot{},
 		Warnings:     warningStrings(warnings),
 	}
@@ -221,105 +171,18 @@ func UnresolvedFIB(snap *Snapshot) []observationfib.UnresolvedRoute {
 	return out
 }
 
-func CheckHashes(topologyPath string, snap *Snapshot) (HashCheckResult, error) {
-	hashes, err := InputHashes(topologyPath)
-	if err != nil {
-		return HashCheckResult{}, err
+func (u Usecase) inputHashes(topologyPath string) (snapshotdomain.InputHashSet, error) {
+	if u.hashProvider == nil {
+		return snapshotdomain.InputHashSet{ConfigHashes: map[string]string{}}, nil
 	}
-	var result HashCheckResult
-	if snap.TopologyHash != "" && hashes.TopologyHash != snap.TopologyHash {
-		result.Mismatches = append(result.Mismatches, HashMismatch{Path: topologyPath, Want: snap.TopologyHash, Got: hashes.TopologyHash})
-	}
-	for path, want := range snap.ConfigHashes {
-		got, ok := hashes.ConfigHashes[path]
-		if !ok {
-			result.Missing = append(result.Missing, path)
-			continue
-		}
-		if got != want {
-			result.Mismatches = append(result.Mismatches, HashMismatch{Path: path, Want: want, Got: got})
-		}
-	}
-	sort.Slice(result.Mismatches, func(i, j int) bool { return result.Mismatches[i].Path < result.Mismatches[j].Path })
-	sort.Strings(result.Missing)
-	return result, nil
+	return u.hashProvider.InputHashes(topologyPath)
 }
 
-type InputHashSet struct {
-	TopologyHash string
-	ConfigHashes map[string]string
-}
-
-func InputHashes(topologyPath string) (InputHashSet, error) {
-	topoHash, err := fileSHA256(topologyPath)
-	if err != nil {
-		return InputHashSet{}, err
+func (u Usecase) commit() string {
+	if u.commitProvider == nil {
+		return ""
 	}
-	configs, err := configPaths(topologyPath)
-	if err != nil {
-		return InputHashSet{}, err
-	}
-	hashes := map[string]string{}
-	root := filepath.Dir(topologyPath)
-	for _, path := range configs {
-		full := path
-		if !filepath.IsAbs(full) {
-			full = filepath.Join(root, path)
-		}
-		sum, err := fileSHA256(full)
-		if err != nil {
-			return InputHashSet{}, err
-		}
-		hashes[filepath.ToSlash(path)] = sum
-	}
-	return InputHashSet{TopologyHash: topoHash, ConfigHashes: hashes}, nil
-}
-
-type clabHashFile struct {
-	Topology struct {
-		Nodes map[string]struct {
-			Binds         []string `yaml:"binds"`
-			StartupConfig string   `yaml:"startup-config"`
-		} `yaml:"nodes"`
-	} `yaml:"topology"`
-}
-
-func configPaths(topologyPath string) ([]string, error) {
-	data, err := os.ReadFile(topologyPath)
-	if err != nil {
-		return nil, err
-	}
-	var raw clabHashFile
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	for _, node := range raw.Topology.Nodes {
-		if node.StartupConfig != "" {
-			seen[filepath.Clean(node.StartupConfig)] = true
-		}
-		for _, bind := range node.Binds {
-			parts := strings.Split(bind, ":")
-			if len(parts) < 2 {
-				continue
-			}
-			target := parts[1]
-			if target == "/etc/frr/frr.conf" || target == "/etc/frr/daemons" || target == "/etc/frr/vtysh.conf" || target == "/etc/hoyan/nftables.conf" {
-				seen[filepath.Clean(parts[0])] = true
-			}
-			if target == "/etc/frr" {
-				seen[filepath.Clean(filepath.Join(parts[0], "frr.conf"))] = true
-				seen[filepath.Clean(filepath.Join(parts[0], "daemons"))] = true
-				seen[filepath.Clean(filepath.Join(parts[0], "vtysh.conf"))] = true
-			}
-		}
-	}
-	var out []string
-	for path := range seen {
-		out = append(out, path)
-	}
-	sort.Strings(out)
-	return out, nil
+	return u.commitProvider.Commit()
 }
 
 func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observationrib.NormalizedRoute, update func(NodeSnapshot, []observationrib.NormalizedRoute) NodeSnapshot) {
@@ -364,21 +227,4 @@ func warningStrings(warnings []configparse.UnsupportedStatement) []string {
 		out = append(out, warning.String())
 	}
 	return out
-}
-
-func fileSHA256(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
-}
-
-func gitCommit() string {
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
 }
