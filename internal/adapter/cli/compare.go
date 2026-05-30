@@ -75,7 +75,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 		return ExitError{Code: 2, Err: err}
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
-	expected := ribcompare.ExpectedForNodes(topo, nodes)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
 	var actual []observationrib.NormalizedRoute
 	if opts.snapshotPath != "" {
