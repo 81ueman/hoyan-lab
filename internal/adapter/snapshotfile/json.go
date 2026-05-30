@@ -1,0 +1,53 @@
+package snapshotfile
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
+)
+
+func Load(path string) (*snapshotdomain.Snapshot, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var snap snapshotdomain.Snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		return nil, err
+	}
+	if snap.Version == "" {
+		return nil, fmt.Errorf("snapshot %s has no version", path)
+	}
+	if snap.Nodes == nil {
+		snap.Nodes = map[string]snapshotdomain.NodeSnapshot{}
+	}
+	return &snap, nil
+}
+
+func Save(path string, snap *snapshotdomain.Snapshot) error {
+	if path == "" || path == "-" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		return enc.Encode(snap)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := Marshal(snap)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+func Marshal(snap *snapshotdomain.Snapshot) ([]byte, error) {
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}

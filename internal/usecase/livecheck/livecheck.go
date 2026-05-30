@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
@@ -95,7 +97,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 
 	var snap *livesnapshot.Snapshot
 	if opts.Snapshot != "" {
-		snap, err = livesnapshot.Load(opts.Snapshot)
+		snap, err = snapshotfile.Load(opts.Snapshot)
 		if err != nil {
 			return err
 		}
@@ -267,7 +269,7 @@ func checkSnapshotHashes(topologyPath string, snap *livesnapshot.Snapshot, polic
 	if policy == livesnapshot.HashPolicyIgnore {
 		return nil
 	}
-	result, err := livesnapshot.CheckHashes(topologyPath, snap)
+	result, err := inputhash.CheckHashes(topologyPath, snap)
 	if err != nil {
 		return err
 	}

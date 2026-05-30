@@ -7,9 +7,11 @@ import (
 	"io"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
@@ -79,7 +81,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
 	var actual []observationrib.NormalizedRoute
 	if opts.snapshotPath != "" {
-		snap, err := livesnapshot.Load(opts.snapshotPath)
+		snap, err := snapshotfile.Load(opts.snapshotPath)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
@@ -160,7 +162,7 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, nodes), fibOpts)
 	var actualFiltered observationfib.FilterResult
 	if opts.snapshotPath != "" {
-		snap, err := livesnapshot.Load(opts.snapshotPath)
+		snap, err := snapshotfile.Load(opts.snapshotPath)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
@@ -197,7 +199,7 @@ func checkSnapshotHashes(topologyPath string, snap *livesnapshot.Snapshot, polic
 	if policy == livesnapshot.HashPolicyIgnore {
 		return nil
 	}
-	result, err := livesnapshot.CheckHashes(topologyPath, snap)
+	result, err := inputhash.CheckHashes(topologyPath, snap)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}

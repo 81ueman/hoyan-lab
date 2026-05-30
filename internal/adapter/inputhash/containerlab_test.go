@@ -1,4 +1,4 @@
-package livesnapshot
+package inputhash
 
 import (
 	"os"
@@ -7,43 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 )
-
-func TestSnapshotMarshalLoadRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "snapshot.json")
-	snap := &Snapshot{
-		Version:     Version,
-		Lab:         "unit",
-		CollectedAt: time.Date(2026, 5, 26, 1, 2, 3, 0, time.UTC),
-		Nodes: map[string]NodeSnapshot{
-			"r1": {
-				Kind: model.KindFRR,
-				BGPRIB: []observationrib.NormalizedRoute{{
-					Node:            "r1",
-					NetworkInstance: "default",
-					AFI:             "ipv4",
-					Prefix:          "10.0.0.0/24",
-					Protocol:        "bgp",
-				}},
-			},
-		},
-	}
-	if err := Save(path, snap); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-	loaded, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if loaded.Version != Version || loaded.Lab != "unit" {
-		t.Fatalf("loaded snapshot = %#v", loaded)
-	}
-	if got := BGPRoutes(loaded); len(got) != 1 || got[0].Prefix != "10.0.0.0/24" {
-		t.Fatalf("BGPRoutes() = %#v", got)
-	}
-}
 
 func TestInputHashesAndCheckHashesReportConfigMismatch(t *testing.T) {
 	topologyPath, configPath := writeHashLab(t)
@@ -57,12 +22,12 @@ func TestInputHashesAndCheckHashesReportConfigMismatch(t *testing.T) {
 	if _, ok := hashes.ConfigHashes["frr.conf"]; !ok {
 		t.Fatalf("ConfigHashes missing frr.conf: %#v", hashes.ConfigHashes)
 	}
-	snap := &Snapshot{
-		Version:      Version,
+	snap := &snapshotdomain.Snapshot{
+		Version:      snapshotdomain.Version,
 		TopologyHash: hashes.TopologyHash,
 		ConfigHashes: hashes.ConfigHashes,
 		CollectedAt:  time.Now().UTC(),
-		Nodes:        map[string]NodeSnapshot{},
+		Nodes:        map[string]snapshotdomain.NodeSnapshot{},
 	}
 	appendConfig(t, configPath, "\ninterface lo\n")
 	result, err := CheckHashes(topologyPath, snap)
@@ -93,28 +58,19 @@ topology:
 
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
-	if err := osWriteFile(path, body); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
 func appendConfig(t *testing.T, path, body string) {
 	t.Helper()
-	if err := osAppendFile(path, body); err != nil {
-		t.Fatalf("append %s: %v", path, err)
-	}
-}
-
-func osWriteFile(path, body string) error {
-	return os.WriteFile(path, []byte(body), 0o644)
-}
-
-func osAppendFile(path, body string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
 	if err != nil {
-		return err
+		t.Fatalf("append %s: %v", path, err)
 	}
 	defer f.Close()
-	_, err = f.WriteString(strings.TrimPrefix(body, "\n") + "\n")
-	return err
+	if _, err := f.WriteString(strings.TrimPrefix(body, "\n") + "\n"); err != nil {
+		t.Fatalf("append %s: %v", path, err)
+	}
 }
