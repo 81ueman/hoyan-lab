@@ -6,7 +6,6 @@ import (
 	"io"
 	"time"
 
-	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
@@ -17,8 +16,8 @@ type RIBFailureScenario struct {
 	Name        string
 	Failures    sim.FailureSet
 	ActiveNodes []model.Node
-	Inject      func(context.Context, observationrib.Runner) error
-	Cleanup     func(context.Context, observationrib.Runner) error
+	Inject      func(context.Context, FailureRuntime) error
+	Cleanup     func(context.Context, FailureRuntime) error
 }
 
 type RIBFailureCheckOptions struct {
@@ -28,7 +27,7 @@ type RIBFailureCheckOptions struct {
 	Out            io.Writer
 }
 
-func CompareRIBsWithFailures(ctx context.Context, runner observationrib.Runner, topo *model.Topology, scenario RIBFailureScenario, opts RIBFailureCheckOptions) error {
+func CompareRIBsWithFailures(ctx context.Context, runtime FailureRuntime, collector RIBCollector, topo *model.Topology, scenario RIBFailureScenario, opts RIBFailureCheckOptions) error {
 	if opts.Interval == 0 {
 		opts.Interval = 25 * time.Second
 	}
@@ -44,21 +43,21 @@ func CompareRIBsWithFailures(ctx context.Context, runner observationrib.Runner, 
 	}
 	activeNodes := scenario.ActiveNodes
 	if activeNodes == nil {
-		activeNodes = liverib.SupportedNodes(topo.Nodes)
+		activeNodes = collector.SupportedNodes(topo.Nodes)
 	}
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
 	if scenario.Inject != nil {
 		fmt.Fprintf(opts.Out, "injecting failure scenario %s\n", scenario.Name)
-		if err := scenario.Inject(ctx, runner); err != nil {
+		if err := scenario.Inject(ctx, runtime); err != nil {
 			return err
 		}
 	}
 	if scenario.Cleanup != nil {
 		defer func() {
-			_ = scenario.Cleanup(context.Background(), runner)
+			_ = scenario.Cleanup(context.Background(), runtime)
 		}()
 	}
-	actual, diffs, err := WaitForMatchingRIBs(ctx, runner, activeNodes, expected, opts.Interval, opts.MaxPolls, compareOptions)
+	actual, diffs, err := WaitForMatchingRIBs(ctx, collector, activeNodes, expected, opts.Interval, opts.MaxPolls, compareOptions)
 	if err != nil {
 		printRIBDiffs(opts.Out, expected, actual, compareOptions)
 		return err
@@ -83,22 +82,22 @@ func LinkFailureScenario(topo *model.Topology, linkName string) (RIBFailureScena
 	return RIBFailureScenario{
 		Name:     "link-" + link.Name,
 		Failures: sim.LinkFailures(model.LinkID(link.Name)),
-		Inject: func(ctx context.Context, runner observationrib.Runner) error {
-			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "set", "--name", topo.Name, "-n", link.A, "-i", aIntf, "--loss", "100"); err != nil {
-				return fmt.Errorf("netem set %s:%s: %w", link.A, aIntf, err)
+		Inject: func(ctx context.Context, runtime FailureRuntime) error {
+			if err := runtime.SetLinkLoss(ctx, topo, link.A, aIntf, 100); err != nil {
+				return err
 			}
-			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "set", "--name", topo.Name, "-n", link.B, "-i", bIntf, "--loss", "100"); err != nil {
-				return fmt.Errorf("netem set %s:%s: %w", link.B, bIntf, err)
+			if err := runtime.SetLinkLoss(ctx, topo, link.B, bIntf, 100); err != nil {
+				return err
 			}
 			return nil
 		},
-		Cleanup: func(ctx context.Context, runner observationrib.Runner) error {
+		Cleanup: func(ctx context.Context, runtime FailureRuntime) error {
 			var firstErr error
-			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "reset", "--name", topo.Name, "-n", link.A, "-i", aIntf); err != nil {
-				firstErr = fmt.Errorf("netem reset %s:%s: %w", link.A, aIntf, err)
+			if err := runtime.ResetLinkLoss(ctx, topo, link.A, aIntf); err != nil {
+				firstErr = err
 			}
-			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "reset", "--name", topo.Name, "-n", link.B, "-i", bIntf); firstErr == nil && err != nil {
-				firstErr = fmt.Errorf("netem reset %s:%s: %w", link.B, bIntf, err)
+			if err := runtime.ResetLinkLoss(ctx, topo, link.B, bIntf); firstErr == nil && err != nil {
+				firstErr = err
 			}
 			return firstErr
 		},
@@ -129,12 +128,8 @@ func NodeFailureScenario(topo *model.Topology, nodeName string) (RIBFailureScena
 		Name:        "node-" + nodeName,
 		Failures:    sim.NodeFailures(model.NodeID(nodeName)),
 		ActiveNodes: activeSupportedNodes(topo.Nodes, map[string]bool{nodeName: true}),
-		Inject: func(ctx context.Context, runner observationrib.Runner) error {
-			containerName := node.RuntimeName()
-			if _, err := runner.Run(ctx, "docker", "stop", containerName); err != nil {
-				return fmt.Errorf("docker stop %s: %w", containerName, err)
-			}
-			return nil
+		Inject: func(ctx context.Context, runtime FailureRuntime) error {
+			return runtime.StopNode(ctx, node)
 		},
 	}, nil
 }
@@ -146,7 +141,7 @@ func activeSupportedNodes(nodes []model.Node, failed map[string]bool) []model.No
 			out = append(out, node)
 		}
 	}
-	return liverib.SupportedNodes(out)
+	return out
 }
 
 func findLink(topo *model.Topology, name string) (model.Link, bool) {

@@ -6,6 +6,11 @@ import (
 	"time"
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
+	livedataplane "github.com/81ueman/hoyan-lab/internal/adapter/live/dataplane"
+	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
@@ -40,7 +45,14 @@ func NewLiveCheckCommand() *cobra.Command {
 			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, &opts.queriesPath); err != nil {
 				return err
 			}
-			err := livecheck.New(liveexec.ExecRunner{}).Run(cmd.Context(), livecheck.Options{
+			runner := liveexec.ExecRunner{}
+			err := livecheck.New(livecheck.Dependencies{
+				Runtime:         clabruntime.Runtime{Runner: runner},
+				QueryLoader:     queryfile.Loader{},
+				RIBCollector:    liverib.NewCollector(runner),
+				FIBCollector:    livefib.NewCollector(runner),
+				DataplaneProber: livedataplane.DockerProber{Runner: runner},
+			}).Run(cmd.Context(), livecheck.Options{
 				Topology:      opts.topologyPath,
 				Queries:       opts.queriesPath,
 				Snapshot:      opts.snapshotPath,

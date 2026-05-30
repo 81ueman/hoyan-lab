@@ -8,6 +8,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type Loader struct{}
+
+func (Loader) Load(path string) (*query.Queries, error) {
+	return Load(path)
+}
+
 func Load(path string) (*query.Queries, error) {
 	var queries query.Queries
 	if err := loadYAML(path, &queries); err != nil {

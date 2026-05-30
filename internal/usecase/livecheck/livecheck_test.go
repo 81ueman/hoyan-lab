@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"os"
+	"io"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
-	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
@@ -23,14 +23,128 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
-type fakeRunner struct {
+type fakeRuntime struct {
 	calls []string
-	fn    func(name string, args ...string) ([]byte, error)
 }
 
-func (f *fakeRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	f.calls = append(f.calls, name+" "+strings.Join(args, " "))
-	return f.fn(name, args...)
+func (f *fakeRuntime) BuildLocalImages(ctx context.Context, topologyPath string, out io.Writer) error {
+	f.calls = append(f.calls, "build "+topologyPath)
+	return nil
+}
+
+func (f *fakeRuntime) Deploy(ctx context.Context, topologyPath string) error {
+	f.calls = append(f.calls, "deploy "+topologyPath)
+	return nil
+}
+
+func (f *fakeRuntime) Destroy(ctx context.Context, topologyPath string) error {
+	f.calls = append(f.calls, "destroy "+topologyPath)
+	return nil
+}
+
+func (f *fakeRuntime) WaitContainers(ctx context.Context, nodes []model.Node, interval time.Duration) error {
+	f.calls = append(f.calls, "wait-containers")
+	return nil
+}
+
+func (f *fakeRuntime) WaitSRLinuxCLI(ctx context.Context, nodes []model.Node, interval time.Duration) error {
+	f.calls = append(f.calls, "wait-srlinux")
+	return nil
+}
+
+func (f *fakeRuntime) ApplyNftablesPolicies(ctx context.Context, topo *model.Topology, out io.Writer) error {
+	f.calls = append(f.calls, "nftables")
+	return nil
+}
+
+func (f *fakeRuntime) SetLinkLoss(ctx context.Context, topo *model.Topology, node, intf string, lossPercent int) error {
+	f.calls = append(f.calls, "loss "+node+" "+intf)
+	return nil
+}
+
+func (f *fakeRuntime) ResetLinkLoss(ctx context.Context, topo *model.Topology, node, intf string) error {
+	f.calls = append(f.calls, "reset "+node+" "+intf)
+	return nil
+}
+
+func (f *fakeRuntime) StopNode(ctx context.Context, node model.Node) error {
+	f.calls = append(f.calls, "stop "+node.Name)
+	return nil
+}
+
+type fakeQueryLoader struct {
+	queries *query.Queries
+}
+
+func (f fakeQueryLoader) Load(path string) (*query.Queries, error) {
+	if f.queries != nil {
+		return f.queries, nil
+	}
+	return &query.Queries{}, nil
+}
+
+type fakeRIBCollector struct {
+	supported []model.Node
+	routes    [][]observationrib.NormalizedRoute
+	errs      []error
+	polls     int
+}
+
+func (f *fakeRIBCollector) SupportedNodes(nodes []model.Node) []model.Node {
+	if f.supported != nil {
+		return f.supported
+	}
+	return nodes
+}
+
+func (f *fakeRIBCollector) Collect(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+	return f.next()
+}
+
+func (f *fakeRIBCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+	return f.next()
+}
+
+func (f *fakeRIBCollector) next() ([]observationrib.NormalizedRoute, error) {
+	i := f.polls
+	f.polls++
+	if i < len(f.errs) && f.errs[i] != nil {
+		return nil, f.errs[i]
+	}
+	if i >= len(f.routes) {
+		i = len(f.routes) - 1
+	}
+	if i < 0 {
+		return nil, nil
+	}
+	return f.routes[i], nil
+}
+
+type fakeFIBCollector struct {
+	routes []observationfib.NormalizedFIBRoute
+}
+
+func (f fakeFIBCollector) SupportedNodes(nodes []model.Node) []model.Node { return nodes }
+func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error) {
+	return f.routes, nil
+}
+
+type fakeProber struct {
+	reachable bool
+}
+
+func (f fakeProber) Probe(ctx context.Context, topo *model.Topology, check query.PacketCheck) (bool, error) {
+	return f.reachable, nil
+}
+
+func deps(runtime *fakeRuntime, rib *fakeRIBCollector) Dependencies {
+	return Dependencies{
+		Runtime:         runtime,
+		QueryLoader:     fakeQueryLoader{},
+		RIBCollector:    rib,
+		FIBCollector:    fakeFIBCollector{},
+		DataplaneProber: fakeProber{reachable: true},
+	}
 }
 
 func TestHasExpectedRoutes(t *testing.T) {
@@ -51,96 +165,36 @@ func TestHasExpectedRoutes(t *testing.T) {
 	}
 }
 
-func TestWaitForFRRContainers(t *testing.T) {
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		if name != "docker" || args[0] != "inspect" {
-			t.Fatalf("unexpected command: %s %v", name, args)
-		}
-		return []byte("true\n"), nil
-	}}
-	nodes := []model.Node{{Name: "r1", ContainerName: "clab-test-r1", Kind: "frr"}, {Name: "r2", Kind: "frr"}}
-	if err := WaitForFRRContainers(context.Background(), runner, nodes, time.Millisecond); err != nil {
-		t.Fatalf("WaitForFRRContainers() error = %v", err)
-	}
-	if got, want := runner.calls[0], "docker inspect -f {{.State.Running}} clab-test-r1"; got != want {
-		t.Fatalf("first inspect call = %q, want %q", got, want)
-	}
-}
-
-func TestWaitForSRLinuxCLIUsesJSONReadinessProbe(t *testing.T) {
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		if cmd != "docker exec -i clab-test-core-gz sr_cli --output-format json --pagination off -- show version" {
-			t.Fatalf("unexpected command: %s", cmd)
-		}
-		return []byte(`{"version":"test"}`), nil
-	}}
-	nodes := []model.Node{
-		{Name: "core-gz", ContainerName: "clab-test-core-gz", Kind: model.KindSRLinux},
-		{Name: "r1", ContainerName: "clab-test-r1", Kind: model.KindFRR},
-	}
-	if err := WaitForSRLinuxCLI(context.Background(), runner, nodes, time.Millisecond); err != nil {
-		t.Fatalf("WaitForSRLinuxCLI() error = %v", err)
-	}
-	if len(runner.calls) != 1 {
-		t.Fatalf("calls = %v, want one SR Linux readiness probe", runner.calls)
-	}
-}
-
 func TestRunDestroysOnSuccess(t *testing.T) {
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(cmd, "containerlab deploy"):
-			return []byte("deployed"), nil
-		case strings.HasPrefix(cmd, "containerlab destroy"):
-			return []byte("destroyed"), nil
-		case strings.HasPrefix(cmd, "docker inspect"):
-			return []byte("true\n"), nil
-		case strings.Contains(cmd, "show ip bgp json"):
-			return []byte(`{"10.1.1.10/32":[{"valid":true,"bestpath":true,"nexthops":[{"ip":""}]}]}`), nil
-		case strings.Contains(cmd, "show ip route vrf all json"):
-			return []byte(`{"10.255.1.1/32":[{"protocol":"connected","interfaceName":"lo"}],"10.1.1.10/32":[{"protocol":"static","nexthops":[{"interfaceName":"Null0"}]}]}`), nil
-		case strings.Contains(cmd, "show ip ospf route json"):
-			return []byte(`{}`), nil
-		case strings.Contains(cmd, "ip -j route show table main"):
-			return []byte(`[{"type":"blackhole","dst":"10.1.1.10/32","protocol":"static"},{"dst":"10.255.1.1","dev":"lo","protocol":"kernel"}]`), nil
-		case strings.Contains(cmd, "ip -j route show table local"):
-			return []byte(`[{"dst":"10.255.1.1","dev":"lo","protocol":"local"}]`), nil
-		case strings.Contains(cmd, "ip -j link show type vrf"):
-			return []byte(`[]`), nil
-		default:
-			return nil, errors.New("unexpected command: " + cmd)
-		}
-	}}
+	rt := &fakeRuntime{}
+	topo, err := topology.LoadTopology("testdata/live.clab.yml")
+	if err != nil {
+		t.Fatalf("LoadTopology() error = %v", err)
+	}
+	nodes := topo.Nodes
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
+	rib := &fakeRIBCollector{supported: nodes, routes: [][]observationrib.NormalizedRoute{expected}}
 	opts := Options{
 		Topology:     "testdata/live.clab.yml",
-		Queries:      emptyQueriesFile(t),
 		Timeout:      time.Second,
 		PollInterval: time.Millisecond,
+		Out:          io.Discard,
 	}
-	if err := New(runner).Run(context.Background(), opts); err != nil {
+	if err := New(deps(rt, rib)).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	var destroyed bool
-	for _, call := range runner.calls {
-		if strings.HasPrefix(call, "containerlab destroy") {
-			destroyed = true
-		}
-	}
-	if !destroyed {
-		t.Fatalf("destroy was not called: %v", runner.calls)
+	if got, want := rt.calls, []string{"build testdata/live.clab.yml", "deploy testdata/live.clab.yml", "wait-containers", "wait-srlinux", "nftables", "destroy testdata/live.clab.yml"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runtime calls = %v, want %v", got, want)
 	}
 }
 
-func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
+func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	topologyPath := "testdata/live.clab.yml"
 	topo, err := topology.LoadTopology(topologyPath)
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("LoadTopology() error = %v", err)
 	}
-	nodes := liverib.SupportedNodes(topo.Nodes)
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
 	hashes, err := inputhash.InputHashes(topologyPath)
 	if err != nil {
 		t.Fatalf("InputHashes() error = %v", err)
@@ -156,13 +210,8 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 	for _, node := range topo.Nodes {
 		ns := livesnapshot.NodeSnapshot{Kind: node.Kind}
 		for _, route := range expected {
-			if route.Node != node.Name {
-				continue
-			}
-			if strings.EqualFold(route.Protocol, "bgp") {
+			if route.Node == node.Name {
 				ns.BGPRIB = append(ns.BGPRIB, route)
-			} else {
-				ns.RouteTable = append(ns.RouteTable, route)
 			}
 		}
 		snap.Nodes[node.Name] = ns
@@ -171,292 +220,79 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 	if err := snapshotfile.Save(snapshotPath, snap); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return nil, errors.New("runner should not be called")
-	}}
-	opts := Options{
-		Topology: topologyPath,
-		Queries:  emptyQueriesFile(t),
-		Snapshot: snapshotPath,
-		Offline:  true,
-		CheckFIB: false,
-		Out:      ioDiscard{},
-	}
-	if err := New(runner).Run(context.Background(), opts); err != nil {
+	rt := &fakeRuntime{}
+	rib := &fakeRIBCollector{supported: topo.Nodes}
+	opts := Options{Topology: topologyPath, Snapshot: snapshotPath, Offline: true, CheckFIB: false, Out: io.Discard}
+	if err := New(deps(rt, rib)).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(runner.calls) != 0 {
-		t.Fatalf("runner calls = %v, want none", runner.calls)
+	if len(rt.calls) != 0 {
+		t.Fatalf("runtime calls = %v, want none", rt.calls)
+	}
+	if rib.polls != 0 {
+		t.Fatalf("collector polls = %d, want none", rib.polls)
 	}
 }
 
-func TestRunCheckFIBCollectsKernelRoutes(t *testing.T) {
-	var out bytes.Buffer
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(cmd, "containerlab deploy"):
-			return []byte("deployed"), nil
-		case strings.HasPrefix(cmd, "containerlab destroy"):
-			return []byte("destroyed"), nil
-		case strings.HasPrefix(cmd, "docker inspect"):
-			return []byte("true\n"), nil
-		case strings.Contains(cmd, "show ip bgp json"):
-			return []byte(`{"10.1.1.10/32":[{"valid":true,"bestpath":true,"nexthops":[{"ip":""}]}]}`), nil
-		case strings.Contains(cmd, "show ip route vrf all json"):
-			return []byte(`{"10.255.1.1/32":[{"protocol":"connected","interfaceName":"lo"}],"10.1.1.10/32":[{"protocol":"static","nexthops":[{"interfaceName":"Null0"}]}]}`), nil
-		case strings.Contains(cmd, "show ip ospf route json"):
-			return []byte(`{}`), nil
-		case strings.Contains(cmd, "ip -j route show table main"):
-			return []byte(`[
-			  {"type":"blackhole","dst":"10.1.1.10/32","protocol":"static"},
-			  {"dst":"10.3.0.0/16","gateway":"172.86.191.1","dev":"eth0","protocol":"bgp"},
-			  {"dst":"10.255.1.1","dev":"lo","protocol":"kernel"}
-			]`), nil
-		case strings.Contains(cmd, "ip -j route show table local"):
-			return []byte(`[{"dst":"10.255.1.1","dev":"lo","protocol":"local"}]`), nil
-		case strings.Contains(cmd, "ip -j link show type vrf"):
-			return []byte(`[]`), nil
-		default:
-			return nil, errors.New("unexpected command: " + cmd)
-		}
-	}}
-	opts := Options{
-		Topology:     "testdata/live.clab.yml",
-		Queries:      emptyQueriesFile(t),
-		Timeout:      time.Second,
-		PollInterval: time.Millisecond,
-		CheckFIB:     true,
-		Out:          &out,
-	}
-	if err := New(runner).Run(context.Background(), opts); err != nil {
-		t.Fatalf("Run() error = %v", err)
-	}
-	var collectedFIB bool
-	for _, call := range runner.calls {
-		if strings.Contains(call, "ip -j route show table main") {
-			collectedFIB = true
-		}
-	}
-	if !collectedFIB {
-		t.Fatalf("FIB collector was not called: %v", runner.calls)
-	}
-	if !strings.Contains(out.String(), "[WARN] r1|default|ipv4|10.3.0.0/16 unresolved live BGP route reason=unresolved_or_mgmt_fallback") {
-		t.Fatalf("output missing unresolved warning:\n%s", out.String())
-	}
-}
-
-func TestBuildLocalImagesSkipsExistingImage(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "images", "frr-nftables"), 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "images", "frr-nftables", "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		if cmd == "docker image inspect hoyan-frr-nftables:10.6.1" {
-			return []byte("[]"), nil
-		}
-		return nil, errors.New("unexpected command: " + cmd)
-	}}
-	if err := BuildLocalImages(context.Background(), runner, filepath.Join(root, "lab.clab.yml"), ioDiscard{}); err != nil {
-		t.Fatalf("BuildLocalImages() error = %v", err)
-	}
-	if len(runner.calls) != 1 {
-		t.Fatalf("calls = %v, want only image inspect", runner.calls)
-	}
-}
-
-func TestBuildLocalImagesBuildsMissingImage(t *testing.T) {
-	root := t.TempDir()
-	imageDir := filepath.Join(root, "images", "frr-nftables")
-	if err := os.MkdirAll(imageDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(imageDir, "Dockerfile"), []byte("FROM scratch\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		switch {
-		case cmd == "docker image inspect hoyan-frr-nftables:10.6.1":
-			return nil, errors.New("missing")
-		case cmd == "docker build -t hoyan-frr-nftables:10.6.1 "+imageDir:
-			return []byte("built"), nil
-		default:
-			return nil, errors.New("unexpected command: " + cmd)
-		}
-	}}
-	if err := BuildLocalImages(context.Background(), runner, filepath.Join(root, "lab.clab.yml"), ioDiscard{}); err != nil {
-		t.Fatalf("BuildLocalImages() error = %v", err)
-	}
-	if len(runner.calls) != 2 {
-		t.Fatalf("calls = %v, want inspect and build", runner.calls)
-	}
-}
-
-func TestRunDataplaneChecksProbesICMPAndTCP(t *testing.T) {
+func TestRunDataplaneChecksUsesInjectedProber(t *testing.T) {
 	reachable := true
 	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "src", ContainerName: "clab-test-src", Kind: model.KindFRR},
-			{Name: "dst", ContainerName: "clab-test-dst", Kind: model.KindFRR, Prefixes: model.MustPrefixes("10.0.0.10/32")},
-		},
-		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"}},
+		Nodes: []model.Node{{Name: "dst", Kind: model.KindFRR, Prefixes: model.MustPrefixes("10.0.0.10/32")}},
 	}
-	queries := &query.Queries{PacketChecks: []query.PacketCheck{
-		{Name: "icmp-ok", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &reachable},
-		{Name: "tcp-ok", From: "dst", To: "10.0.0.10", Protocol: "tcp", DstPorts: []int{80, 443}, ExpectReachable: &reachable},
-	}}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		switch {
-		case strings.HasPrefix(cmd, "script -q /dev/null -c docker exec -it 'clab-test-dst' 'ping'"):
-			return []byte("1 packets transmitted, 1 packets received, 0% packet loss"), nil
-		case strings.HasPrefix(cmd, "docker exec -d clab-test-dst sh -lc"):
-			return []byte(""), nil
-		case strings.HasPrefix(cmd, "script -q /dev/null -c docker exec -it 'clab-test-dst' 'nc'"):
-			return []byte("10.0.0.10 (10.0.0.10:80) open"), nil
-		default:
-			return nil, errors.New("unexpected command: " + cmd)
-		}
-	}}
-	if err := RunDataplaneChecks(context.Background(), runner, topo, queries, ioDiscard{}); err != nil {
+	queries := &query.Queries{PacketChecks: []query.PacketCheck{{Name: "icmp-ok", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &reachable}}}
+	if err := RunDataplaneChecks(context.Background(), fakeProber{reachable: true}, topo, queries, io.Discard); err != nil {
 		t.Fatalf("RunDataplaneChecks() error = %v", err)
 	}
-}
-
-func TestRunDataplaneChecksFailsOnMismatch(t *testing.T) {
-	unreachable := false
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "src", ContainerName: "clab-test-src", Kind: model.KindFRR},
-			{Name: "dst", ContainerName: "clab-test-dst", Kind: model.KindFRR, Prefixes: model.MustPrefixes("10.0.0.10/32")},
-		},
-		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/31"}},
-	}
-	queries := &query.Queries{PacketChecks: []query.PacketCheck{{Name: "icmp-denied", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &unreachable}}}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return []byte("ok"), nil
-	}}
-	err := RunDataplaneChecks(context.Background(), runner, topo, queries, ioDiscard{})
-	if err == nil || !strings.Contains(err.Error(), "live dataplane reachable=false modeled=true") {
+	err := RunDataplaneChecks(context.Background(), fakeProber{reachable: false}, topo, queries, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "live dataplane reachable=false expected=true") {
 		t.Fatalf("RunDataplaneChecks() error = %v", err)
 	}
-}
-
-func TestApplyNftablesPolicies(t *testing.T) {
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "core-hz", ContainerName: "clab-test-core-hz", Kind: model.KindFRR},
-			{Name: "core-bj", ContainerName: "clab-test-core-bj", Kind: model.KindFRR},
-		},
-		ACLs: []model.ACL{
-			{Name: "BLOCK-HTTP-TO-HZ", Node: "core-hz", Source: model.ConfigSource{Vendor: "nftables"}},
-			{Name: "OTHER", Node: "core-bj", Source: model.ConfigSource{Vendor: "ceos"}},
-		},
-	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		if cmd != "docker exec clab-test-core-hz sh -lc command -v nft >/dev/null && nft -f /etc/hoyan/nftables.conf" {
-			t.Fatalf("unexpected command: %s %v", name, args)
-		}
-		return nil, nil
-	}}
-	if err := ApplyNftablesPolicies(context.Background(), runner, topo, ioDiscard{}); err != nil {
-		t.Fatalf("ApplyNftablesPolicies() error = %v", err)
-	}
-	if len(runner.calls) != 1 {
-		t.Fatalf("calls = %v, want one nft apply", runner.calls)
-	}
-}
-
-type ioDiscard struct{}
-
-func (ioDiscard) Write(p []byte) (int, error) { return len(p), nil }
-
-func emptyQueriesFile(t *testing.T) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "queries.yml")
-	if err := os.WriteFile(path, []byte("packet_checks: []\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	return path
 }
 
 func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"192.0.2.1"}]}]}`), nil
+	rib := &fakeRIBCollector{routes: [][]observationrib.NormalizedRoute{
+		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
+		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
 	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
-	actual, err := WaitForExpectedRoutes(context.Background(), runner, nodes, expected, time.Millisecond, 2)
+	actual, err := WaitForExpectedRoutes(context.Background(), rib, nodes, expected, time.Millisecond, 2)
 	if err == nil {
 		t.Fatalf("WaitForExpectedRoutes() succeeded unexpectedly")
 	}
 	if len(actual) != 1 {
 		t.Fatalf("actual routes = %d, want last successful collection", len(actual))
 	}
-	if len(runner.calls) != 2 {
-		t.Fatalf("polls = %d, want 2", len(runner.calls))
+	if rib.polls != 2 {
+		t.Fatalf("polls = %d, want 2", rib.polls)
 	}
 }
 
 func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
-	polls := 0
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		polls++
-		if polls == 1 {
-			return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"192.0.2.1"}]}]}`), nil
-		}
-		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"198.51.100.1"}]}]}`), nil
-	}}
-	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
 	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
+	rib := &fakeRIBCollector{routes: [][]observationrib.NormalizedRoute{
+		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}},
+		expected,
+	}}
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
 	if err != nil {
 		t.Fatalf("WaitForMatchingRIBs() error = %v", err)
 	}
 	if !diffs.OK {
 		t.Fatalf("diffs = %v, want none", diffs)
 	}
-	if polls != 2 {
-		t.Fatalf("polls = %d, want 2", polls)
-	}
-}
-
-func TestWaitForMatchingRIBsReportsBestMismatchAndExtraPaths(t *testing.T) {
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return []byte(`{"10.0.0.0/24":[
-			{"valid":true,"bestpath":false,"nexthops":[{"ip":"192.0.2.1"}]},
-			{"valid":true,"bestpath":false,"nexthops":[{"ip":"192.0.2.2"}]}
-		]}`), nil
-	}}
-	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 1, observationrib.DefaultCompareOptions())
-	if err == nil {
-		t.Fatalf("WaitForMatchingRIBs() succeeded unexpectedly")
-	}
-	if diffs.OK || len(diffs.UnexpectedPaths) != 1 || len(diffs.Mismatched) != 1 || diffs.Mismatched[0].Field != "best" {
-		t.Fatalf("diffs = %#v", diffs)
+	if rib.polls != 2 {
+		t.Fatalf("polls = %d, want 2", rib.polls)
 	}
 }
 
 func TestWaitForMatchingRIBsClearsTransientCollectionError(t *testing.T) {
-	polls := 0
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		polls++
-		if polls == 1 {
-			return nil, errors.New("transient collector error")
-		}
-		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":false,"nexthops":[{"ip":"192.0.2.1"}]}]}`), nil
-	}}
-	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
 	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
+	rib := &fakeRIBCollector{
+		errs:   []error{errors.New("transient collector error"), nil},
+		routes: [][]observationrib.NormalizedRoute{nil, {{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: false, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}},
+	}
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
 	if err == nil {
 		t.Fatalf("WaitForMatchingRIBs() succeeded unexpectedly")
 	}
@@ -468,95 +304,91 @@ func TestWaitForMatchingRIBsClearsTransientCollectionError(t *testing.T) {
 	}
 }
 
-func TestLinkFailureScenarioInjectsAndCleansBothEndpoints(t *testing.T) {
+func TestLinkFailureScenarioUsesRuntimeForBothEndpoints(t *testing.T) {
 	topo := &model.Topology{
 		Name: "test-lab",
 		Nodes: []model.Node{
 			{Name: "a", Kind: model.KindFRR, Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.1/24"}}},
 			{Name: "b", Kind: model.KindCEOS, Interfaces: []model.Interface{{Name: "Ethernet2", Address: "192.0.2.2/24"}}},
 		},
-		Links: []model.Link{
-			{Name: "a-b", A: "a", B: "b", AIntf: "eth1", BIntf: "eth2"},
-		},
+		Links: []model.Link{{Name: "a-b", A: "a", B: "b", AIntf: "eth1", BIntf: "eth2"}},
 	}
 	scenario, err := LinkFailureScenario(topo, "a-b")
 	if err != nil {
 		t.Fatalf("LinkFailureScenario() error = %v", err)
 	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return []byte("ok"), nil
-	}}
-	if err := scenario.Inject(context.Background(), runner); err != nil {
+	rt := &fakeRuntime{}
+	if err := scenario.Inject(context.Background(), rt); err != nil {
 		t.Fatalf("Inject() error = %v", err)
 	}
-	if err := scenario.Cleanup(context.Background(), runner); err != nil {
+	if err := scenario.Cleanup(context.Background(), rt); err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
 	}
-	want := []string{
-		"containerlab tools netem set --name test-lab -n a -i eth1 --loss 100",
-		"containerlab tools netem set --name test-lab -n b -i eth2 --loss 100",
-		"containerlab tools netem reset --name test-lab -n a -i eth1",
-		"containerlab tools netem reset --name test-lab -n b -i eth2",
-	}
-	if !reflect.DeepEqual(runner.calls, want) {
-		t.Fatalf("calls = %v, want %v", runner.calls, want)
+	want := []string{"loss a eth1", "loss b eth2", "reset a eth1", "reset b eth2"}
+	if !reflect.DeepEqual(rt.calls, want) {
+		t.Fatalf("calls = %v, want %v", rt.calls, want)
 	}
 	if !scenario.Failures.Links["a-b"] {
 		t.Fatalf("scenario failures = %#v, want link a-b", scenario.Failures)
 	}
 }
 
-func TestNodeFailureScenarioStopsNodeAndFiltersActiveFRRNodes(t *testing.T) {
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "r1", ContainerName: "clab-test-r1", Kind: "frr"},
-			{Name: "r2", Kind: "frr"},
-			{Name: "s1", Kind: "srlinux"},
-		},
-	}
+func TestNodeFailureScenarioStopsNodeThroughRuntime(t *testing.T) {
+	topo := &model.Topology{Nodes: []model.Node{{Name: "r1", Kind: "frr"}, {Name: "r2", Kind: "frr"}}}
 	scenario, err := NodeFailureScenario(topo, "r1")
 	if err != nil {
 		t.Fatalf("NodeFailureScenario() error = %v", err)
 	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		return []byte("ok"), nil
-	}}
-	if err := scenario.Inject(context.Background(), runner); err != nil {
+	rt := &fakeRuntime{}
+	if err := scenario.Inject(context.Background(), rt); err != nil {
 		t.Fatalf("Inject() error = %v", err)
 	}
-	if got, want := runner.calls, []string{"docker stop clab-test-r1"}; !reflect.DeepEqual(got, want) {
+	if got, want := rt.calls, []string{"stop r1"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %v, want %v", got, want)
 	}
 	if !scenario.Failures.Nodes["r1"] {
 		t.Fatalf("scenario failures = %#v, want node r1", scenario.Failures)
 	}
-	if got, want := scenario.ActiveNodes, []model.Node{{Name: "r2", Kind: "frr"}, {Name: "s1", Kind: "srlinux"}}; !reflect.DeepEqual(got, want) {
+	if got, want := scenario.ActiveNodes, []model.Node{{Name: "r2", Kind: "frr"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("active nodes = %#v, want %#v", got, want)
 	}
 }
 
 func TestCompareRIBsWithFailuresUsesFailureAwareExpectedRoutes(t *testing.T) {
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "r1", Kind: "frr", ASN: 65001, Prefixes: model.MustPrefixes("10.0.0.0/24")},
-			{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")},
-		},
-	}
-	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
-		if strings.Contains(strings.Join(args, " "), "show ip bgp json") {
-			return []byte(`{"10.1.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"0.0.0.0"}]}]}`), nil
-		}
-		return []byte("ok"), nil
+	topo := &model.Topology{Nodes: []model.Node{
+		{Name: "r1", Kind: "frr", ASN: 65001, Prefixes: model.MustPrefixes("10.0.0.0/24")},
+		{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")},
 	}}
-	err := CompareRIBsWithFailures(context.Background(), runner, topo, RIBFailureScenario{
+	active := []model.Node{{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")}}
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, active, sim.NodeFailures("r1"))
+	rib := &fakeRIBCollector{supported: active, routes: [][]observationrib.NormalizedRoute{expected}}
+	err := CompareRIBsWithFailures(context.Background(), &fakeRuntime{}, rib, topo, RIBFailureScenario{
 		Name:        "node-r1",
 		Failures:    sim.NodeFailures("r1"),
-		ActiveNodes: []model.Node{{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")}},
-	}, RIBFailureCheckOptions{Interval: time.Millisecond, MaxPolls: 1})
+		ActiveNodes: active,
+	}, RIBFailureCheckOptions{Interval: time.Millisecond, MaxPolls: 1, Out: io.Discard})
 	if err != nil {
 		t.Fatalf("CompareRIBsWithFailures() error = %v", err)
 	}
-	if len(runner.calls) != 1 || !strings.Contains(runner.calls[0], "docker exec -i r2") {
-		t.Fatalf("calls = %v, want only r2 collection", runner.calls)
+	if rib.polls != 1 {
+		t.Fatalf("polls = %d, want 1", rib.polls)
+	}
+}
+
+func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
+	var out bytes.Buffer
+	rt := &fakeRuntime{}
+	topo, err := topology.LoadTopology("testdata/live.clab.yml")
+	if err != nil {
+		t.Fatalf("LoadTopology() error = %v", err)
+	}
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
+	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observationrib.NormalizedRoute{expected}}
+	deps := deps(rt, rib)
+	deps.FIBCollector = fakeFIBCollector{routes: []observationfib.NormalizedFIBRoute{{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.255.1.1/32", Protocol: "connected", Installed: true}}}
+	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observationfib.Options{UnresolvedPolicy: observationfib.UnresolvedPolicyIgnore}, Out: &out}
+	err = New(deps).Run(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "live FIB comparison found diff") {
+		t.Fatalf("Run() error = %v, want FIB diff from injected collector", err)
 	}
 }

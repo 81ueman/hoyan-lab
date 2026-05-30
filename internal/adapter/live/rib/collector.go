@@ -81,6 +81,10 @@ func CollectFRRWithRunner(ctx context.Context, runner Runner, nodes []model.Node
 }
 
 func SupportedNodes(nodes []model.Node) []model.Node {
+	return NewCollector(nil).SupportedNodes(nodes)
+}
+
+func (c LiveCollector) SupportedNodes(nodes []model.Node) []model.Node {
 	var out []model.Node
 	collectors := collectorsByID(nil)
 	for _, n := range nodes {

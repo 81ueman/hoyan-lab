@@ -5,16 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
-	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
-	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
-	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
@@ -48,11 +43,11 @@ const DefaultMaxPolls = 5
 type HashPolicy string
 
 type Usecase struct {
-	runner observationrib.Runner
+	deps Dependencies
 }
 
-func New(runner observationrib.Runner) Usecase {
-	return Usecase{runner: runner}
+func New(deps Dependencies) Usecase {
+	return Usecase{deps: deps}
 }
 
 func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
@@ -82,16 +77,30 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	runner := u.runner
+	if u.deps.Runtime == nil {
+		return fmt.Errorf("livecheck runtime is required")
+	}
+	if u.deps.QueryLoader == nil {
+		return fmt.Errorf("livecheck query loader is required")
+	}
+	if u.deps.RIBCollector == nil {
+		return fmt.Errorf("livecheck RIB collector is required")
+	}
+	if opts.CheckFIB && u.deps.FIBCollector == nil {
+		return fmt.Errorf("livecheck FIB collector is required")
+	}
+	if u.deps.DataplaneProber == nil {
+		return fmt.Errorf("livecheck dataplane prober is required")
+	}
 	queriesPath := opts.Queries
 	if queriesPath == "" {
 		queriesPath = "labs/base-wan/intent/queries.yml"
 	}
-	queries, err := queryfile.Load(queriesPath)
+	queries, err := u.deps.QueryLoader.Load(queriesPath)
 	if err != nil {
 		return err
 	}
-	nodes := liverib.SupportedNodes(topo.Nodes)
+	nodes := u.deps.RIBCollector.SupportedNodes(topo.Nodes)
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	expectedBGP := observationrib.BGPOnly(expected)
 
@@ -108,7 +117,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 			return err
 		}
 		if opts.CheckFIB {
-			if err := compareSnapshotFIBs(snap, topo, opts.FIBOptions, opts.Out); err != nil {
+			if err := compareSnapshotFIBs(snap, topo, u.deps.FIBCollector, opts.FIBOptions, opts.Out); err != nil {
 				return err
 			}
 		}
@@ -117,37 +126,37 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		}
 	}
 
-	if err := BuildLocalImages(ctx, runner, opts.Topology, opts.Out); err != nil {
+	if err := u.deps.Runtime.BuildLocalImages(ctx, opts.Topology, opts.Out); err != nil {
 		return err
 	}
 	fmt.Fprintf(opts.Out, "deploying %s\n", opts.Topology)
-	if _, err := runner.Run(ctx, "containerlab", "deploy", "--reconfigure", "-t", opts.Topology); err != nil {
-		return fmt.Errorf("containerlab deploy: %w", err)
+	if err := u.deps.Runtime.Deploy(ctx, opts.Topology); err != nil {
+		return err
 	}
 	defer func() {
 		if opts.SkipDestroy || (err != nil && opts.KeepOnFailure) {
 			return
 		}
 		fmt.Fprintf(opts.Out, "destroying %s\n", opts.Topology)
-		if _, destroyErr := runner.Run(context.Background(), "containerlab", "destroy", "--cleanup", "-t", opts.Topology); err == nil && destroyErr != nil {
-			err = fmt.Errorf("containerlab destroy: %w", destroyErr)
+		if destroyErr := u.deps.Runtime.Destroy(context.Background(), opts.Topology); err == nil && destroyErr != nil {
+			err = destroyErr
 		}
 	}()
 
 	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
-	if err := WaitForContainers(deadlineCtx, runner, nodes, opts.PollInterval); err != nil {
+	if err := u.deps.Runtime.WaitContainers(deadlineCtx, nodes, opts.PollInterval); err != nil {
 		return err
 	}
-	if err := WaitForSRLinuxCLI(deadlineCtx, runner, nodes, opts.PollInterval); err != nil {
+	if err := u.deps.Runtime.WaitSRLinuxCLI(deadlineCtx, nodes, opts.PollInterval); err != nil {
 		return err
 	}
-	if err := ApplyNftablesPolicies(deadlineCtx, runner, topo, opts.Out); err != nil {
+	if err := u.deps.Runtime.ApplyNftablesPolicies(deadlineCtx, topo, opts.Out); err != nil {
 		return err
 	}
 	if snap == nil {
 		fmt.Fprintf(opts.Out, "waiting for live RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
-		actual, result, err := WaitForMatchingRIBs(deadlineCtx, runner, nodes, expected, opts.PollInterval, opts.MaxPolls, compareOptions)
+		actual, result, err := WaitForMatchingRIBs(deadlineCtx, u.deps.RIBCollector, nodes, expected, opts.PollInterval, opts.MaxPolls, compareOptions)
 		if err != nil {
 			if len(actual) > 0 {
 				for _, line := range observationrib.FormatDiffs(result) {
@@ -167,10 +176,10 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if opts.CheckFIB && snap == nil {
 		fibNodes := topo.Nodes
 		if opts.FIBOptions.AllowUnsupported {
-			fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
+			fibNodes = u.deps.FIBCollector.SupportedNodes(fibNodes)
 		}
 		expectedFIB := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, fibNodes), opts.FIBOptions)
-		actualFIB, err := fibcompare.New(livefib.NewCollector(runner)).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
+		actualFIB, err := fibcompare.New(u.deps.FIBCollector).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
 		if err != nil {
 			return err
 		}
@@ -187,33 +196,8 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		}
 		fmt.Fprintln(opts.Out, "live FIBs match modeled forwarding entries")
 	}
-	if err := RunDataplaneChecks(deadlineCtx, runner, topo, queries, opts.Out); err != nil {
+	if err := RunDataplaneChecks(deadlineCtx, u.deps.DataplaneProber, topo, queries, opts.Out); err != nil {
 		return err
-	}
-	return nil
-}
-
-func BuildLocalImages(ctx context.Context, runner observationrib.Runner, topologyPath string, out io.Writer) error {
-	root := filepath.Dir(topologyPath)
-	dockerfile := filepath.Join(root, "images", "frr-nftables", "Dockerfile")
-	if _, err := os.Stat(dockerfile); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	contextDir := filepath.Dir(dockerfile)
-	if _, err := runner.Run(ctx, "docker", "image", "inspect", "hoyan-frr-nftables:10.6.1"); err == nil {
-		if out != nil {
-			fmt.Fprintln(out, "using existing hoyan-frr-nftables:10.6.1")
-		}
-		return nil
-	}
-	if out != nil {
-		fmt.Fprintln(out, "building hoyan-frr-nftables:10.6.1")
-	}
-	if _, err := runner.Run(ctx, "docker", "build", "-t", "hoyan-frr-nftables:10.6.1", contextDir); err != nil {
-		return fmt.Errorf("docker build hoyan-frr-nftables:10.6.1: %w", err)
 	}
 	return nil
 }
@@ -240,10 +224,10 @@ func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ob
 	return nil
 }
 
-func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, opts observationfib.Options, out io.Writer) error {
+func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, collector FIBCollector, opts observationfib.Options, out io.Writer) error {
 	fibNodes := topo.Nodes
-	if opts.AllowUnsupported {
-		fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
+	if opts.AllowUnsupported && collector != nil {
+		fibNodes = collector.SupportedNodes(fibNodes)
 	}
 	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, fibNodes), opts)
 	actual := observationfib.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), opts)
@@ -296,66 +280,14 @@ func isZeroCompareOptions(opts observationrib.CompareOptions) bool {
 	return reflect.DeepEqual(opts, observationrib.CompareOptions{})
 }
 
-func WaitForFRRContainers(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
-	return WaitForContainers(ctx, runner, nodes, interval)
-}
-
-func WaitForContainers(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
-	var lastErr error
-	return poll(ctx, interval, func() (bool, error) {
-		for _, n := range nodes {
-			containerName := n.RuntimeName()
-			out, err := runner.Run(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerName)
-			if err != nil {
-				lastErr = fmt.Errorf("docker inspect -f {{.State.Running}} %s: %w", containerName, err)
-				return false, nil
-			}
-			if strings.TrimSpace(string(out)) != "true" {
-				lastErr = fmt.Errorf("container %s is not running", containerName)
-				return false, nil
-			}
-		}
-		return true, nil
-	}, func() error {
-		if lastErr != nil {
-			return fmt.Errorf("containers did not become ready: %w", lastErr)
-		}
-		return fmt.Errorf("containers did not become ready")
-	})
-}
-
-func WaitForSRLinuxCLI(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
-	srlinuxNodes := liverib.NodesByKind(nodes, model.KindSRLinux)
-	if len(srlinuxNodes) == 0 {
-		return nil
-	}
-	var lastErr error
-	return poll(ctx, interval, func() (bool, error) {
-		for _, n := range srlinuxNodes {
-			containerName := n.RuntimeName()
-			if _, err := liverib.RunSRLinuxJSON(ctx, runner, containerName, "show", "version"); err != nil {
-				lastErr = fmt.Errorf("%s SR Linux CLI is not ready: %w", n.Name, err)
-				return false, nil
-			}
-		}
-		lastErr = nil
-		return true, nil
-	}, func() error {
-		if lastErr != nil {
-			return fmt.Errorf("SR Linux CLI did not become ready: %w", lastErr)
-		}
-		return fmt.Errorf("SR Linux CLI did not become ready")
-	})
-}
-
-func WaitForExpectedRoutes(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int) ([]observationrib.NormalizedRoute, error) {
+func WaitForExpectedRoutes(ctx context.Context, collector RIBCollector, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int) ([]observationrib.NormalizedRoute, error) {
 	var last []observationrib.NormalizedRoute
 	var lastErr error
 	bestSeen := 0
 	polls := 0
 	err := poll(ctx, interval, func() (bool, error) {
 		polls++
-		actual, err := collectExpectedRIBSources(ctx, runner, nodes, expected)
+		actual, err := collectExpectedRIBSources(ctx, collector, nodes, expected)
 		if err != nil {
 			lastErr = err
 			if maxPolls > 0 && polls >= maxPolls {
@@ -384,7 +316,7 @@ func WaitForExpectedRoutes(ctx context.Context, runner observationrib.Runner, no
 	return last, nil
 }
 
-func WaitForMatchingRIBs(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int, compareOptions observationrib.CompareOptions) ([]observationrib.NormalizedRoute, observationrib.CompareResult, error) {
+func WaitForMatchingRIBs(ctx context.Context, collector RIBCollector, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int, compareOptions observationrib.CompareOptions) ([]observationrib.NormalizedRoute, observationrib.CompareResult, error) {
 	if isZeroCompareOptions(compareOptions) {
 		compareOptions = observationrib.DefaultCompareOptions()
 	}
@@ -396,7 +328,7 @@ func WaitForMatchingRIBs(ctx context.Context, runner observationrib.Runner, node
 	polls := 0
 	err := poll(ctx, interval, func() (bool, error) {
 		polls++
-		actual, err := collectExpectedRIBSources(ctx, runner, nodes, expected)
+		actual, err := collectExpectedRIBSources(ctx, collector, nodes, expected)
 		if err != nil {
 			lastErr = err
 			if maxPolls > 0 && polls >= maxPolls {
@@ -430,11 +362,11 @@ func WaitForMatchingRIBs(ctx context.Context, runner observationrib.Runner, node
 	return last, lastResult, nil
 }
 
-func collectExpectedRIBSources(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute) ([]observationrib.NormalizedRoute, error) {
+func collectExpectedRIBSources(ctx context.Context, collector RIBCollector, nodes []model.Node, expected []observationrib.NormalizedRoute) ([]observationrib.NormalizedRoute, error) {
 	if expectedHasNonBGP(expected) {
-		return ribcompare.New(liverib.NewCollector(runner)).Collect(ctx, nodes)
+		return collector.Collect(ctx, nodes)
 	}
-	return ribcompare.New(liverib.NewCollector(runner)).CollectBGPRoutes(ctx, nodes)
+	return collector.CollectBGPRoutes(ctx, nodes)
 }
 
 func expectedHasNonBGP(routes []observationrib.NormalizedRoute) bool {
