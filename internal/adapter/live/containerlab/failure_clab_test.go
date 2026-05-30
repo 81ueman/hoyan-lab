@@ -1,6 +1,6 @@
 //go:build clab
 
-package livecheck
+package containerlab_test
 
 import (
 	"context"
@@ -10,8 +10,9 @@ import (
 	"time"
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -23,56 +24,58 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 		t.Skipf("docker not found: %v", err)
 	}
 
-	topologyPath := filepath.Join("..", "..", "labs", "base-wan", "hoyan.clab.yml")
+	topologyPath := filepath.Join("..", "..", "..", "..", "labs", "base-wan", "hoyan.clab.yml")
 	topo, err := topology.LoadTopology(topologyPath)
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
 	runner := liveexec.ExecRunner{}
+	runtime := clabruntime.Runtime{Runner: runner}
+	ribCollector := liverib.NewCollector(runner)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
 	deploy := func() {
 		t.Helper()
-		if _, err := runner.Run(ctx, "containerlab", "deploy", "--reconfigure", "-t", topologyPath); err != nil {
+		if err := runtime.Deploy(ctx, topologyPath); err != nil {
 			t.Fatalf("containerlab deploy: %v", err)
 		}
-		if err := WaitForFRRContainers(ctx, runner, liverib.FRRNodes(topo.Nodes), 5*time.Second); err != nil {
+		if err := runtime.WaitContainers(ctx, liverib.FRRNodes(topo.Nodes), 5*time.Second); err != nil {
 			t.Fatalf("FRR containers did not become ready: %v", err)
 		}
 	}
 	destroy := func() {
 		t.Helper()
-		if _, err := runner.Run(context.Background(), "containerlab", "destroy", "--cleanup", "-t", topologyPath); err != nil {
+		if err := runtime.Destroy(context.Background(), topologyPath); err != nil {
 			t.Logf("containerlab destroy: %v", err)
 		}
 	}
 	t.Cleanup(destroy)
 
 	deploy()
-	if err := CompareRIBsWithFailures(ctx, runner, topo, RIBFailureScenario{
+	if err := livecheck.CompareRIBsWithFailures(ctx, runtime, ribCollector, topo, livecheck.RIBFailureScenario{
 		Name:        "baseline",
 		ActiveNodes: liverib.FRRNodes(topo.Nodes),
-	}, RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 24, Out: testLogWriter{t: t}}); err != nil {
+	}, livecheck.RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 24, Out: testLogWriter{t: t}}); err != nil {
 		t.Fatalf("baseline RIB comparison failed: %v", err)
 	}
 
-	linkScenario, err := LinkFailureScenario(topo, "core-hz-eth4--core-bj-eth4")
+	linkScenario, err := livecheck.LinkFailureScenario(topo, "core-hz-eth4--core-bj-eth4")
 	if err != nil {
 		t.Fatalf("LinkFailureScenario() error = %v", err)
 	}
 	linkScenario.ActiveNodes = liverib.FRRNodes(topo.Nodes)
-	if err := CompareRIBsWithFailures(ctx, runner, topo, linkScenario, RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 18, Out: testLogWriter{t: t}}); err != nil {
+	if err := livecheck.CompareRIBsWithFailures(ctx, runtime, ribCollector, topo, linkScenario, livecheck.RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 18, Out: testLogWriter{t: t}}); err != nil {
 		t.Fatalf("link-failure RIB comparison failed: %v", err)
 	}
 
 	destroy()
 	deploy()
-	nodeScenario, err := NodeFailureScenario(topo, "transit-north")
+	nodeScenario, err := livecheck.NodeFailureScenario(topo, "transit-north")
 	if err != nil {
 		t.Fatalf("NodeFailureScenario() error = %v", err)
 	}
-	if err := CompareRIBsWithFailures(ctx, runner, topo, nodeScenario, RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 18, Out: testLogWriter{t: t}}); err != nil {
+	if err := livecheck.CompareRIBsWithFailures(ctx, runtime, ribCollector, topo, nodeScenario, livecheck.RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 18, Out: testLogWriter{t: t}}); err != nil {
 		t.Fatalf("node-failure RIB comparison failed: %v", err)
 	}
 }

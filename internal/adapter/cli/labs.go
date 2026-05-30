@@ -11,6 +11,11 @@ import (
 	"time"
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
+	livedataplane "github.com/81ueman/hoyan-lab/internal/adapter/live/dataplane"
+	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
@@ -145,7 +150,13 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
 		queriesPath := filepath.Join(lab.Path, labQueriesPath)
 		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
-		err := livecheck.New(runner).Run(ctx, livecheck.Options{
+		err := livecheck.New(livecheck.Dependencies{
+			Runtime:         clabruntime.Runtime{Runner: runner},
+			QueryLoader:     queryfile.Loader{},
+			RIBCollector:    liverib.NewCollector(runner),
+			FIBCollector:    livefib.NewCollector(runner),
+			DataplaneProber: livedataplane.DockerProber{Runner: runner},
+		}).Run(ctx, livecheck.Options{
 			Topology:      topologyPath,
 			Queries:       queriesPath,
 			StrictConfig:  opts.strictConfig,
