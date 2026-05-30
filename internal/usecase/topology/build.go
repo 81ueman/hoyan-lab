@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -14,23 +13,36 @@ type LoadOptions struct {
 }
 
 func LoadTopology(clabPath string) (*model.Topology, error) {
-	topo, _, err := LoadTopologyWithOptions(clabPath, LoadOptions{})
+	topo, _, err := defaultBuilder().LoadTopologyWithOptions(clabPath, LoadOptions{})
 	return topo, err
 }
 
 func LoadTopologyWithWarnings(clabPath string) (*model.Topology, []configparse.UnsupportedStatement, error) {
-	return LoadTopologyWithOptions(clabPath, LoadOptions{CollectWarnings: true})
+	return defaultBuilder().LoadTopologyWithOptions(clabPath, LoadOptions{CollectWarnings: true})
 }
 
 func LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*model.Topology, []configparse.UnsupportedStatement, error) {
-	raw, err := labfile.Load(clabPath)
+	return defaultBuilder().LoadTopologyWithOptions(clabPath, opts)
+}
+
+func (b Builder) LoadTopology(clabPath string) (*model.Topology, error) {
+	topo, _, err := b.LoadTopologyWithOptions(clabPath, LoadOptions{})
+	return topo, err
+}
+
+func (b Builder) LoadTopologyWithWarnings(clabPath string) (*model.Topology, []configparse.UnsupportedStatement, error) {
+	return b.LoadTopologyWithOptions(clabPath, LoadOptions{CollectWarnings: true})
+}
+
+func (b Builder) LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*model.Topology, []configparse.UnsupportedStatement, error) {
+	raw, err := b.loader.Load(clabPath)
 	if err != nil {
 		return nil, nil, err
 	}
 	root := filepath.Dir(clabPath)
 	topo := &model.Topology{Name: raw.Name, ManagementSubnet: raw.Mgmt.IPv4Subnet}
 
-	nodes, aclAttachments, transitNodes, warnings, err := buildNodes(raw, root, opts)
+	nodes, aclAttachments, transitNodes, warnings, err := buildNodes(raw, root, opts, b.parser)
 	if err != nil {
 		return nil, nil, err
 	}
