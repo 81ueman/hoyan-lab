@@ -6,15 +6,18 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
-func Expected(topo *model.Topology) []observationrib.NormalizedRoute {
-	return ExpectedWithFailureSet(topo, sim.NoFailures())
+// ExpectedBuilder builds modeled RIB observations. Its zero value is ready to use.
+type ExpectedBuilder struct{}
+
+func (ExpectedBuilder) Build(topo *model.Topology) []observationrib.NormalizedRoute {
+	return ExpectedBuilder{}.BuildWithFailureSet(topo, sim.NoFailures())
 }
 
-func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationrib.NormalizedRoute {
-	return ExpectedForNodesWithFailureSet(topo, nodes, sim.NoFailures())
+func (ExpectedBuilder) BuildForNodes(topo *model.Topology, nodes []model.Node) []observationrib.NormalizedRoute {
+	return ExpectedBuilder{}.BuildForNodesWithFailureSet(topo, nodes, sim.NoFailures())
 }
 
-func ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) BuildForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observationrib.NormalizedRoute {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true
@@ -22,7 +25,7 @@ func ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, fa
 	return expected(topo, allowed, failures)
 }
 
-func ExpectedWithFailureSet(topo *model.Topology, failures sim.FailureSet) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) BuildWithFailureSet(topo *model.Topology, failures sim.FailureSet) []observationrib.NormalizedRoute {
 	return expected(topo, nil, failures)
 }
 

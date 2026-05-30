@@ -90,7 +90,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		return err
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
-	expected := ribcompare.ExpectedForNodes(topo, nodes)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	expectedBGP := observationrib.BGPOnly(expected)
 
 	var snap *livesnapshot.Snapshot

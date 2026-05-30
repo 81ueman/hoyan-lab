@@ -17,9 +17,9 @@ func TestExpectedRoutesIncludesMultipleBgpPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	if len(routes) == 0 {
-		t.Fatalf("Expected() returned no routes")
+		t.Fatalf("(ExpectedBuilder{}).Build() returned no routes")
 	}
 	for _, r := range routes {
 		if r.Node == "bj-edge1" && r.Prefix == "10.4.1.10/32" {
@@ -51,7 +51,7 @@ func TestExpectedRoutesIncludesStaticAndConnectedSources(t *testing.T) {
 		}},
 		Links: []model.Link{{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1", Cost: 1}},
 	}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	if routeByPrefixProtocol(routes, "192.0.2.0/30", "connected") == nil {
 		t.Fatalf("connected route missing from expected RIB routes: %#v", routes)
 	}
@@ -72,7 +72,7 @@ func TestExpectedRoutesKeepsBGPNetworkAndLocalBlackholeSeparate(t *testing.T) {
 		Prefixes: []model.Prefix{prefix},
 		Routes:   []model.ConfiguredRoute{{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0"}},
 	}}}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	if routeByPrefixProtocol(routes, prefix.String(), "bgp") == nil {
 		t.Fatalf("BGP network route missing: %#v", routes)
 	}
@@ -98,7 +98,7 @@ func TestExpectedConnectedRoutesCarryClassAndIncludeLoopbackService(t *testing.T
 		}},
 		Links: []model.Link{{Name: "svc-r2", A: "svc", B: "r2", AIntf: "eth1", BIntf: "eth1", Cost: 1}},
 	}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	link := routeByPrefixProtocol(routes, "192.0.2.0/31", "connected")
 	if link == nil || link.ConnectedClass != model.ConnectedRouteClassLink {
 		t.Fatalf("link connected route = %#v", link)
@@ -124,7 +124,7 @@ func TestExpectedOSPFRoutesIncludeLocalAndSelectedRemoteRoutes(t *testing.T) {
 			{Name: "r4-r1", A: "r4", AIntf: "eth1", B: "r1", BIntf: "eth2", Cost: 1, Subnet: "198.51.100.6/31"},
 		},
 	}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	r1ToR2 := routeByNodePrefixProtocol(routes, "r1", "10.255.2.2/32", "ospf")
 	if r1ToR2 == nil || len(r1ToR2.Paths) != 1 || r1ToR2.Paths[0].NextHop != "198.51.100.6" {
 		t.Fatalf("r1 OSPF route to r2 loopback = %#v, want selected remote route via r4", r1ToR2)
@@ -146,7 +146,7 @@ func TestExpectedOSPFSuppressesNonFRRLocalRoutes(t *testing.T) {
 		Links: []model.Link{{Name: "r1-r2", A: "r1", AIntf: "eth1", B: "r2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"}},
 	}
 	topo.Nodes[1].Kind = model.KindCEOS
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	if local := routeByNodePrefixProtocol(routes, "r2", "10.255.2.2/32", "ospf"); local != nil {
 		t.Fatalf("non-FRR local OSPF route should not be expected live: %#v", local)
 	}
@@ -169,7 +169,7 @@ func TestExpectedOSPFInterAreaRouteProtocol(t *testing.T) {
 			{Name: "r3-r4", A: "r3", AIntf: "eth2", B: "r4", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.4/31"},
 		},
 	}
-	routes := Expected(topo)
+	routes := (ExpectedBuilder{}).Build(topo)
 	route := routeByNodePrefixProtocol(routes, "r1", "10.255.4.4/32", "ospf-ia")
 	if route == nil || len(route.Paths) != 1 || route.Paths[0].NextHop != "198.51.100.1" {
 		t.Fatalf("r1 OSPF inter-area route to r4 loopback = %#v", route)
@@ -354,7 +354,7 @@ func TestExpectedReflectsRouteMapAttributes(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "origin-rx", A: "origin", B: "rx", Cost: 1, Subnet: "192.0.2.0/31"}},
 	}
-	routes := ExpectedForNodes(topo, []model.Node{{Name: "rx", Kind: "frr"}})
+	routes := (ExpectedBuilder{}).BuildForNodes(topo, []model.Node{{Name: "rx", Kind: "frr"}})
 	route := routeByPrefix(routes, "10.0.0.0/24")
 	if route == nil || len(route.Paths) != 1 {
 		t.Fatalf("routes = %#v", routes)
