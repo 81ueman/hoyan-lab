@@ -11,11 +11,13 @@ import (
 	"testing"
 	"time"
 
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -30,15 +32,15 @@ func (f *fakeRunner) Run(ctx context.Context, name string, args ...string) ([]by
 }
 
 func TestHasExpectedRoutes(t *testing.T) {
-	expected := []ribcompare.NormalizedBgpRoute{
+	expected := []observationrib.NormalizedRoute{
 		{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"},
 		{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"},
 	}
-	actual := []ribcompare.NormalizedBgpRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}}
+	actual := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}}
 	if HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be incomplete")
 	}
-	actual = append(actual, ribcompare.NormalizedBgpRoute{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"})
+	actual = append(actual, observationrib.NormalizedRoute{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"})
 	if !HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be complete")
 	}
@@ -115,7 +117,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 		Timeout:      time.Second,
 		PollInterval: time.Millisecond,
 	}
-	if err := Run(context.Background(), opts, runner); err != nil {
+	if err := New(runner).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	var destroyed bool
@@ -135,7 +137,7 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	nodes := ribcompare.SupportedNodes(topo.Nodes)
+	nodes := liverib.SupportedNodes(topo.Nodes)
 	expected := ribcompare.ExpectedForNodes(topo, nodes)
 	hashes, err := livesnapshot.InputHashes(topologyPath)
 	if err != nil {
@@ -178,7 +180,7 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 		CheckFIB: false,
 		Out:      ioDiscard{},
 	}
-	if err := Run(context.Background(), opts, runner); err != nil {
+	if err := New(runner).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if len(runner.calls) != 0 {
@@ -225,7 +227,7 @@ func TestRunCheckFIBCollectsKernelRoutes(t *testing.T) {
 		CheckFIB:     true,
 		Out:          &out,
 	}
-	if err := Run(context.Background(), opts, runner); err != nil {
+	if err := New(runner).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	var collectedFIB bool
@@ -387,7 +389,7 @@ func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
 		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"192.0.2.1"}]}]}`), nil
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []ribcompare.NormalizedBgpRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
+	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
 	actual, err := WaitForExpectedRoutes(context.Background(), runner, nodes, expected, time.Millisecond, 2)
 	if err == nil {
 		t.Fatalf("WaitForExpectedRoutes() succeeded unexpectedly")
@@ -410,8 +412,8 @@ func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
 		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"198.51.100.1"}]}]}`), nil
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []ribcompare.NormalizedBgpRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []ribcompare.NormalizedBgpPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, ribcompare.DefaultBgpRibCompareOptions())
+	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
 	if err != nil {
 		t.Fatalf("WaitForMatchingRIBs() error = %v", err)
 	}
@@ -431,8 +433,8 @@ func TestWaitForMatchingRIBsReportsBestMismatchAndExtraPaths(t *testing.T) {
 		]}`), nil
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []ribcompare.NormalizedBgpRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []ribcompare.NormalizedBgpPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 1, ribcompare.DefaultBgpRibCompareOptions())
+	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 1, observationrib.DefaultCompareOptions())
 	if err == nil {
 		t.Fatalf("WaitForMatchingRIBs() succeeded unexpectedly")
 	}
@@ -451,8 +453,8 @@ func TestWaitForMatchingRIBsClearsTransientCollectionError(t *testing.T) {
 		return []byte(`{"10.0.0.0/24":[{"valid":true,"bestpath":false,"nexthops":[{"ip":"192.0.2.1"}]}]}`), nil
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []ribcompare.NormalizedBgpRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []ribcompare.NormalizedBgpPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, ribcompare.DefaultBgpRibCompareOptions())
+	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), runner, nodes, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
 	if err == nil {
 		t.Fatalf("WaitForMatchingRIBs() succeeded unexpectedly")
 	}

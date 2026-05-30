@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
+	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -27,7 +28,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	runner := ribcompare.ExecRunner{}
+	runner := liveexec.ExecRunner{}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
@@ -36,7 +37,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 		if _, err := runner.Run(ctx, "containerlab", "deploy", "--reconfigure", "-t", topologyPath); err != nil {
 			t.Fatalf("containerlab deploy: %v", err)
 		}
-		if err := WaitForFRRContainers(ctx, runner, ribcompare.FRRNodes(topo.Nodes), 5*time.Second); err != nil {
+		if err := WaitForFRRContainers(ctx, runner, liverib.FRRNodes(topo.Nodes), 5*time.Second); err != nil {
 			t.Fatalf("FRR containers did not become ready: %v", err)
 		}
 	}
@@ -51,7 +52,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	deploy()
 	if err := CompareRIBsWithFailures(ctx, runner, topo, RIBFailureScenario{
 		Name:        "baseline",
-		ActiveNodes: ribcompare.FRRNodes(topo.Nodes),
+		ActiveNodes: liverib.FRRNodes(topo.Nodes),
 	}, RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 24, Out: testLogWriter{t: t}}); err != nil {
 		t.Fatalf("baseline RIB comparison failed: %v", err)
 	}
@@ -60,7 +61,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LinkFailureScenario() error = %v", err)
 	}
-	linkScenario.ActiveNodes = ribcompare.FRRNodes(topo.Nodes)
+	linkScenario.ActiveNodes = liverib.FRRNodes(topo.Nodes)
 	if err := CompareRIBsWithFailures(ctx, runner, topo, linkScenario, RIBFailureCheckOptions{Interval: 5 * time.Second, MaxPolls: 18, Out: testLogWriter{t: t}}); err != nil {
 		t.Fatalf("link-failure RIB comparison failed: %v", err)
 	}

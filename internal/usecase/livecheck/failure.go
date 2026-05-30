@@ -6,27 +6,29 @@ import (
 	"io"
 	"time"
 
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 )
 
 type RIBFailureScenario struct {
 	Name        string
 	Failures    sim.FailureSet
 	ActiveNodes []model.Node
-	Inject      func(context.Context, ribcompare.Runner) error
-	Cleanup     func(context.Context, ribcompare.Runner) error
+	Inject      func(context.Context, observationrib.Runner) error
+	Cleanup     func(context.Context, observationrib.Runner) error
 }
 
 type RIBFailureCheckOptions struct {
 	Interval       time.Duration
 	MaxPolls       int
-	CompareOptions ribcompare.BgpRibCompareOptions
+	CompareOptions observationrib.CompareOptions
 	Out            io.Writer
 }
 
-func CompareRIBsWithFailures(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, scenario RIBFailureScenario, opts RIBFailureCheckOptions) error {
+func CompareRIBsWithFailures(ctx context.Context, runner observationrib.Runner, topo *model.Topology, scenario RIBFailureScenario, opts RIBFailureCheckOptions) error {
 	if opts.Interval == 0 {
 		opts.Interval = 25 * time.Second
 	}
@@ -38,11 +40,11 @@ func CompareRIBsWithFailures(ctx context.Context, runner ribcompare.Runner, topo
 	}
 	compareOptions := opts.CompareOptions
 	if isZeroCompareOptions(compareOptions) {
-		compareOptions = ribcompare.DefaultBgpRibCompareOptions()
+		compareOptions = observationrib.DefaultCompareOptions()
 	}
 	activeNodes := scenario.ActiveNodes
 	if activeNodes == nil {
-		activeNodes = ribcompare.SupportedNodes(topo.Nodes)
+		activeNodes = liverib.SupportedNodes(topo.Nodes)
 	}
 	expected := ribcompare.ExpectedForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
 	if scenario.Inject != nil {
@@ -81,7 +83,7 @@ func LinkFailureScenario(topo *model.Topology, linkName string) (RIBFailureScena
 	return RIBFailureScenario{
 		Name:     "link-" + link.Name,
 		Failures: sim.LinkFailures(model.LinkID(link.Name)),
-		Inject: func(ctx context.Context, runner ribcompare.Runner) error {
+		Inject: func(ctx context.Context, runner observationrib.Runner) error {
 			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "set", "--name", topo.Name, "-n", link.A, "-i", aIntf, "--loss", "100"); err != nil {
 				return fmt.Errorf("netem set %s:%s: %w", link.A, aIntf, err)
 			}
@@ -90,7 +92,7 @@ func LinkFailureScenario(topo *model.Topology, linkName string) (RIBFailureScena
 			}
 			return nil
 		},
-		Cleanup: func(ctx context.Context, runner ribcompare.Runner) error {
+		Cleanup: func(ctx context.Context, runner observationrib.Runner) error {
 			var firstErr error
 			if _, err := runner.Run(ctx, "containerlab", "tools", "netem", "reset", "--name", topo.Name, "-n", link.A, "-i", aIntf); err != nil {
 				firstErr = fmt.Errorf("netem reset %s:%s: %w", link.A, aIntf, err)
@@ -127,7 +129,7 @@ func NodeFailureScenario(topo *model.Topology, nodeName string) (RIBFailureScena
 		Name:        "node-" + nodeName,
 		Failures:    sim.NodeFailures(model.NodeID(nodeName)),
 		ActiveNodes: activeSupportedNodes(topo.Nodes, map[string]bool{nodeName: true}),
-		Inject: func(ctx context.Context, runner ribcompare.Runner) error {
+		Inject: func(ctx context.Context, runner observationrib.Runner) error {
 			containerName := node.RuntimeName()
 			if _, err := runner.Run(ctx, "docker", "stop", containerName); err != nil {
 				return fmt.Errorf("docker stop %s: %w", containerName, err)
@@ -144,7 +146,7 @@ func activeSupportedNodes(nodes []model.Node, failed map[string]bool) []model.No
 			out = append(out, node)
 		}
 	}
-	return ribcompare.SupportedNodes(out)
+	return liverib.SupportedNodes(out)
 }
 
 func findLink(topo *model.Topology, name string) (model.Link, bool) {
@@ -156,18 +158,18 @@ func findLink(topo *model.Topology, name string) (model.Link, bool) {
 	return model.Link{}, false
 }
 
-func printRIBDiffs(out io.Writer, expected []ribcompare.NormalizedBgpRoute, actual []ribcompare.NormalizedBgpRoute, compareOptions ribcompare.BgpRibCompareOptions) {
+func printRIBDiffs(out io.Writer, expected []observationrib.NormalizedRoute, actual []observationrib.NormalizedRoute, compareOptions observationrib.CompareOptions) {
 	if out == nil {
 		return
 	}
-	printDiffs(out, ribcompare.CompareBgpRib(expected, actual, compareOptions))
+	printDiffs(out, observationrib.CompareRoutes(expected, actual, compareOptions))
 }
 
-func printDiffs(out io.Writer, diffs ribcompare.BgpRibCompareResult) {
+func printDiffs(out io.Writer, diffs observationrib.CompareResult) {
 	if out == nil {
 		return
 	}
-	for _, line := range ribcompare.FormatDiffs(diffs) {
+	for _, line := range observationrib.FormatDiffs(diffs) {
 		fmt.Fprintln(out, line)
 	}
 }

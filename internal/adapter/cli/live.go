@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/usecase/fibcompare"
+	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func NewLiveCheckCommand() *cobra.Command {
 			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, &opts.queriesPath); err != nil {
 				return err
 			}
-			err := livecheck.Run(cmd.Context(), livecheck.Options{
+			err := livecheck.New(liveexec.ExecRunner{}).Run(cmd.Context(), livecheck.Options{
 				Topology:      opts.topologyPath,
 				Queries:       opts.queriesPath,
 				Snapshot:      opts.snapshotPath,
@@ -53,9 +53,9 @@ func NewLiveCheckCommand() *cobra.Command {
 				KeepOnFailure: opts.keepOnFailure,
 				SkipDestroy:   opts.skipDestroy,
 				CheckFIB:      opts.checkFIB && !opts.noCheckFIB,
-				FIBOptions:    fibcompare.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: fibcompare.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
+				FIBOptions:    observationfib.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
 				Out:           cmd.OutOrStdout(),
-			}, ribcompare.ExecRunner{})
+			})
 			if err != nil {
 				return ExitError{Code: 1, Err: err}
 			}
@@ -77,7 +77,7 @@ func NewLiveCheckCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.checkFIB, "check-fib", true, "compare modeled FIB with live installed FIB after BGP convergence")
 	cmd.Flags().BoolVar(&opts.noCheckFIB, "no-check-fib", false, "skip modeled-vs-live installed FIB comparison")
 	cmd.Flags().BoolVar(&opts.fibAllowUnsupported, "fib-allow-unsupported", false, "skip nodes without a live FIB collector when FIB comparison is enabled")
-	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(fibcompare.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	return cmd
 }
 
@@ -123,7 +123,7 @@ func (o liveCheckOptions) validate() error {
 }
 
 func validateFIBUnresolvedPolicy(policy string) error {
-	if _, ok := fibcompare.ParseUnresolvedPolicy(policy); ok {
+	if _, ok := observationfib.ParseUnresolvedPolicy(policy); ok {
 		return nil
 	}
 	return fmt.Errorf("FIB unresolved policy must be one of warn, fail, or ignore")

@@ -9,12 +9,12 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
 )
 
-func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, queries *query.Queries, out io.Writer) error {
+func RunDataplaneChecks(ctx context.Context, runner observationrib.Runner, topo *model.Topology, queries *query.Queries, out io.Writer) error {
 	if out == nil {
 		out = io.Discard
 	}
@@ -61,7 +61,7 @@ func RunDataplaneChecks(ctx context.Context, runner ribcompare.Runner, topo *mod
 	return nil
 }
 
-func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, check query.PacketCheck) (bool, error) {
+func runPacketProbe(ctx context.Context, runner observationrib.Runner, topo *model.Topology, check query.PacketCheck) (bool, error) {
 	src, ok := topo.Node(check.From)
 	if !ok {
 		return false, fmt.Errorf("source node %s not found", check.From)
@@ -90,7 +90,7 @@ func runPacketProbe(ctx context.Context, runner ribcompare.Runner, topo *model.T
 	}
 }
 
-func runProbeCommand(ctx context.Context, runner ribcompare.Runner, container, vrf string, args ...string) ([]byte, error) {
+func runProbeCommand(ctx context.Context, runner observationrib.Runner, container, vrf string, args ...string) ([]byte, error) {
 	if model.NormalizeNetworkInstance(vrf) == model.NetworkInstanceDefault {
 		return runDockerExecTTY(ctx, runner, container, args...)
 	}
@@ -105,7 +105,7 @@ func packetCheckName(name string, port int, portCount int) string {
 	return fmt.Sprintf("%s:dst-port-%d", name, port)
 }
 
-func runDockerExecTTY(ctx context.Context, runner ribcompare.Runner, container string, args ...string) ([]byte, error) {
+func runDockerExecTTY(ctx context.Context, runner observationrib.Runner, container string, args ...string) ([]byte, error) {
 	cmd := "docker exec -it " + shellQuote(container)
 	for _, arg := range args {
 		cmd += " " + shellQuote(arg)
@@ -127,7 +127,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func ensureTCPListener(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, dst string, port int) error {
+func ensureTCPListener(ctx context.Context, runner observationrib.Runner, topo *model.Topology, dst string, port int) error {
 	dstNode, _, ok := topo.OriginForIP(dst)
 	if !ok {
 		return fmt.Errorf("destination %s is not originated by any node", dst)

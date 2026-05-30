@@ -15,8 +15,10 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/usecase/fibcompare"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
+	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"gopkg.in/yaml.v3"
 )
@@ -36,12 +38,12 @@ type Snapshot struct {
 }
 
 type NodeSnapshot struct {
-	Kind          model.DeviceKind                `json:"kind"`
-	BGPRIB        []ribcompare.NormalizedRoute    `json:"bgp_rib,omitempty"`
-	RouteTable    []ribcompare.NormalizedRoute    `json:"route_table,omitempty"`
-	FIB           []fibcompare.NormalizedFIBRoute `json:"fib,omitempty"`
-	UnresolvedFIB []fibcompare.UnresolvedRoute    `json:"unresolved_fib,omitempty"`
-	Raw           map[string]json.RawMessage      `json:"raw,omitempty"`
+	Kind          model.DeviceKind                    `json:"kind"`
+	BGPRIB        []observationrib.NormalizedRoute    `json:"bgp_rib,omitempty"`
+	RouteTable    []observationrib.NormalizedRoute    `json:"route_table,omitempty"`
+	FIB           []observationfib.NormalizedFIBRoute `json:"fib,omitempty"`
+	UnresolvedFIB []observationfib.UnresolvedRoute    `json:"unresolved_fib,omitempty"`
+	Raw           map[string]json.RawMessage          `json:"raw,omitempty"`
 }
 
 type HashPolicy string
@@ -94,6 +96,18 @@ func Load(path string) (*Snapshot, error) {
 	return &snap, nil
 }
 
+type Usecase struct {
+	ribCollector observationrib.Collector
+	fibCollector observationfib.Collector
+}
+
+func New(ribCollector observationrib.Collector, fibCollector observationfib.Collector) Usecase {
+	return Usecase{
+		ribCollector: ribCollector,
+		fibCollector: fibCollector,
+	}
+}
+
 func Save(path string, snap *Snapshot) error {
 	if path == "" || path == "-" {
 		enc := json.NewEncoder(os.Stdout)
@@ -119,7 +133,7 @@ func Marshal(snap *Snapshot) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func Build(ctx context.Context, topologyPath, labName string, runner ribcompare.Runner, rawDir string, fibOpts fibcompare.Options) (*Snapshot, error) {
+func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpts observationfib.Options) (*Snapshot, error) {
 	topo, warnings, err := topology.LoadTopologyWithOptions(topologyPath, topology.LoadOptions{CollectWarnings: true})
 	if err != nil {
 		return nil, err
@@ -127,25 +141,22 @@ func Build(ctx context.Context, topologyPath, labName string, runner ribcompare.
 	if labName == "" {
 		labName = topo.Name
 	}
-	effectiveRunner := runner
-	if rawDir != "" {
-		effectiveRunner = &rawRecordingRunner{Runner: runner, Dir: rawDir}
-	}
-	nodes := ribcompare.SupportedNodes(topo.Nodes)
-	bgp, err := ribcompare.CollectBGPOnlyWithRunner(ctx, effectiveRunner, nodes)
+	ribUsecase := ribcompare.New(u.ribCollector)
+	fibUsecase := fibcompare.New(u.fibCollector)
+	bgp, err := ribUsecase.CollectBGPRoutes(ctx, topo.Nodes)
 	if err != nil {
 		return nil, err
 	}
-	routes, err := collectRouteTables(ctx, effectiveRunner, nodes)
+	routes, err := ribUsecase.CollectRouteTableRoutes(ctx, topo.Nodes)
 	if err != nil {
 		return nil, err
 	}
-	fibNodes := fibcompare.SupportedNodes(topo.Nodes)
-	fib, err := fibcompare.Collect(ctx, effectiveRunner, fibNodes, fibOpts)
+	fibNodes := fibUsecase.SupportedNodes(topo.Nodes)
+	fib, err := fibUsecase.Collect(ctx, fibNodes, fibOpts)
 	if err != nil {
 		return nil, err
 	}
-	fibResult := fibcompare.AnalyzeComparableRoutes(topo, fib, fibOpts)
+	fibResult := observationfib.AnalyzeComparableRoutes(topo, fib, fibOpts)
 	hashes, err := InputHashes(topologyPath)
 	if err != nil {
 		return nil, err
@@ -164,11 +175,11 @@ func Build(ctx context.Context, topologyPath, labName string, runner ribcompare.
 	for _, node := range topo.Nodes {
 		snap.Nodes[node.Name] = NodeSnapshot{Kind: node.Kind}
 	}
-	addRIBRoutes(snap.Nodes, bgp, func(ns NodeSnapshot, routes []ribcompare.NormalizedRoute) NodeSnapshot {
+	addRIBRoutes(snap.Nodes, bgp, func(ns NodeSnapshot, routes []observationrib.NormalizedRoute) NodeSnapshot {
 		ns.BGPRIB = routes
 		return ns
 	})
-	addRIBRoutes(snap.Nodes, routes, func(ns NodeSnapshot, routes []ribcompare.NormalizedRoute) NodeSnapshot {
+	addRIBRoutes(snap.Nodes, routes, func(ns NodeSnapshot, routes []observationrib.NormalizedRoute) NodeSnapshot {
 		ns.RouteTable = routes
 		return ns
 	})
@@ -177,16 +188,16 @@ func Build(ctx context.Context, topologyPath, labName string, runner ribcompare.
 	return snap, nil
 }
 
-func BGPRoutes(snap *Snapshot) []ribcompare.NormalizedRoute {
-	var out []ribcompare.NormalizedRoute
+func BGPRoutes(snap *Snapshot) []observationrib.NormalizedRoute {
+	var out []observationrib.NormalizedRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].BGPRIB...)
 	}
 	return out
 }
 
-func AllRIBRoutes(snap *Snapshot) []ribcompare.NormalizedRoute {
-	var out []ribcompare.NormalizedRoute
+func AllRIBRoutes(snap *Snapshot) []observationrib.NormalizedRoute {
+	var out []observationrib.NormalizedRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].BGPRIB...)
 		out = append(out, snap.Nodes[name].RouteTable...)
@@ -194,16 +205,16 @@ func AllRIBRoutes(snap *Snapshot) []ribcompare.NormalizedRoute {
 	return out
 }
 
-func FIBRoutes(snap *Snapshot) []fibcompare.NormalizedFIBRoute {
-	var out []fibcompare.NormalizedFIBRoute
+func FIBRoutes(snap *Snapshot) []observationfib.NormalizedFIBRoute {
+	var out []observationfib.NormalizedFIBRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].FIB...)
 	}
 	return out
 }
 
-func UnresolvedFIB(snap *Snapshot) []fibcompare.UnresolvedRoute {
-	var out []fibcompare.UnresolvedRoute
+func UnresolvedFIB(snap *Snapshot) []observationfib.UnresolvedRoute {
+	var out []observationfib.UnresolvedRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].UnresolvedFIB...)
 	}
@@ -311,12 +322,8 @@ func configPaths(topologyPath string) ([]string, error) {
 	return out, nil
 }
 
-func collectRouteTables(ctx context.Context, runner ribcompare.Runner, nodes []model.Node) ([]ribcompare.NormalizedRoute, error) {
-	return ribcompare.CollectRouteTablesWithRunner(ctx, runner, nodes)
-}
-
-func addRIBRoutes(nodes map[string]NodeSnapshot, routes []ribcompare.NormalizedRoute, update func(NodeSnapshot, []ribcompare.NormalizedRoute) NodeSnapshot) {
-	byNode := map[string][]ribcompare.NormalizedRoute{}
+func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observationrib.NormalizedRoute, update func(NodeSnapshot, []observationrib.NormalizedRoute) NodeSnapshot) {
+	byNode := map[string][]observationrib.NormalizedRoute{}
 	for _, route := range routes {
 		byNode[route.Node] = append(byNode[route.Node], route)
 	}
@@ -326,7 +333,7 @@ func addRIBRoutes(nodes map[string]NodeSnapshot, routes []ribcompare.NormalizedR
 	}
 }
 
-func addFIBRoutes(nodes map[string]NodeSnapshot, routes []fibcompare.NormalizedFIBRoute) {
+func addFIBRoutes(nodes map[string]NodeSnapshot, routes []observationfib.NormalizedFIBRoute) {
 	for _, route := range routes {
 		ns := nodes[route.Node]
 		ns.FIB = append(ns.FIB, route)
@@ -334,7 +341,7 @@ func addFIBRoutes(nodes map[string]NodeSnapshot, routes []fibcompare.NormalizedF
 	}
 }
 
-func addUnresolvedFIB(nodes map[string]NodeSnapshot, routes []fibcompare.UnresolvedRoute) {
+func addUnresolvedFIB(nodes map[string]NodeSnapshot, routes []observationfib.UnresolvedRoute) {
 	for _, route := range routes {
 		ns := nodes[route.Node]
 		ns.UnresolvedFIB = append(ns.UnresolvedFIB, route)
@@ -374,39 +381,4 @@ func gitCommit() string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
-}
-
-type rawRecordingRunner struct {
-	Runner ribcompare.Runner
-	Dir    string
-	seq    int
-}
-
-func (r *rawRecordingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	data, err := r.Runner.Run(ctx, name, args...)
-	if err == nil {
-		r.seq++
-		_ = os.MkdirAll(r.Dir, 0o755)
-		_ = os.WriteFile(filepath.Join(r.Dir, fmt.Sprintf("%03d.%s.raw", r.seq, sanitizeRawName(append([]string{name}, args...)))), data, 0o644)
-	}
-	return data, err
-}
-
-func sanitizeRawName(parts []string) string {
-	joined := strings.Join(parts, ".")
-	var b strings.Builder
-	lastDot := false
-	for _, r := range joined {
-		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
-		if ok {
-			b.WriteRune(r)
-			lastDot = false
-			continue
-		}
-		if !lastDot {
-			b.WriteByte('.')
-			lastDot = true
-		}
-	}
-	return strings.Trim(b.String(), ".")
 }

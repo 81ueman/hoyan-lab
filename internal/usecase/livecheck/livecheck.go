@@ -11,11 +11,15 @@ import (
 	"strings"
 	"time"
 
+	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/usecase/fibcompare"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -29,9 +33,9 @@ type Options struct {
 	PollInterval   time.Duration
 	MaxPolls       int
 	StrictConfig   bool
-	CompareOptions ribcompare.BgpRibCompareOptions
+	CompareOptions observationrib.CompareOptions
 	CheckFIB       bool
-	FIBOptions     fibcompare.Options
+	FIBOptions     observationfib.Options
 	KeepOnFailure  bool
 	SkipDestroy    bool
 	Out            io.Writer
@@ -41,7 +45,15 @@ const DefaultMaxPolls = 5
 
 type HashPolicy string
 
-func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error) {
+type Usecase struct {
+	runner observationrib.Runner
+}
+
+func New(runner observationrib.Runner) Usecase {
+	return Usecase{runner: runner}
+}
+
+func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if opts.Topology == "" {
 		opts.Topology = "labs/base-wan/hoyan.clab.yml"
 	}
@@ -62,12 +74,13 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	}
 	compareOptions := opts.CompareOptions
 	if isZeroCompareOptions(compareOptions) {
-		compareOptions = ribcompare.DefaultBgpRibCompareOptions()
+		compareOptions = observationrib.DefaultCompareOptions()
 	}
 	topo, _, err := topology.LoadTopologyWithOptions(opts.Topology, topology.LoadOptions{StrictConfig: opts.StrictConfig})
 	if err != nil {
 		return err
 	}
+	runner := u.runner
 	queriesPath := opts.Queries
 	if queriesPath == "" {
 		queriesPath = "labs/base-wan/intent/queries.yml"
@@ -76,9 +89,9 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	if err != nil {
 		return err
 	}
-	nodes := ribcompare.SupportedNodes(topo.Nodes)
+	nodes := liverib.SupportedNodes(topo.Nodes)
 	expected := ribcompare.ExpectedForNodes(topo, nodes)
-	expectedBGP := ribcompare.BGPOnly(expected)
+	expectedBGP := observationrib.BGPOnly(expected)
 
 	var snap *livesnapshot.Snapshot
 	if opts.Snapshot != "" {
@@ -131,17 +144,17 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 		return err
 	}
 	if snap == nil {
-		fmt.Fprintf(opts.Out, "waiting for live RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
+		fmt.Fprintf(opts.Out, "waiting for live RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
 		actual, result, err := WaitForMatchingRIBs(deadlineCtx, runner, nodes, expected, opts.PollInterval, opts.MaxPolls, compareOptions)
 		if err != nil {
 			if len(actual) > 0 {
-				for _, line := range ribcompare.FormatDiffs(result) {
+				for _, line := range observationrib.FormatDiffs(result) {
 					fmt.Fprintln(opts.Out, line)
 				}
 			}
 			return err
 		}
-		for _, line := range ribcompare.FormatDiffs(result) {
+		for _, line := range observationrib.FormatDiffs(result) {
 			fmt.Fprintln(opts.Out, line)
 		}
 		if !result.OK {
@@ -152,19 +165,19 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	if opts.CheckFIB && snap == nil {
 		fibNodes := topo.Nodes
 		if opts.FIBOptions.AllowUnsupported {
-			fibNodes = fibcompare.SupportedNodes(fibNodes)
+			fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
 		}
-		expectedFIB := fibcompare.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts.FIBOptions)
-		actualFIB, err := fibcompare.Collect(deadlineCtx, runner, fibNodes, opts.FIBOptions)
+		expectedFIB := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts.FIBOptions)
+		actualFIB, err := fibcompare.New(livefib.NewCollector(runner)).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
 		if err != nil {
 			return err
 		}
-		actualFIBResult := fibcompare.AnalyzeComparableRoutes(topo, actualFIB, opts.FIBOptions)
-		for _, line := range fibcompare.FormatWarnings(fibcompare.WarningDiagnostics(actualFIBResult, opts.FIBOptions)) {
+		actualFIBResult := observationfib.AnalyzeComparableRoutes(topo, actualFIB, opts.FIBOptions)
+		for _, line := range observationfib.FormatWarnings(observationfib.WarningDiagnostics(actualFIBResult, opts.FIBOptions)) {
 			fmt.Fprintln(opts.Out, line)
 		}
-		fibResult := fibcompare.CompareFilterResults(expectedFIB, actualFIBResult, opts.FIBOptions)
-		for _, line := range fibcompare.FormatDiffs(fibResult) {
+		fibResult := observationfib.CompareFilterResults(expectedFIB, actualFIBResult, opts.FIBOptions)
+		for _, line := range observationfib.FormatDiffs(fibResult) {
 			fmt.Fprintln(opts.Out, line)
 		}
 		if !fibResult.OK {
@@ -178,7 +191,7 @@ func Run(ctx context.Context, opts Options, runner ribcompare.Runner) (err error
 	return nil
 }
 
-func BuildLocalImages(ctx context.Context, runner ribcompare.Runner, topologyPath string, out io.Writer) error {
+func BuildLocalImages(ctx context.Context, runner observationrib.Runner, topologyPath string, out io.Writer) error {
 	root := filepath.Dir(topologyPath)
 	dockerfile := filepath.Join(root, "images", "frr-nftables", "Dockerfile")
 	if _, err := os.Stat(dockerfile); err != nil {
@@ -203,19 +216,19 @@ func BuildLocalImages(ctx context.Context, runner ribcompare.Runner, topologyPat
 	return nil
 }
 
-func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ribcompare.NormalizedRoute, compareOptions ribcompare.BgpRibCompareOptions, out io.Writer) error {
+func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []observationrib.NormalizedRoute, compareOptions observationrib.CompareOptions, out io.Writer) error {
 	actualBGP := livesnapshot.BGPRoutes(snap)
-	fmt.Fprintf(out, "comparing snapshot BGP RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expectedBGP)))
-	result := ribcompare.CompareBgpRib(expectedBGP, actualBGP, compareOptions)
-	for _, line := range ribcompare.FormatDiffs(result) {
+	fmt.Fprintf(out, "comparing snapshot BGP RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expectedBGP)))
+	result := observationrib.CompareRoutes(expectedBGP, actualBGP, compareOptions)
+	for _, line := range observationrib.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {
 		return fmt.Errorf("snapshot BGP RIB comparison found diff(s)")
 	}
-	fmt.Fprintf(out, "comparing snapshot RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
-	result = ribcompare.CompareBgpRib(expected, livesnapshot.AllRIBRoutes(snap), compareOptions)
-	for _, line := range ribcompare.FormatDiffs(result) {
+	fmt.Fprintf(out, "comparing snapshot RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
+	result = observationrib.CompareRoutes(expected, livesnapshot.AllRIBRoutes(snap), compareOptions)
+	for _, line := range observationrib.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {
@@ -225,18 +238,18 @@ func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ri
 	return nil
 }
 
-func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, opts fibcompare.Options, out io.Writer) error {
+func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, opts observationfib.Options, out io.Writer) error {
 	fibNodes := topo.Nodes
 	if opts.AllowUnsupported {
-		fibNodes = fibcompare.SupportedNodes(fibNodes)
+		fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
 	}
-	expected := fibcompare.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts)
-	actual := fibcompare.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), opts)
-	for _, line := range fibcompare.FormatWarnings(fibcompare.WarningDiagnostics(actual, opts)) {
+	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts)
+	actual := observationfib.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), opts)
+	for _, line := range observationfib.FormatWarnings(observationfib.WarningDiagnostics(actual, opts)) {
 		fmt.Fprintln(out, line)
 	}
-	result := fibcompare.CompareFilterResults(expected, actual, opts)
-	for _, line := range fibcompare.FormatDiffs(result) {
+	result := observationfib.CompareFilterResults(expected, actual, opts)
+	for _, line := range observationfib.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {
@@ -277,15 +290,15 @@ func checkSnapshotHashes(topologyPath string, snap *livesnapshot.Snapshot, polic
 	return nil
 }
 
-func isZeroCompareOptions(opts ribcompare.BgpRibCompareOptions) bool {
-	return reflect.DeepEqual(opts, ribcompare.BgpRibCompareOptions{})
+func isZeroCompareOptions(opts observationrib.CompareOptions) bool {
+	return reflect.DeepEqual(opts, observationrib.CompareOptions{})
 }
 
-func WaitForFRRContainers(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, interval time.Duration) error {
+func WaitForFRRContainers(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
 	return WaitForContainers(ctx, runner, nodes, interval)
 }
 
-func WaitForContainers(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, interval time.Duration) error {
+func WaitForContainers(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
 	var lastErr error
 	return poll(ctx, interval, func() (bool, error) {
 		for _, n := range nodes {
@@ -309,8 +322,8 @@ func WaitForContainers(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	})
 }
 
-func WaitForSRLinuxCLI(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, interval time.Duration) error {
-	srlinuxNodes := ribcompare.NodesByKind(nodes, model.KindSRLinux)
+func WaitForSRLinuxCLI(ctx context.Context, runner observationrib.Runner, nodes []model.Node, interval time.Duration) error {
+	srlinuxNodes := liverib.NodesByKind(nodes, model.KindSRLinux)
 	if len(srlinuxNodes) == 0 {
 		return nil
 	}
@@ -318,7 +331,7 @@ func WaitForSRLinuxCLI(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	return poll(ctx, interval, func() (bool, error) {
 		for _, n := range srlinuxNodes {
 			containerName := n.RuntimeName()
-			if _, err := ribcompare.RunSRLinuxJSON(ctx, runner, containerName, "show", "version"); err != nil {
+			if _, err := liverib.RunSRLinuxJSON(ctx, runner, containerName, "show", "version"); err != nil {
 				lastErr = fmt.Errorf("%s SR Linux CLI is not ready: %w", n.Name, err)
 				return false, nil
 			}
@@ -333,8 +346,8 @@ func WaitForSRLinuxCLI(ctx context.Context, runner ribcompare.Runner, nodes []mo
 	})
 }
 
-func WaitForExpectedRoutes(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, expected []ribcompare.NormalizedBgpRoute, interval time.Duration, maxPolls int) ([]ribcompare.NormalizedBgpRoute, error) {
-	var last []ribcompare.NormalizedBgpRoute
+func WaitForExpectedRoutes(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int) ([]observationrib.NormalizedRoute, error) {
+	var last []observationrib.NormalizedRoute
 	var lastErr error
 	bestSeen := 0
 	polls := 0
@@ -369,12 +382,12 @@ func WaitForExpectedRoutes(ctx context.Context, runner ribcompare.Runner, nodes 
 	return last, nil
 }
 
-func WaitForMatchingRIBs(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, expected []ribcompare.NormalizedBgpRoute, interval time.Duration, maxPolls int, compareOptions ribcompare.BgpRibCompareOptions) ([]ribcompare.NormalizedBgpRoute, ribcompare.BgpRibCompareResult, error) {
+func WaitForMatchingRIBs(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute, interval time.Duration, maxPolls int, compareOptions observationrib.CompareOptions) ([]observationrib.NormalizedRoute, observationrib.CompareResult, error) {
 	if isZeroCompareOptions(compareOptions) {
-		compareOptions = ribcompare.DefaultBgpRibCompareOptions()
+		compareOptions = observationrib.DefaultCompareOptions()
 	}
-	var last []ribcompare.NormalizedBgpRoute
-	var lastResult ribcompare.BgpRibCompareResult
+	var last []observationrib.NormalizedRoute
+	var lastResult observationrib.CompareResult
 	var lastErr error
 	bestSeen := 0
 	bestDiffCount := -1
@@ -394,7 +407,7 @@ func WaitForMatchingRIBs(ctx context.Context, runner ribcompare.Runner, nodes []
 		if seen := CountExpectedRoutes(expected, actual); seen > bestSeen {
 			bestSeen = seen
 		}
-		lastResult = ribcompare.CompareBgpRib(expected, actual, compareOptions)
+		lastResult = observationrib.CompareRoutes(expected, actual, compareOptions)
 		diffCount := countDiffs(lastResult)
 		if bestDiffCount == -1 || diffCount < bestDiffCount {
 			bestDiffCount = diffCount
@@ -415,14 +428,14 @@ func WaitForMatchingRIBs(ctx context.Context, runner ribcompare.Runner, nodes []
 	return last, lastResult, nil
 }
 
-func collectExpectedRIBSources(ctx context.Context, runner ribcompare.Runner, nodes []model.Node, expected []ribcompare.NormalizedBgpRoute) ([]ribcompare.NormalizedBgpRoute, error) {
+func collectExpectedRIBSources(ctx context.Context, runner observationrib.Runner, nodes []model.Node, expected []observationrib.NormalizedRoute) ([]observationrib.NormalizedRoute, error) {
 	if expectedHasNonBGP(expected) {
-		return ribcompare.CollectWithRunner(ctx, runner, nodes)
+		return ribcompare.New(liverib.NewCollector(runner)).Collect(ctx, nodes)
 	}
-	return ribcompare.CollectBGPOnlyWithRunner(ctx, runner, nodes)
+	return ribcompare.New(liverib.NewCollector(runner)).CollectBGPRoutes(ctx, nodes)
 }
 
-func expectedHasNonBGP(routes []ribcompare.NormalizedBgpRoute) bool {
+func expectedHasNonBGP(routes []observationrib.NormalizedRoute) bool {
 	for _, route := range routes {
 		protocol := strings.ToLower(strings.TrimSpace(route.Protocol))
 		if protocol != "" && protocol != "bgp" {
@@ -449,11 +462,11 @@ func ribMatchConvergenceError(lastErr error, seen, total, bestDiffCount int) err
 	return fmt.Errorf("RIBs did not converge to modeled paths: saw %d/%d expected routes, best diff count %d", seen, total, bestDiffCount)
 }
 
-func HasExpectedRoutes(expected []ribcompare.NormalizedBgpRoute, actual []ribcompare.NormalizedBgpRoute) bool {
+func HasExpectedRoutes(expected []observationrib.NormalizedRoute, actual []observationrib.NormalizedRoute) bool {
 	return CountExpectedRoutes(expected, actual) == len(expected)
 }
 
-func CountExpectedRoutes(expected []ribcompare.NormalizedBgpRoute, actual []ribcompare.NormalizedBgpRoute) int {
+func CountExpectedRoutes(expected []observationrib.NormalizedRoute, actual []observationrib.NormalizedRoute) int {
 	seen := map[string]bool{}
 	for _, route := range actual {
 		seen[ribRouteSourceKey(route)] = true
@@ -467,7 +480,7 @@ func CountExpectedRoutes(expected []ribcompare.NormalizedBgpRoute, actual []ribc
 	return count
 }
 
-func ribRouteSourceKey(route ribcompare.NormalizedBgpRoute) string {
+func ribRouteSourceKey(route observationrib.NormalizedRoute) string {
 	ni := route.NetworkInstance
 	if ni == "" {
 		ni = "default"
@@ -483,7 +496,7 @@ func ribRouteSourceKey(route ribcompare.NormalizedBgpRoute) string {
 	return route.Node + "|" + ni + "|" + afi + "|" + protocol + "|" + route.Prefix
 }
 
-func countDiffs(result ribcompare.BgpRibCompareResult) int {
+func countDiffs(result observationrib.CompareResult) int {
 	return len(result.MissingPrefixes) + len(result.UnexpectedPrefixes) + len(result.MissingPaths) + len(result.UnexpectedPaths) + len(result.Mismatched) + len(result.DuplicatePathConflicts)
 }
 
