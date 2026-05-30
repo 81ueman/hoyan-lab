@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -13,6 +14,13 @@ import (
 )
 
 func Verify(doc *Document) (Report, error) {
+	return VerifyWithProvider(doc, DefaultSnapshotProvider{})
+}
+
+func VerifyWithProvider(doc *Document, provider SnapshotProvider) (Report, error) {
+	if provider == nil {
+		return Report{}, errors.New("snapshot provider is nil")
+	}
 	expanded, err := Expand(doc)
 	if err != nil {
 		return Report{}, err
@@ -25,7 +33,7 @@ func Verify(doc *Document) (Report, error) {
 			return snapshot, nil
 		}
 		snapshotDef := expanded.Snapshots[name]
-		snapshot, err := facts.Build(snapshotDef.Lab, name)
+		snapshot, err := provider.LoadSnapshot(name, snapshotDef)
 		if err != nil {
 			return facts.Snapshot{}, fmt.Errorf("snapshot %q: %w", name, err)
 		}
