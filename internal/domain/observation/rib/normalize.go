@@ -2,7 +2,6 @@ package rib
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -58,22 +57,6 @@ func pathKey(p NormalizedPath, opts CompareOptions) string {
 		parts = append(parts, fmt.Sprintf("peer_as=%d", p.PeerAS))
 	}
 	return strings.Join(parts, "|")
-}
-
-func parseASPath(raw string) []uint32 {
-	raw = strings.TrimSpace(strings.ReplaceAll(raw, ",", " "))
-	if raw == "" || raw == "-" {
-		return nil
-	}
-	var out []uint32
-	for _, f := range strings.Fields(raw) {
-		f = strings.Trim(f, "{}[]()")
-		asn, err := strconv.ParseUint(f, 10, 32)
-		if err == nil {
-			out = append(out, uint32(asn))
-		}
-	}
-	return out
 }
 
 func formatASPath(path []uint32) string {

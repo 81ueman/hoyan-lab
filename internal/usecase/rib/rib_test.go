@@ -541,28 +541,10 @@ func routeByPrefixProtocol(routes []observationrib.NormalizedRoute, prefix, prot
 	return nil
 }
 
-func routeByVRFPrefixProtocol(routes []observationrib.NormalizedRoute, vrf, prefix, protocol string) *observationrib.NormalizedRoute {
-	for i := range routes {
-		if routes[i].NetworkInstance == vrf && routes[i].Prefix == prefix && observationrib.NormalizeRoute(routes[i]).Protocol == protocol {
-			return &routes[i]
-		}
-	}
-	return nil
-}
-
 func routeByNodePrefixProtocol(routes []observationrib.NormalizedRoute, node, prefix, protocol string) *observationrib.NormalizedRoute {
 	for i := range routes {
 		if routes[i].Node == node && routes[i].Prefix == prefix && observationrib.NormalizeRoute(routes[i]).Protocol == protocol {
 			return &routes[i]
-		}
-	}
-	return nil
-}
-
-func pathByNextHop(paths []observationrib.NormalizedPath, nextHop string) *observationrib.NormalizedPath {
-	for i := range paths {
-		if paths[i].NextHop == nextHop {
-			return &paths[i]
 		}
 	}
 	return nil

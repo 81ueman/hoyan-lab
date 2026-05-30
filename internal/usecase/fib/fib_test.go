@@ -415,12 +415,3 @@ func routeByPrefix(routes []observationfib.NormalizedFIBRoute, prefix string) *o
 	}
 	return nil
 }
-
-func routeByVRFPrefix(routes []observationfib.NormalizedFIBRoute, vrf, prefix string) *observationfib.NormalizedFIBRoute {
-	for i := range routes {
-		if routes[i].VRF == vrf && routes[i].Prefix == prefix {
-			return &routes[i]
-		}
-	}
-	return nil
-}
