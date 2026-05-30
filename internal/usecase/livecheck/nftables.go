@@ -7,12 +7,12 @@ import (
 	"sort"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 )
 
 const containerNftablesConfig = "/etc/hoyan/nftables.conf"
 
-func ApplyNftablesPolicies(ctx context.Context, runner ribcompare.Runner, topo *model.Topology, out io.Writer) error {
+func ApplyNftablesPolicies(ctx context.Context, runner observationrib.Runner, topo *model.Topology, out io.Writer) error {
 	nodes := nftablesPolicyNodes(topo)
 	for _, node := range nodes {
 		if out != nil {

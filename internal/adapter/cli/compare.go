@@ -7,9 +7,14 @@ import (
 	"io"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/usecase/fibcompare"
+	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
+	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
 )
@@ -69,10 +74,10 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	nodes := ribcompare.SupportedNodes(topo.Nodes)
+	nodes := liverib.SupportedNodes(topo.Nodes)
 	expected := ribcompare.ExpectedForNodes(topo, nodes)
-	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", ribcompare.FormatSourceSummary(ribcompare.SourceSummary(expected)))
-	var actual []ribcompare.NormalizedRoute
+	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
+	var actual []observationrib.NormalizedRoute
 	if opts.snapshotPath != "" {
 		snap, err := livesnapshot.Load(opts.snapshotPath)
 		if err != nil {
@@ -83,13 +88,13 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 		}
 		actual = livesnapshot.AllRIBRoutes(snap)
 	} else {
-		actual, err = ribcompare.Collect(ctx, ribcompare.ExecRunner{}, nodes)
+		actual, err = ribcompare.New(liverib.NewCollector(liveexec.ExecRunner{})).Collect(ctx, nodes)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
 	}
-	result := ribcompare.CompareBgpRib(expected, actual, ribcompare.DefaultBgpRibCompareOptions())
-	for _, line := range ribcompare.FormatDiffs(result) {
+	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
+	for _, line := range observationrib.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {
@@ -120,7 +125,7 @@ func NewFIBCompareCommand() *cobra.Command {
 	addTopologyFlag(cmd, &opts.topologyPath, "containerlab topology YAML")
 	cmd.Flags().BoolVar(&opts.strictConfig, "strict-config", false, "fail on unsupported config parser statements")
 	cmd.Flags().BoolVar(&opts.allowUnsupported, "allow-unsupported", false, "skip nodes without a live FIB collector")
-	cmd.Flags().StringVar(&opts.unresolvedPolicy, "unresolved-policy", string(fibcompare.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.unresolvedPolicy, "unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	cmd.Flags().StringVar(&opts.snapshotPath, "snapshot", "", "live snapshot JSON to use instead of collecting from devices")
 	cmd.Flags().StringVar(&opts.snapshotHashPolicy, "snapshot-hash-policy", string(livesnapshot.HashPolicyWarn), "handling for snapshot topology/config hash mismatch: warn, fail, or ignore")
 	return cmd
@@ -149,11 +154,11 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 	}
 	nodes := topo.Nodes
 	if opts.allowUnsupported {
-		nodes = fibcompare.SupportedNodes(nodes)
+		nodes = livefib.NewCollector(nil).SupportedNodes(nodes)
 	}
-	fibOpts := fibcompare.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: fibcompare.UnresolvedPolicy(opts.unresolvedPolicy)}
-	expected := fibcompare.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, nodes), fibOpts)
-	var actualFiltered fibcompare.FilterResult
+	fibOpts := observationfib.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.unresolvedPolicy)}
+	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, nodes), fibOpts)
+	var actualFiltered observationfib.FilterResult
 	if opts.snapshotPath != "" {
 		snap, err := livesnapshot.Load(opts.snapshotPath)
 		if err != nil {
@@ -162,19 +167,19 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 		if err := checkSnapshotHashes(opts.topologyPath, snap, opts.snapshotHashPolicy, out); err != nil {
 			return err
 		}
-		actualFiltered = fibcompare.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), fibOpts)
+		actualFiltered = observationfib.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), fibOpts)
 	} else {
-		actual, err := fibcompare.Collect(ctx, ribcompare.ExecRunner{}, nodes, fibOpts)
+		actual, err := fibcompare.New(livefib.NewCollector(liveexec.ExecRunner{})).Collect(ctx, nodes, fibOpts)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
-		actualFiltered = fibcompare.AnalyzeComparableRoutes(topo, actual, fibOpts)
+		actualFiltered = observationfib.AnalyzeComparableRoutes(topo, actual, fibOpts)
 	}
-	for _, line := range fibcompare.FormatWarnings(fibcompare.WarningDiagnostics(actualFiltered, fibOpts)) {
+	for _, line := range observationfib.FormatWarnings(observationfib.WarningDiagnostics(actualFiltered, fibOpts)) {
 		fmt.Fprintln(out, line)
 	}
-	result := fibcompare.CompareFilterResults(expected, actualFiltered, fibOpts)
-	for _, line := range fibcompare.FormatDiffs(result) {
+	result := observationfib.CompareFilterResults(expected, actualFiltered, fibOpts)
+	for _, line := range observationfib.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {

@@ -1,0 +1,92 @@
+package rib
+
+import (
+	"fmt"
+	"strings"
+)
+
+func normalizeRoute(r NormalizedRoute) NormalizedRoute {
+	if r.NetworkInstance == "" {
+		r.NetworkInstance = "default"
+	}
+	if r.AFI == "" {
+		r.AFI = "ipv4"
+	}
+	if r.Protocol == "" {
+		r.Protocol = "bgp"
+	}
+	for i := range r.Paths {
+		r.Paths[i] = normalizePath(r.Paths[i])
+	}
+	return r
+}
+
+func NormalizeRoute(r NormalizedRoute) NormalizedRoute {
+	return normalizeRoute(r)
+}
+
+func normalizePath(p NormalizedPath) NormalizedPath {
+	p.Origin = normalizeOrigin(p.Origin)
+	p.Communities = sortedStrings(p.Communities)
+	p.LargeCommunities = sortedStrings(p.LargeCommunities)
+	p.ClusterList = sortedStrings(p.ClusterList)
+	return p
+}
+
+func routeKey(r NormalizedRoute) string {
+	r = normalizeRoute(r)
+	if r.Protocol != "" && r.Protocol != "bgp" {
+		return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Protocol + "|" + r.Prefix
+	}
+	return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Prefix
+}
+
+func pathKey(p NormalizedPath, opts CompareOptions) string {
+	// Path identity is deliberately narrower than full path equality. The
+	// default identity is next-hop plus AS path; attributes such as best, valid,
+	// origin, local-pref, MED, weight, communities, originator ID, and cluster
+	// list are compared after identity matching so attribute mismatches stay
+	// distinct from missing/unexpected paths. ComparePeer and ComparePeerAS are
+	// the only options that extend identity, letting callers distinguish
+	// otherwise identical multipath entries learned from different peers.
+	parts := []string{"nh=" + p.NextHop, "as=" + formatASPath(p.ASPath)}
+	if opts.ComparePeer && p.Peer != "" {
+		parts = append(parts, "peer="+p.Peer)
+	}
+	if opts.ComparePeerAS && p.PeerAS != 0 {
+		parts = append(parts, fmt.Sprintf("peer_as=%d", p.PeerAS))
+	}
+	return strings.Join(parts, "|")
+}
+
+func formatASPath(path []uint32) string {
+	parts := make([]string, 0, len(path))
+	for _, asn := range path {
+		parts = append(parts, fmt.Sprint(asn))
+	}
+	return strings.Join(parts, " ")
+}
+
+func normalizeOrigin(origin string) string {
+	switch strings.ToLower(strings.TrimSpace(origin)) {
+	case "", "i", "igp":
+		return "igp"
+	case "e", "egp":
+		return "egp"
+	case "?", "incomplete":
+		return "incomplete"
+	default:
+		return strings.ToLower(strings.TrimSpace(origin))
+	}
+}
+
+func defaultLocalPref(v int) int {
+	if v == 0 {
+		return 100
+	}
+	return v
+}
+
+func DefaultLocalPref(v int) int {
+	return defaultLocalPref(v)
+}

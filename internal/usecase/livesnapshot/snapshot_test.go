@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 )
 
 func TestSnapshotMarshalLoadRoundTrip(t *testing.T) {
@@ -20,7 +20,7 @@ func TestSnapshotMarshalLoadRoundTrip(t *testing.T) {
 		Nodes: map[string]NodeSnapshot{
 			"r1": {
 				Kind: model.KindFRR,
-				BGPRIB: []ribcompare.NormalizedRoute{{
+				BGPRIB: []observationrib.NormalizedRoute{{
 					Node:            "r1",
 					NetworkInstance: "default",
 					AFI:             "ipv4",

@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/usecase/fibcompare"
+	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
-	"github.com/81ueman/hoyan-lab/internal/usecase/ribcompare"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -88,7 +89,7 @@ func NewLabsCheckCommand() *cobra.Command {
 			if err := opts.validate(); err != nil {
 				return err
 			}
-			if err := runLabsLiveCheck(cmd.Context(), args, opts, cmd.OutOrStdout(), ribcompare.ExecRunner{}); err != nil {
+			if err := runLabsLiveCheck(cmd.Context(), args, opts, cmd.OutOrStdout(), liveexec.ExecRunner{}); err != nil {
 				return ExitError{Code: 1, Err: err}
 			}
 			return nil
@@ -103,7 +104,7 @@ func NewLabsCheckCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.checkFIB, "check-fib", true, "compare modeled FIB with live installed FIB after BGP convergence")
 	cmd.Flags().BoolVar(&opts.noCheckFIB, "no-check-fib", false, "skip modeled-vs-live installed FIB comparison")
 	cmd.Flags().BoolVar(&opts.fibAllowUnsupported, "fib-allow-unsupported", false, "skip nodes without a live FIB collector when FIB comparison is enabled")
-	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(fibcompare.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	cmd.Flags().BoolVar(&opts.continueOnError, "continue-on-error", false, "continue running later labs after a lab fails")
 	return cmd
 }
@@ -131,7 +132,7 @@ func (o labsLiveCheckOptions) validate() error {
 	}.validate()
 }
 
-func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner ribcompare.Runner) error {
+func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner observationrib.Runner) error {
 	labs, err := selectedLabDescriptors(args)
 	if err != nil {
 		return err
@@ -144,7 +145,7 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
 		queriesPath := filepath.Join(lab.Path, labQueriesPath)
 		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
-		err := livecheck.Run(ctx, livecheck.Options{
+		err := livecheck.New(runner).Run(ctx, livecheck.Options{
 			Topology:      topologyPath,
 			Queries:       queriesPath,
 			StrictConfig:  opts.strictConfig,
@@ -154,9 +155,9 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			KeepOnFailure: opts.keepOnFailure,
 			SkipDestroy:   opts.skipDestroy,
 			CheckFIB:      opts.checkFIB && !opts.noCheckFIB,
-			FIBOptions:    fibcompare.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: fibcompare.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
+			FIBOptions:    observationfib.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
 			Out:           out,
-		}, runner)
+		})
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", lab.Name, err))
 			fmt.Fprintf(out, "[FAIL] %s: %v\n", lab.Name, err)

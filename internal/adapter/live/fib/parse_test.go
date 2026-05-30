@@ -1,0 +1,241 @@
+package fib
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestParseLinuxIPRoute(t *testing.T) {
+	data := []byte(`[
+	  {"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp","metric":20},
+	  {"dst":"10.0.0.10","gateway":"192.0.2.9","dev":"eth9","protocol":"bgp"},
+	  {"dst":"10.0.1.0/24","protocol":"bgp","metric":30,"nexthops":[{"gateway":"192.0.2.1","dev":"eth1","weight":1},{"gateway":"192.0.2.2","dev":"eth2","weight":1}]},
+	  {"dst":"default","gateway":"198.51.100.1","dev":"eth0","protocol":"static","metric":100},
+	  {"type":"blackhole","dst":"203.0.113.0/24","protocol":"static","metric":10},
+	  {"dst":"2001:db8::/64","dev":"eth3","protocol":"kernel"}
+	]`)
+	routes, err := ParseLinuxIPRoute("r1", data)
+	if err != nil {
+		t.Fatalf("ParseLinuxIPRoute() error = %v", err)
+	}
+	if len(routes) != 5 {
+		t.Fatalf("routes = %#v", routes)
+	}
+	if host := routeByPrefix(routes, "10.0.0.10/32"); host == nil {
+		t.Fatalf("routes = %#v, want host route normalized to /32", routes)
+	}
+	ecmp := routeByPrefix(routes, "10.0.1.0/24")
+	if ecmp == nil || len(ecmp.NextHops) != 2 {
+		t.Fatalf("ecmp route = %#v", ecmp)
+	}
+	if got, want := ecmp.NextHops[0], (NormalizedFIBNextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}); got != want {
+		t.Fatalf("first next-hop = %#v, want %#v", got, want)
+	}
+	if def := routeByPrefix(routes, "0.0.0.0/0"); def == nil || def.Protocol != "static" || def.Metric != 100 {
+		t.Fatalf("default route = %#v", def)
+	}
+	if blackhole := routeByPrefix(routes, "203.0.113.0/24"); blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+		t.Fatalf("blackhole route = %#v", blackhole)
+	}
+}
+
+func TestParseLinuxIPRouteCanonicalizesConnectedProtocol(t *testing.T) {
+	routes, err := ParseLinuxIPRoute("r1", []byte(`[{"dst":"192.0.2.0/31","dev":"eth1","protocol":"kernel"}]`))
+	if err != nil {
+		t.Fatalf("ParseLinuxIPRoute() error = %v", err)
+	}
+	route := routeByPrefix(routes, "192.0.2.0/31")
+	if route == nil || route.Protocol != "connected" {
+		t.Fatalf("route = %#v", route)
+	}
+}
+
+func TestParseCEOSRoutes(t *testing.T) {
+	data := []byte(`{
+	  "vrfs": {"default": {"routes": {
+	    "10.0.0.0/24": {
+	      "kernelProgrammed": true,
+	      "hardwareProgrammed": true,
+	      "routeType": "eBGP",
+	      "preference": 200,
+	      "metric": 10,
+	      "vias": [{"nexthopAddr":"192.0.2.1","interface":"Ethernet1"}]
+	    },
+	    "198.51.100.0/31": {
+	      "kernelProgrammed": true,
+	      "routeType": "connected",
+	      "vias": [{"interface":"Ethernet2"}]
+	    },
+	    "10.255.2.2/32": {
+	      "kernelProgrammed": true,
+	      "routeType": "ospfInternal",
+	      "preference": 110,
+	      "metric": 20,
+	      "vias": [{"nexthopAddr":"198.51.100.2","interface":"Ethernet3"}]
+	    },
+	    "203.0.113.0/24": {
+	      "kernelProgrammed": true,
+	      "routeType": "static",
+	      "vias": [{"interface":"Null0"}]
+	    }
+	  }}}
+	}`)
+	routes, err := ParseCEOSRoutes("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOSRoutes() error = %v", err)
+	}
+	route := routeByPrefix(routes, "10.0.0.0/24")
+	if route == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+	if route.Protocol != "bgp" || route.Preference != 200 || route.Metric != 10 {
+		t.Fatalf("route attrs = %#v", route)
+	}
+	if got, want := route.NextHops, []NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "Ethernet1"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("next-hops = %#v, want %#v", got, want)
+	}
+	connected := routeByPrefix(routes, "198.51.100.0/31")
+	if connected == nil || connected.Protocol != "connected" {
+		t.Fatalf("connected route = %#v", connected)
+	}
+	ospf := routeByPrefix(routes, "10.255.2.2/32")
+	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+		t.Fatalf("OSPF route = %#v", ospf)
+	}
+	blackhole := routeByPrefix(routes, "203.0.113.0/24")
+	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+		t.Fatalf("blackhole route = %#v", blackhole)
+	}
+}
+
+func TestParseCEOSRoutesMultipleVRFs(t *testing.T) {
+	data := []byte(`{"vrfs":{
+	  "tenant-a":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}},
+	  "tenant-b":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet2"}]}}}
+	}}`)
+	routes, err := ParseCEOSRoutes("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOSRoutes() error = %v", err)
+	}
+	for _, vrf := range []string{"tenant-a", "tenant-b"} {
+		route := routeByVRFPrefix(routes, vrf, "10.255.0.1/32")
+		if route == nil || route.Protocol != "static" {
+			t.Fatalf("%s route = %#v, routes=%#v", vrf, route, routes)
+		}
+	}
+}
+
+func TestParseSRLinuxRoutesNetworkInstance(t *testing.T) {
+	data := []byte(`{"instance":[{"ip route":[{"Prefix":"10.255.0.1/32","Route Type":"static","Active":"True","Next-hop (Type)":"192.0.2.2/32 (direct)","Next-hop Interface":"ethernet-1/1.0"}]}]}`)
+	routes, err := ParseSRLinuxRoutesNetworkInstance("srl1", "tenant-a", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRoutesNetworkInstance() error = %v", err)
+	}
+	route := routeByVRFPrefix(routes, "tenant-a", "10.255.0.1/32")
+	if route == nil || route.Protocol != "static" {
+		t.Fatalf("route = %#v, routes=%#v", route, routes)
+	}
+}
+
+func TestParseSRLinuxRoutes(t *testing.T) {
+	data := []byte("\x00noise\r\n" + `{
+	  "instance": [{
+	    "Name": "default",
+	    "ip route": [
+	      {"Prefix":"10.0.0.0/24","Route Type":"bgp","Active":"True","Metric":0,"Pref":170,"Next-hop (Type)":"192.0.2.1/31 (indirect/local)","Next-hop Interface":"ethernet-1/1.0 "},
+	      {"Prefix":"198.51.100.0/31","Route Type":"local","Active":"True","Metric":0,"Pref":0,"Next-hop (Type)":"198.51.100.1 (direct)","Next-hop Interface":"ethernet-1/2.0 "},
+	      {"Prefix":"198.51.100.0/24","Route Type":"blackhole","Active":"True","Metric":0,"Pref":1,"Next-hop (Type)":"None"},
+	      {"Prefix":"10.255.2.2/32","Route Type":"ospf-internal","Active":"True","Metric":20,"Pref":110,"Next-hop (Type)":"198.51.100.2/32 (direct)","Next-hop Interface":"ethernet-1/4.0 "},
+	      {"Prefix":"203.0.113.0/24","Route Type":"bgp","Active":"False","Next-hop (Type)":"192.0.2.2/31 (indirect/local)","Next-hop Interface":"ethernet-1/3.0 "}
+	    ]
+	  }]
+	}` + "\r\n")
+	routes, err := ParseSRLinuxRoutes("srl1", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRoutes() error = %v", err)
+	}
+	if routeByPrefix(routes, "203.0.113.0/24") != nil {
+		t.Fatalf("inactive route was parsed: %#v", routes)
+	}
+	route := routeByPrefix(routes, "10.0.0.0/24")
+	if route == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+	if route.Protocol != "bgp" || route.Preference != 170 {
+		t.Fatalf("route attrs = %#v", route)
+	}
+	if got, want := route.NextHops, []NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("next-hops = %#v, want %#v", got, want)
+	}
+	connected := routeByPrefix(routes, "198.51.100.0/31")
+	if connected == nil || connected.Protocol != "connected" {
+		t.Fatalf("connected route = %#v", connected)
+	}
+	ospf := routeByPrefix(routes, "10.255.2.2/32")
+	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+		t.Fatalf("OSPF route = %#v", ospf)
+	}
+	blackhole := routeByPrefix(routes, "198.51.100.0/24")
+	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+		t.Fatalf("blackhole route = %#v", blackhole)
+	}
+}
+
+func TestParseSRLinuxRouteDetailsNormalizesPeerGateway(t *testing.T) {
+	data := []byte(`{
+	  "instance": [{
+	    "Name": "default",
+	    "ip route": [{
+	      "Destination": "10.4.0.0/16",
+	      "ID": 0,
+	      "Route Type": "bgp",
+	      "Route Owner": "bgp_mgr",
+	      "Origin Network Instance": "default",
+	      "Metric": 0,
+	      "Preference": 170,
+	      "Active": true,
+	      "ip route nexthop": {
+	        "Next Hop Count": 1,
+	        "Next hops": "198.18.20.5 (indirect) resolved by route to 198.18.20.4/31 (local)\n  via 198.18.20.5 (direct) via [ethernet-1/4.0]"
+	      },
+	      "ip route backup nexthop": {
+	        "Backup Next Hop Count": 0,
+	        "Backup Next hops": ""
+	      }
+	    }]
+	  }]
+	}`)
+	routes, err := ParseSRLinuxRouteDetails("core-gz", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRouteDetails() error = %v", err)
+	}
+	route := routeByPrefix(routes, "10.4.0.0/16")
+	if route == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+	if route.Protocol != "bgp" || route.Preference != 170 {
+		t.Fatalf("route attrs = %#v", route)
+	}
+	want := []NormalizedFIBNextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
+	if !reflect.DeepEqual(route.NextHops, want) {
+		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
+	}
+}
+
+func routeByPrefix(routes []NormalizedFIBRoute, prefix string) *NormalizedFIBRoute {
+	for i := range routes {
+		if routes[i].Prefix == prefix {
+			return &routes[i]
+		}
+	}
+	return nil
+}
+
+func routeByVRFPrefix(routes []NormalizedFIBRoute, vrf, prefix string) *NormalizedFIBRoute {
+	for i := range routes {
+		if routes[i].VRF == vrf && routes[i].Prefix == prefix {
+			return &routes[i]
+		}
+	}
+	return nil
+}
