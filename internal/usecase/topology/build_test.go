@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
+	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -30,6 +32,78 @@ func TestLoadLabTopology(t *testing.T) {
 	}
 	if len(core.Neighbors) == 0 {
 		t.Fatalf("core-bj neighbors were not parsed from config")
+	}
+}
+
+func TestBuilderUsesInjectedPorts(t *testing.T) {
+	loader := &fakeLabFileLoader{
+		file: labfile.File{
+			Name: "ports-test",
+			Topology: struct {
+				Nodes map[string]labfile.Node `yaml:"nodes"`
+				Links []labfile.Link          `yaml:"links"`
+			}{
+				Nodes: map[string]labfile.Node{
+					"r1": {
+						Kind:          "linux",
+						MgmtIPv4:      "172.20.20.11",
+						StartupConfig: "configs/r1/frr.conf",
+					},
+					"r2": {
+						Kind:          "linux",
+						MgmtIPv4:      "172.20.20.12",
+						StartupConfig: "configs/r2/frr.conf",
+					},
+				},
+				Links: []labfile.Link{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
+			},
+		},
+	}
+	parser := &fakeConfigParser{
+		results: map[string]configparse.ParseResult{
+			filepath.Join("/virtual", "configs/r1/frr.conf"): {
+				Config: configparse.ParsedConfig{
+					ASN: 65001,
+					Interfaces: []model.Interface{{
+						Name:    "eth1",
+						Address: "192.0.2.1/30",
+					}},
+				},
+			},
+			filepath.Join("/virtual", "configs/r2/frr.conf"): {
+				Config: configparse.ParsedConfig{
+					ASN: 65002,
+					Interfaces: []model.Interface{{
+						Name:    "eth1",
+						Address: "192.0.2.2/30",
+					}},
+				},
+			},
+		},
+	}
+
+	topo, warnings, err := topology.NewBuilder(loader, parser).LoadTopologyWithOptions(filepath.Join("/virtual", "lab.clab.yml"), topology.LoadOptions{CollectWarnings: true})
+	if err != nil {
+		t.Fatalf("Builder.LoadTopologyWithOptions() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none", warnings)
+	}
+	if loader.loadedPath != filepath.Join("/virtual", "lab.clab.yml") {
+		t.Fatalf("loader path = %q, want topology path", loader.loadedPath)
+	}
+	if parser.parseCalls != 2 {
+		t.Fatalf("parser parse calls = %d, want 2", parser.parseCalls)
+	}
+	if len(topo.Nodes) != 2 || len(topo.Links) != 1 {
+		t.Fatalf("topology nodes=%d links=%d, want 2 nodes and 1 link", len(topo.Nodes), len(topo.Links))
+	}
+	r1, ok := topo.Node("r1")
+	if !ok || r1.ASN != 65001 || r1.ConfigPath != "configs/r1/frr.conf" {
+		t.Fatalf("r1 = %#v, want injected config data", r1)
+	}
+	if topo.Links[0].Subnet != "192.0.2.0/30" {
+		t.Fatalf("link subnet = %q, want 192.0.2.0/30", topo.Links[0].Subnet)
 	}
 }
 
@@ -480,6 +554,30 @@ func writeFile(t *testing.T, path, text string) {
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+type fakeLabFileLoader struct {
+	file       labfile.File
+	loadedPath string
+}
+
+func (l *fakeLabFileLoader) Load(path string) (labfile.File, error) {
+	l.loadedPath = path
+	return l.file, nil
+}
+
+type fakeConfigParser struct {
+	results    map[string]configparse.ParseResult
+	parseCalls int
+}
+
+func (p *fakeConfigParser) Parse(_ model.DeviceKind, path string, _ configparse.ParseOptions) (configparse.ParseResult, error) {
+	p.parseCalls++
+	return p.results[path], nil
+}
+
+func (*fakeConfigParser) ParseNftablesACL(string) ([]model.ACL, []model.ACLBinding, error) {
+	return nil, nil, nil
 }
 
 func mustReadFileString(t *testing.T, path string) string {

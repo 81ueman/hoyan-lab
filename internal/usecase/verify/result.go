@@ -194,3 +194,12 @@ func (r *Result) SetConditions(reachable, unreachable string) {
 		r.Failure.UnreachableCondition = unreachable
 	}
 }
+
+func (r Report) OK() bool {
+	for _, result := range r.Results {
+		if result.Metadata.Reachable != result.Metadata.Expected {
+			return false
+		}
+	}
+	return true
+}

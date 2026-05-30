@@ -113,6 +113,9 @@ func NewIntentVerifyCommand() *cobra.Command {
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
+			if err := resolveIntentSnapshotLabs(doc); err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
 			report, err := intent.Verify(doc)
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
@@ -153,7 +156,11 @@ func NewFactsRIBCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			snapshot, err := facts.Build(opts.labPath, "current")
+			labPath, err := resolveFactsLabPath(opts.labPath)
+			if err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			snapshot, err := facts.Build(labPath, "current")
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
@@ -175,7 +182,11 @@ func NewFactsFIBCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			snapshot, err := facts.Build(opts.labPath, "current")
+			labPath, err := resolveFactsLabPath(opts.labPath)
+			if err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			snapshot, err := facts.Build(labPath, "current")
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
@@ -220,4 +231,20 @@ func resolveIntentInput(cmd *cobra.Command, opts intentOptions) (string, error) 
 		return filepath.Join(labDir, labIntentPath), nil
 	}
 	return "", fmt.Errorf("--file or --lab is required")
+}
+
+func resolveFactsLabPath(raw string) (string, error) {
+	return resolveLabDir(raw)
+}
+
+func resolveIntentSnapshotLabs(doc *domainintent.Document) error {
+	for name, snapshot := range doc.Snapshots {
+		labDir, err := resolveLabDir(snapshot.Lab)
+		if err != nil {
+			return fmt.Errorf("snapshots[%q].lab: %w", name, err)
+		}
+		snapshot.Lab = labDir
+		doc.Snapshots[name] = snapshot
+	}
+	return nil
 }

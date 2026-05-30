@@ -46,7 +46,7 @@ func CompareRIBsWithFailures(ctx context.Context, runner observationrib.Runner, 
 	if activeNodes == nil {
 		activeNodes = liverib.SupportedNodes(topo.Nodes)
 	}
-	expected := ribcompare.ExpectedForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
 	if scenario.Inject != nil {
 		fmt.Fprintf(opts.Out, "injecting failure scenario %s\n", scenario.Name)
 		if err := scenario.Inject(ctx, runner); err != nil {

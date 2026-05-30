@@ -11,6 +11,7 @@ type Usecase struct {
 	collector observationfib.Collector
 }
 
+// New returns the preferred entry point for collector-backed live FIB collection.
 func New(collector observationfib.Collector) Usecase {
 	return Usecase{collector: collector}
 }
@@ -21,12 +22,4 @@ func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observati
 
 func (u Usecase) SupportedNodes(nodes []model.Node) []model.Node {
 	return u.collector.SupportedNodes(nodes)
-}
-
-func (u Usecase) Expected(topo *model.Topology) []observationfib.NormalizedFIBRoute {
-	return Expected(topo)
-}
-
-func (u Usecase) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationfib.NormalizedFIBRoute {
-	return ExpectedForNodes(topo, nodes)
 }

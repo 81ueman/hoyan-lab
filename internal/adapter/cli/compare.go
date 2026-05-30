@@ -77,7 +77,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 		return ExitError{Code: 2, Err: err}
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
-	expected := ribcompare.ExpectedForNodes(topo, nodes)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
 	var actual []observationrib.NormalizedRoute
 	if opts.snapshotPath != "" {
@@ -159,7 +159,7 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 		nodes = livefib.NewCollector(nil).SupportedNodes(nodes)
 	}
 	fibOpts := observationfib.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.unresolvedPolicy)}
-	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, nodes), fibOpts)
+	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, nodes), fibOpts)
 	var actualFiltered observationfib.FilterResult
 	if opts.snapshotPath != "" {
 		snap, err := snapshotfile.Load(opts.snapshotPath)

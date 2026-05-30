@@ -140,7 +140,7 @@ func TestRunSnapshotOfflineDoesNotCollectOrDeploy(t *testing.T) {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
-	expected := ribcompare.ExpectedForNodes(topo, nodes)
+	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	hashes, err := inputhash.InputHashes(topologyPath)
 	if err != nil {
 		t.Fatalf("InputHashes() error = %v", err)
