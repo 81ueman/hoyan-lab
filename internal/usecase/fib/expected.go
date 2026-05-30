@@ -10,11 +10,21 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
-func Expected(topo *model.Topology) []observationfib.NormalizedFIBRoute {
-	return ExpectedForNodes(topo, topo.Nodes)
+// ExpectedBuilder builds modeled FIB routes without depending on a live collector.
+type ExpectedBuilder struct{}
+
+// NewExpectedBuilder returns the preferred entry point for expected FIB generation.
+func NewExpectedBuilder() ExpectedBuilder {
+	return ExpectedBuilder{}
 }
 
-func ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationfib.NormalizedFIBRoute {
+// Expected builds modeled FIB routes for all topology nodes.
+func (b ExpectedBuilder) Expected(topo *model.Topology) []observationfib.NormalizedFIBRoute {
+	return b.ExpectedForNodes(topo, topo.Nodes)
+}
+
+// ExpectedForNodes builds modeled FIB routes for the selected topology nodes.
+func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationfib.NormalizedFIBRoute {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true

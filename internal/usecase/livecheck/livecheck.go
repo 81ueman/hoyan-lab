@@ -167,7 +167,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		if opts.FIBOptions.AllowUnsupported {
 			fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
 		}
-		expectedFIB := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts.FIBOptions)
+		expectedFIB := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, fibNodes), opts.FIBOptions)
 		actualFIB, err := fibcompare.New(livefib.NewCollector(runner)).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
 		if err != nil {
 			return err
@@ -243,7 +243,7 @@ func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, opts
 	if opts.AllowUnsupported {
 		fibNodes = livefib.NewCollector(nil).SupportedNodes(fibNodes)
 	}
-	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.ExpectedForNodes(topo, fibNodes), opts)
+	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, fibNodes), opts)
 	actual := observationfib.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), opts)
 	for _, line := range observationfib.FormatWarnings(observationfib.WarningDiagnostics(actual, opts)) {
 		fmt.Fprintln(out, line)

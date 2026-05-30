@@ -75,7 +75,7 @@ func TestExpectedForNodesNormalizesModeledFIB(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "src-dst", A: "src", B: "dst", AIntf: "eth1", BIntf: "eth1", Cost: 7, Subnet: "192.0.2.0/31"}},
 	}
-	routes := ExpectedForNodes(topo, []model.Node{topo.Nodes[0]})
+	routes := NewExpectedBuilder().ExpectedForNodes(topo, []model.Node{topo.Nodes[0]})
 	route := routeByPrefix(routes, "10.0.0.0/24")
 	if route == nil {
 		t.Fatalf("routes = %#v, want 10.0.0.0/24", routes)
@@ -129,7 +129,7 @@ func TestExpectedForNodesResolvesAddressOnlyRecursiveBGPNextHop(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "hz1-hz2", A: "hz-edge1", B: "hz-edge2", AIntf: "eth2", BIntf: "eth1", Subnet: "198.18.2.6/31"}},
 	}
-	routes := ExpectedForNodes(topo, []model.Node{topo.Nodes[0]})
+	routes := NewExpectedBuilder().ExpectedForNodes(topo, []model.Node{topo.Nodes[0]})
 	route := routeByPrefix(routes, "10.119.0.0/24")
 	if route == nil {
 		t.Fatalf("routes = %#v, want recursive BGP route", routes)
@@ -151,7 +151,7 @@ func TestExpectedForNodesSuppressesSRLinuxLoopbackConnectedFIB(t *testing.T) {
 			},
 		}},
 	}
-	routes := ExpectedForNodes(topo, topo.Nodes)
+	routes := NewExpectedBuilder().ExpectedForNodes(topo, topo.Nodes)
 	if routeByPrefix(routes, "10.255.0.1/32") != nil {
 		t.Fatalf("SR Linux loopback connected route should not be expected in live FIB: %#v", routes)
 	}
@@ -169,7 +169,7 @@ func TestExpectedForNodesKeepsLocalBlackholeAndSuppressesSamePrefixBGPFIB(t *tes
 		Prefixes: []model.Prefix{prefix},
 		Routes:   []model.ConfiguredRoute{{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0"}},
 	}}}
-	routes := ExpectedForNodes(topo, topo.Nodes)
+	routes := NewExpectedBuilder().ExpectedForNodes(topo, topo.Nodes)
 	if route := routeByPrefix(routes, prefix.String()); route == nil || route.Protocol != "blackhole" || len(route.NextHops) != 0 {
 		t.Fatalf("blackhole FIB route = %#v in %#v", route, routes)
 	}
