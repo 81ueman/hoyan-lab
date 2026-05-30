@@ -1,10 +1,8 @@
 package facts
 
 import (
-	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
@@ -31,7 +29,6 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 	if snapshotName == "" {
 		snapshotName = "current"
 	}
-	labPath = resolveLabPath(labPath)
 	topo, _, err := topology.LoadTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), topology.LoadOptions{})
 	if err != nil {
 		return Snapshot{}, err
@@ -92,17 +89,6 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 			factKey(ribRows[j].Snapshot, ribRows[j].Device, ribRows[j].Prefix, ribRows[j].Protocol, ribRows[j].NextHop)
 	})
 	return Snapshot{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: graph, RIB: ribRows, FIB: fibRows}, nil
-}
-
-func resolveLabPath(raw string) string {
-	if raw == "" || strings.ContainsRune(raw, filepath.Separator) || filepath.IsAbs(raw) {
-		return raw
-	}
-	candidate := filepath.Join("labs", raw)
-	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-		return candidate
-	}
-	return raw
 }
 
 func nodeNames(topo *model.Topology) []string {
