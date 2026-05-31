@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/facts"
@@ -205,8 +206,8 @@ func evaluateCompare(in Intent, loadSnapshot func(string) (facts.Snapshot, error
 	if err != nil {
 		return nil, err
 	}
-	leftRows := facts.CanonicalRIBRows(matchingRIBFacts(left, compare.Left.Where))
-	rightRows := facts.CanonicalRIBRows(matchingRIBFacts(right, compare.Right.Where))
+	leftRows := canonicalRIBRows(matchingRIBFacts(left, compare.Left.Where))
+	rightRows := canonicalRIBRows(matchingRIBFacts(right, compare.Right.Where))
 	added, removed := ribDiff(leftRows, rightRows)
 	assertion := Assertion{Relation: compare.Relation}
 	result := Result{
@@ -230,42 +231,166 @@ func evaluateCompare(in Intent, loadSnapshot func(string) (facts.Snapshot, error
 
 type rowView struct {
 	Table string
-	RIB   *facts.RIBRow
-	FIB   *facts.FIBRow
+	RIB   *ribRouteView
+	FIB   *fibEntryView
+}
+
+type ribRouteView struct {
+	Device    string `json:"device"`
+	VRF       string `json:"vrf,omitempty"`
+	Prefix    string `json:"prefix"`
+	Protocol  string `json:"protocol,omitempty"`
+	NextHop   string `json:"nexthop,omitempty"`
+	LocalPref int    `json:"local_pref,omitempty"`
+	MED       int    `json:"med,omitempty"`
+	Selected  bool   `json:"selected"`
+	Installed bool   `json:"installed,omitempty"`
+}
+
+type fibEntryView struct {
+	Device    string `json:"device"`
+	VRF       string `json:"vrf,omitempty"`
+	Prefix    string `json:"prefix"`
+	Protocol  string `json:"protocol,omitempty"`
+	Action    string `json:"action,omitempty"`
+	NextHop   string `json:"nexthop,omitempty"`
+	Interface string `json:"interface,omitempty"`
+	Installed bool   `json:"installed"`
 }
 
 func matchingRows(table string, where map[string]any, snapshot facts.Snapshot) []rowView {
 	var rows []rowView
 	switch table {
 	case "rib":
-		for _, row := range snapshot.RIB {
-			if matchRIB(row, where) {
-				cp := row
-				rows = append(rows, rowView{Table: table, RIB: &cp})
+		for _, rib := range snapshot.RIB {
+			for _, row := range ribRouteViews(snapshot, rib) {
+				if matchRIB(row, where) {
+					cp := row
+					rows = append(rows, rowView{Table: table, RIB: &cp})
+				}
 			}
 		}
 	case "fib":
-		for _, row := range snapshot.FIB {
-			if matchFIB(row, where) {
-				cp := row
-				rows = append(rows, rowView{Table: table, FIB: &cp})
+		for _, fib := range snapshot.FIB {
+			for _, row := range fibEntryViews(fib) {
+				if matchFIB(row, where) {
+					cp := row
+					rows = append(rows, rowView{Table: table, FIB: &cp})
+				}
 			}
 		}
 	}
 	return rows
 }
 
-func matchingRIBFacts(snapshot facts.Snapshot, where map[string]any) []facts.RIBRow {
-	var rows []facts.RIBRow
-	for _, row := range snapshot.RIB {
-		if matchRIB(row, where) {
-			rows = append(rows, row)
+func matchingRIBFacts(snapshot facts.Snapshot, where map[string]any) []ribRouteView {
+	var rows []ribRouteView
+	for _, rib := range snapshot.RIB {
+		for _, row := range ribRouteViews(snapshot, rib) {
+			if matchRIB(row, where) {
+				rows = append(rows, row)
+			}
 		}
 	}
 	return rows
 }
 
-func matchRIB(row facts.RIBRow, where map[string]any) bool {
+func ribRouteViews(snapshot facts.Snapshot, rib observation.RIB) []ribRouteView {
+	out := make([]ribRouteView, 0, len(rib.Routes))
+	for _, route := range rib.Routes {
+		nextHop, localPref, med := ribRouteBestPathFields(route)
+		out = append(out, ribRouteView{
+			Device:    string(rib.Node),
+			VRF:       string(rib.VRF),
+			Prefix:    route.Common.Prefix,
+			Protocol:  string(route.Common.Protocol),
+			NextHop:   nextHop,
+			LocalPref: localPref,
+			MED:       med,
+			Selected:  route.Common.Best,
+			Installed: fibHasPrefix(snapshot.FIB, rib.Node, route.Common.Prefix),
+		})
+	}
+	return out
+}
+
+func ribRouteBestPathFields(route observation.RIBRoute) (string, int, int) {
+	if route.BGP != nil {
+		for _, path := range route.BGP.Paths {
+			if path.Best {
+				return path.NextHop.Address, path.LocalPref, path.MED
+			}
+		}
+		if len(route.BGP.Paths) > 0 {
+			path := route.BGP.Paths[0]
+			return path.NextHop.Address, path.LocalPref, path.MED
+		}
+	}
+	for _, hop := range ribRouteNextHops(route) {
+		return hop.Address, 0, 0
+	}
+	return "", 0, 0
+}
+
+func ribRouteNextHops(route observation.RIBRoute) []observation.NextHop {
+	switch {
+	case route.OSPF != nil:
+		out := make([]observation.NextHop, 0, len(route.OSPF.Paths))
+		for _, path := range route.OSPF.Paths {
+			out = append(out, path.NextHop)
+		}
+		return out
+	case route.Static != nil:
+		return route.Static.NextHops
+	}
+	return nil
+}
+
+func fibEntryViews(fib observation.FIB) []fibEntryView {
+	var out []fibEntryView
+	for _, entry := range fib.Entries {
+		if len(entry.NextHops) == 0 {
+			out = append(out, fibEntryView{
+				Device:    string(fib.Node),
+				VRF:       string(fib.VRF),
+				Prefix:    entry.Prefix,
+				Protocol:  string(entry.Source.Protocol),
+				Action:    string(entry.Action),
+				Installed: true,
+			})
+			continue
+		}
+		for _, hop := range entry.NextHops {
+			out = append(out, fibEntryView{
+				Device:    string(fib.Node),
+				VRF:       string(fib.VRF),
+				Prefix:    entry.Prefix,
+				Protocol:  string(entry.Source.Protocol),
+				Action:    string(entry.Action),
+				NextHop:   hop.Address,
+				Interface: hop.Interface,
+				Installed: true,
+			})
+		}
+	}
+	return out
+}
+
+func fibHasPrefix(fibs []observation.FIB, node model.NodeID, prefix string) bool {
+	for _, fib := range fibs {
+		if fib.Node != node {
+			continue
+		}
+		for _, entry := range fib.Entries {
+			if entry.Prefix == prefix {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func matchRIB(row ribRouteView, where map[string]any) bool {
 	return matchWhere(where, func(field string) (any, bool) {
 		switch field {
 		case "device":
@@ -291,13 +416,19 @@ func matchRIB(row facts.RIBRow, where map[string]any) bool {
 	})
 }
 
-func matchFIB(row facts.FIBRow, where map[string]any) bool {
+func matchFIB(row fibEntryView, where map[string]any) bool {
 	return matchWhere(where, func(field string) (any, bool) {
 		switch field {
 		case "device":
 			return row.Device, true
+		case "vrf":
+			return row.VRF, true
 		case "prefix":
 			return row.Prefix, true
+		case "protocol":
+			return row.Protocol, true
+		case "action":
+			return row.Action, true
 		case "nexthop":
 			return row.NextHop, true
 		case "interface":
@@ -523,16 +654,42 @@ func summarizeRows(rows []rowView) []string {
 	return out
 }
 
-func ribDiff(left, right []facts.CanonicalRIBRow) ([]facts.CanonicalRIBRow, []facts.CanonicalRIBRow) {
-	leftByKey := map[string]facts.CanonicalRIBRow{}
-	rightByKey := map[string]facts.CanonicalRIBRow{}
+type canonicalRIBRow struct {
+	Device    string `json:"device"`
+	VRF       string `json:"vrf,omitempty"`
+	Prefix    string `json:"prefix"`
+	Protocol  string `json:"protocol,omitempty"`
+	NextHop   string `json:"nexthop,omitempty"`
+	LocalPref int    `json:"local_pref,omitempty"`
+	MED       int    `json:"med,omitempty"`
+	Selected  bool   `json:"selected"`
+	Installed bool   `json:"installed,omitempty"`
+}
+
+func canonicalRIBRows(rows []ribRouteView) []canonicalRIBRow {
+	out := make([]canonicalRIBRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, canonicalRIBRow(row))
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Key() < out[j].Key() })
+	return out
+}
+
+func (row canonicalRIBRow) Key() string {
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%010d\x00%010d\x00%t\x00%t",
+		row.Device, row.VRF, row.Prefix, row.Protocol, row.NextHop, row.LocalPref, row.MED, row.Selected, row.Installed)
+}
+
+func ribDiff(left, right []canonicalRIBRow) ([]canonicalRIBRow, []canonicalRIBRow) {
+	leftByKey := map[string]canonicalRIBRow{}
+	rightByKey := map[string]canonicalRIBRow{}
 	for _, row := range left {
 		leftByKey[row.Key()] = row
 	}
 	for _, row := range right {
 		rightByKey[row.Key()] = row
 	}
-	var added, removed []facts.CanonicalRIBRow
+	var added, removed []canonicalRIBRow
 	for key, row := range rightByKey {
 		if _, ok := leftByKey[key]; !ok {
 			added = append(added, row)
@@ -548,7 +705,7 @@ func ribDiff(left, right []facts.CanonicalRIBRow) ([]facts.CanonicalRIBRow, []fa
 	return added, removed
 }
 
-func canonicalRowsAsAny(rows []facts.CanonicalRIBRow) []any {
+func canonicalRowsAsAny(rows []canonicalRIBRow) []any {
 	out := make([]any, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, row)

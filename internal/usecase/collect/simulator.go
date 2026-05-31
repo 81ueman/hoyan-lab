@@ -71,9 +71,9 @@ func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf model.Ne
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
 	}
-	routes := fibusecase.NewExpectedBuilder().ExpectedForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
-	routes = filterFIBEntrys(routes, string(node), string(vrf))
-	return observation.FilterFIB(observation.FIBFromRouteRecords(node, vrf, routes), opts), nil
+	fibs := fibusecase.NewExpectedBuilder().ExpectedFIBsForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
+	fib := filterFIBs(fibs, node, vrf)
+	return observation.FilterFIB(fib, opts), nil
 }
 
 func (s Simulator) node(node model.NodeID) (model.Node, bool) {

@@ -1,8 +1,25 @@
 package fib
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+)
 
 func ParseCEOSRoutes(node string, data []byte) ([]FIBEntry, error) {
+	fibs, err := ParseCEOSFIBs(node, data)
+	if err != nil {
+		return nil, err
+	}
+	var out []FIBEntry
+	for _, fib := range fibs {
+		out = append(out, fib.Entries...)
+	}
+	sortRoutes(out)
+	return out, nil
+}
+
+func ParseCEOSFIBs(node string, data []byte) ([]FIB, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -11,8 +28,9 @@ func ParseCEOSRoutes(node string, data []byte) ([]FIBEntry, error) {
 	if len(vrfs) == 0 {
 		vrfs = map[string]any{"default": raw}
 	}
-	var out []FIBEntry
+	var out []FIB
 	for ni, rawVRF := range vrfs {
+		fib := FIB{Node: model.NodeID(node), VRF: model.NetworkInstanceID(ni)}
 		routes := mapValue(mapValue(rawVRF)["routes"])
 		for prefix, value := range routes {
 			m := mapValue(value)
@@ -26,21 +44,21 @@ func ParseCEOSRoutes(node string, data []byte) ([]FIBEntry, error) {
 				nextHops = nil
 			}
 			route := FIBEntry{
-				Node:       node,
-				VRF:        ni,
 				AFI:        "ipv4",
 				Prefix:     prefix,
 				NextHops:   nextHops,
-				Protocol:   protocol,
+				Source:     canonicalRouteSource(protocol),
+				Action:     forwardingAction(protocol, nextHops),
 				Preference: intValue(m["preference"]),
 				Metric:     intValue(m["metric"]),
-				Installed:  true,
 			}
 			route.NextHops = dedupeNextHops(route.NextHops)
-			out = append(out, route)
+			fib.Entries = append(fib.Entries, route)
 		}
+		sortRoutes(fib.Entries)
+		out = append(out, fib)
 	}
-	sortRoutes(out)
+	out = sortedFIBs(out)
 	return out, nil
 }
 

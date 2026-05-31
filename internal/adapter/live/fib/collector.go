@@ -18,12 +18,12 @@ func NewCollector(runner Runner) LiveCollector {
 	return LiveCollector{runner: runner}
 }
 
-func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]FIBEntry, error) {
+func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]FIB, error) {
 	return NewCollector(runner).Collect(ctx, nodes, opts)
 }
 
-func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIBEntry, error) {
-	var out []FIBEntry
+func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIB, error) {
+	var out []FIB
 	unsupported := unsupportedNodes(nodes)
 	if len(unsupported) > 0 && !opts.AllowUnsupported {
 		return nil, UnsupportedNodesError{Nodes: unsupported}
@@ -48,7 +48,7 @@ func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node, opts Opt
 		}
 		out = append(out, routes...)
 	}
-	SortRoutes(out)
+	out = sortedFIBs(out)
 	return out, nil
 }
 
@@ -96,7 +96,7 @@ type ceosCollector struct{}
 type srlinuxCollector struct{}
 
 type collector interface {
-	Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error)
+	Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIB, error)
 }
 
 func fibCollectorsByID() map[model.LiveCollectorID]collector {
@@ -107,8 +107,8 @@ func fibCollectorsByID() map[model.LiveCollectorID]collector {
 	}
 }
 
-func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
-	var out []FIBEntry
+func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIB, error) {
+	var out []FIB
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		vrfs, err := collectLinuxVRFs(ctx, runner, containerName)
@@ -124,7 +124,7 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 			if err != nil {
 				return nil, fmt.Errorf("%s Linux kernel FIB table %s: %w", n.Name, table, err)
 			}
-			out = append(out, routes...)
+			out = append(out, FIB{Node: model.NodeID(n.Name), VRF: model.NetworkInstanceID(model.NetworkInstanceDefault), Entries: routes})
 		}
 		for _, vrf := range vrfs {
 			data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "route", "show", "vrf", vrf)
@@ -135,10 +135,10 @@ func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.No
 			if err != nil {
 				return nil, fmt.Errorf("%s Linux kernel FIB vrf %s: %w", n.Name, vrf, err)
 			}
-			out = append(out, routes...)
+			out = append(out, FIB{Node: model.NodeID(n.Name), VRF: model.NetworkInstanceID(model.NormalizeNetworkInstance(vrf)), Entries: routes})
 		}
 	}
-	SortRoutes(out)
+	out = sortedFIBs(out)
 	return out, nil
 }
 
@@ -162,26 +162,26 @@ func collectLinuxVRFs(ctx context.Context, runner Runner, containerName string) 
 	return out, nil
 }
 
-func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
-	var out []FIBEntry
+func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIB, error) {
+	var out []FIB
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 		if err != nil {
 			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
 		}
-		routes, err := ParseCEOSRoutes(n.Name, data)
+		fibs, err := ParseCEOSFIBs(n.Name, data)
 		if err != nil {
 			return nil, fmt.Errorf("%s cEOS installed FIB: %w", n.Name, err)
 		}
-		out = append(out, routes...)
+		out = append(out, fibs...)
 	}
-	SortRoutes(out)
+	out = sortedFIBs(out)
 	return out, nil
 }
 
-func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
-	var out []FIBEntry
+func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIB, error) {
+	var out []FIB
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
@@ -209,15 +209,15 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 					routes[i].NextHops = detailRoute.NextHops
 				}
 			}
-			out = append(out, routes...)
+			out = append(out, FIB{Node: model.NodeID(n.Name), VRF: model.NetworkInstanceID(model.NormalizeNetworkInstance(ni)), Entries: routes})
 		}
 	}
-	SortRoutes(out)
+	out = sortedFIBs(out)
 	return out, nil
 }
 
 func srlinuxNeedsRouteDetail(route FIBEntry) bool {
-	switch CanonicalProtocol(route.Protocol) {
+	switch route.Source.Protocol {
 	case "bgp", "static":
 		return true
 	default:
@@ -227,7 +227,7 @@ func srlinuxNeedsRouteDetail(route FIBEntry) bool {
 
 func srlinuxRouteDetailFor(summary FIBEntry, details []FIBEntry) (FIBEntry, bool) {
 	for _, detail := range details {
-		if detail.Node == summary.Node && detail.VRF == summary.VRF && detail.AFI == summary.AFI && detail.Prefix == summary.Prefix && CanonicalProtocol(detail.Protocol) == CanonicalProtocol(summary.Protocol) {
+		if detail.AFI == summary.AFI && detail.Prefix == summary.Prefix && detail.Source.Protocol == summary.Source.Protocol {
 			return detail, true
 		}
 	}

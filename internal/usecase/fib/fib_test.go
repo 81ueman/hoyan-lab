@@ -12,15 +12,13 @@ import (
 
 func TestComparableRoutesCanonicalizesNextHopInterfaceByDeviceProfile(t *testing.T) {
 	topo := &model.Topology{Nodes: []model.Node{{Name: "srl1", Kind: model.KindSRLinux}}}
-	routes := observation.ComparableRoutes(topo, []observation.FIBEntry{{
-		Node:      "srl1",
-		VRF:       "default",
-		AFI:       "ipv4",
-		Prefix:    "203.0.113.0/24",
-		Protocol:  "static",
-		NextHops:  []observation.NextHop{{Address: "192.0.2.1", Interface: "e1-4"}},
-		Installed: true,
+	fib := observation.AnalyzeComparableFIBEntries(topo, "srl1", "default", []observation.FIBEntry{{
+		AFI:      "ipv4",
+		Prefix:   "203.0.113.0/24",
+		Source:   observation.RouteSource{Protocol: model.RouteSourceStatic},
+		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "e1-4"}},
 	}}, observation.Options{})
+	routes := fib.Entries
 	if len(routes) != 1 || len(routes[0].NextHops) != 1 {
 		t.Fatalf("routes = %#v", routes)
 	}
@@ -40,18 +38,18 @@ func TestComparableRoutesIncludesConnectedClasses(t *testing.T) {
 		Links: []model.Link{{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1"}},
 	}
 	routes := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "192.0.2.0/31", Protocol: "connected", NextHops: []observation.NextHop{{Interface: "eth1"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.255.0.1/32", Protocol: "kernel", NextHops: []observation.NextHop{{Interface: "lo"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "203.0.113.1/32", Protocol: "kernel", NextHops: []observation.NextHop{{Interface: "dummy0"}}},
+		{AFI: "ipv4", Prefix: "192.0.2.0/31", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, NextHops: []observation.NextHop{{Interface: "eth1"}}},
+		{AFI: "ipv4", Prefix: "10.255.0.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, NextHops: []observation.NextHop{{Interface: "lo"}}},
+		{AFI: "ipv4", Prefix: "203.0.113.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, NextHops: []observation.NextHop{{Interface: "dummy0"}}},
 	}
 	filtered := observation.ComparableRoutes(topo, routes, observation.Options{})
 	if len(filtered) != 2 {
 		t.Fatalf("filtered routes = %#v", filtered)
 	}
-	if route := routeByPrefix(filtered, "192.0.2.0/31"); route == nil || route.ConnectedClass != model.ConnectedRouteClassLink {
+	if route := routeByPrefix(filtered, "192.0.2.0/31"); route == nil {
 		t.Fatalf("link route = %#v", route)
 	}
-	if route := routeByPrefix(filtered, "10.255.0.1/32"); route == nil || route.ConnectedClass != model.ConnectedRouteClassLoopback {
+	if route := routeByPrefix(filtered, "10.255.0.1/32"); route == nil {
 		t.Fatalf("loopback route = %#v", route)
 	}
 	if route := routeByPrefix(filtered, "192.0.2.0/31"); route == nil || len(route.NextHops) != 1 || route.NextHops[0].Address != "" {
@@ -81,7 +79,7 @@ func TestExpectedForNodesNormalizesModeledFIB(t *testing.T) {
 		t.Fatalf("routes = %#v, want 10.0.0.0/24", routes)
 	}
 	wantHop := observation.NextHop{Address: "192.0.2.0", Interface: "eth1"}
-	if !reflect.DeepEqual(route.NextHops, []observation.NextHop{wantHop}) || route.Protocol != "bgp" || route.Metric != 7 {
+	if !reflect.DeepEqual(route.NextHops, []observation.NextHop{wantHop}) || route.Source.Protocol != "bgp" || route.Metric != 7 {
 		t.Fatalf("route = %#v", route)
 	}
 }
@@ -170,11 +168,11 @@ func TestExpectedForNodesKeepsLocalBlackholeAndSuppressesSamePrefixBGPFIB(t *tes
 		Routes:   []model.ConfiguredRoute{{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0"}},
 	}}}
 	routes := NewExpectedBuilder().ExpectedForNodes(topo, topo.Nodes)
-	if route := routeByPrefix(routes, prefix.String()); route == nil || route.Protocol != "blackhole" || len(route.NextHops) != 0 {
+	if route := routeByPrefix(routes, prefix.String()); route == nil || route.Source.Protocol != "blackhole" || len(route.NextHops) != 0 {
 		t.Fatalf("blackhole FIB route = %#v in %#v", route, routes)
 	}
 	for _, route := range routes {
-		if route.Prefix == prefix.String() && route.Protocol == "bgp" {
+		if route.Prefix == prefix.String() && route.Source.Protocol == "bgp" {
 			t.Fatalf("same-prefix BGP route should not be expected in local FIB: %#v", routes)
 		}
 	}
@@ -182,12 +180,12 @@ func TestExpectedForNodesKeepsLocalBlackholeAndSuppressesSamePrefixBGPFIB(t *tes
 
 func TestCompareReportsRouteAndNextHopDiffs(t *testing.T) {
 	expected := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.1.0/24"},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
+		{AFI: "ipv4", Prefix: "10.0.1.0/24"},
 	}
 	actual := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth1"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.2.0/24"},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth1"}}},
+		{AFI: "ipv4", Prefix: "10.0.2.0/24"},
 	}
 	result := observation.CompareFIBEntries(expected, actual)
 	if result.OK {
@@ -199,14 +197,14 @@ func TestCompareReportsRouteAndNextHopDiffs(t *testing.T) {
 }
 
 func TestCompareFIBUsesTableScopedRouteKeys(t *testing.T) {
-	expected := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
-		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+	expected := observation.FIB{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
+		AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Action: observation.ActionForward,
 		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
-	}})
-	actual := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
-		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+	}}}
+	actual := observation.FIB{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
+		AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Action: observation.ActionForward,
 		NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth1"}},
-	}})
+	}}}
 
 	result := observation.CompareFIB(expected, actual)
 	if result.OK || len(result.MissingNextHops) != 1 || len(result.UnexpectedNextHops) != 1 {
@@ -218,10 +216,10 @@ func TestCompareFIBUsesTableScopedRouteKeys(t *testing.T) {
 }
 
 func TestCompareFIBReportsTableIdentityMismatch(t *testing.T) {
-	expected := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
-		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+	expected := observation.FIB{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
+		AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Action: observation.ActionForward,
 		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
-	}})
+	}}}
 	actual := expected
 	actual.Node = "r2"
 	actual.VRF = "blue"
@@ -237,8 +235,8 @@ func TestCompareFIBReportsTableIdentityMismatch(t *testing.T) {
 
 func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 	expected := observation.FIB{
-		Node: "r1",
-		VRF:  "default",
+
+		VRF: "default",
 		Entries: []observation.FIBEntry{{
 			AFI:    model.AFIIPv4,
 			Prefix: "10.0.0.0/24",
@@ -249,8 +247,8 @@ func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 		}},
 	}
 	actual := observation.FIB{
-		Node: "r1",
-		VRF:  "default",
+
+		VRF: "default",
 		Entries: []observation.FIBEntry{{
 			AFI:    model.AFIIPv4,
 			Prefix: "10.0.0.0/24",
@@ -269,8 +267,8 @@ func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 
 func TestNormalizeFIBEntriesMergesDuplicateNextHops(t *testing.T) {
 	routes, conflicts := observation.NormalizeFIBEntries([]observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 20, NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 20, NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth2"}}},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 20, NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 20, NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth2"}}},
 	})
 	if len(conflicts) != 0 || len(routes) != 1 {
 		t.Fatalf("routes=%#v conflicts=%#v, want one merged route and no conflicts", routes, conflicts)
@@ -286,8 +284,8 @@ func TestNormalizeFIBEntriesMergesDuplicateNextHops(t *testing.T) {
 
 func TestCompareReportsDuplicateRouteConflictForPreference(t *testing.T) {
 	result := observation.CompareFIBEntries([]observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 20},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 30},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 20},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 30},
 	}, nil)
 	if result.OK || len(result.DuplicateRouteConflicts) != 1 {
 		t.Fatalf("result = %#v, want duplicate route conflict", result)
@@ -298,24 +296,14 @@ func TestCompareReportsDuplicateRouteConflictForPreference(t *testing.T) {
 	}
 }
 
-func TestCompareReportsDuplicateRouteConflictForConnectedClass(t *testing.T) {
-	result := observation.CompareFIBEntries([]observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "192.0.2.0/31", Protocol: "connected", ConnectedClass: model.ConnectedRouteClassLink, Installed: true},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "192.0.2.0/31", Protocol: "connected", ConnectedClass: model.ConnectedRouteClassLoopback, Installed: true},
-	}, nil)
-	if result.OK || len(result.DuplicateRouteConflicts) != 1 || result.DuplicateRouteConflicts[0].Reason != "connected_class mismatch" {
-		t.Fatalf("result = %#v, want connected class duplicate conflict", result)
-	}
-}
-
 func TestCompareReportsExpectedAndActualDuplicateRouteConflicts(t *testing.T) {
 	expected := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 20},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 30},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 20},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 30},
 	}
 	actual := []observation.FIBEntry{
-		{Node: "r2", VRF: "default", AFI: "ipv4", Prefix: "10.0.1.0/24", Protocol: "bgp", Installed: true, Metric: 10},
-		{Node: "r2", VRF: "default", AFI: "ipv4", Prefix: "10.0.1.0/24", Protocol: "bgp", Installed: true, Metric: 20},
+		{AFI: "ipv4", Prefix: "10.0.1.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Metric: 10},
+		{AFI: "ipv4", Prefix: "10.0.1.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Metric: 20},
 	}
 	result := observation.CompareFIBEntries(expected, actual)
 	if result.OK || len(result.DuplicateRouteConflicts) != 2 {
@@ -328,12 +316,12 @@ func TestCompareReportsExpectedAndActualDuplicateRouteConflicts(t *testing.T) {
 
 func TestCompareDuplicateRoutesDoNotSilentlyOverwrite(t *testing.T) {
 	expected := []observation.FIBEntry{{
-		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true,
+		AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP},
 		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
 	}}
 	actual := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth2"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth2"}}},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},
 	}
 	result := observation.CompareFIBEntries(expected, actual)
 	if result.OK || len(result.UnexpectedNextHops) != 1 || result.UnexpectedNextHops[0].NextHopKey != "192.0.2.2|eth2" {
@@ -347,8 +335,8 @@ func TestFormatAndJSONIncludeDuplicateRouteConflict(t *testing.T) {
 		Side:     "expected",
 		Reason:   "preference mismatch",
 		Routes: []observation.FIBEntry{
-			{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Preference: 20},
-			{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Preference: 30},
+			{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 20},
+			{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, Preference: 30},
 		},
 	}}}
 	lines := observation.FormatFIBDiffs(result)
@@ -377,8 +365,8 @@ func TestComparableRoutesFiltersNonBGPAndUnsupportedNextHops(t *testing.T) {
 		},
 	}
 	routes := []observation.FIBEntry{
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "0.0.0.0/0", Protocol: "", NextHops: []observation.NextHop{{Address: "172.16.0.1", Interface: "eth0"}}},
-		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", NextHops: []observation.NextHop{{Address: "192.0.2.0", Interface: "eth1"}, {Address: "198.51.100.0", Interface: "eth2"}}},
+		{AFI: "ipv4", Prefix: "0.0.0.0/0", Source: observation.RouteSource{}, NextHops: []observation.NextHop{{Address: "172.16.0.1", Interface: "eth0"}}},
+		{AFI: "ipv4", Prefix: "10.0.0.0/24", Source: observation.RouteSource{Protocol: model.RouteSourceBGP}, NextHops: []observation.NextHop{{Address: "192.0.2.0", Interface: "eth1"}, {Address: "198.51.100.0", Interface: "eth2"}}},
 	}
 	filtered := observation.ComparableRoutes(topo, routes, observation.Options{AllowUnsupported: true})
 	if len(filtered) != 1 {
@@ -398,22 +386,20 @@ func TestAnalyzeComparableRoutesReportsManagementFallback(t *testing.T) {
 		Links: []model.Link{{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1"}},
 	}
 	routes := []observation.FIBEntry{{
-		Node:     "r1",
-		VRF:      "default",
 		AFI:      "ipv4",
 		Prefix:   "10.3.0.0/16",
-		Protocol: "bgp",
+		Source:   observation.RouteSource{Protocol: model.RouteSourceBGP},
 		NextHops: []observation.NextHop{{Address: "172.86.191.1", Interface: "eth0"}},
 	}}
-	result := observation.AnalyzeComparableRoutes(topo, routes, observation.Options{})
-	if len(result.Routes) != 0 {
-		t.Fatalf("routes = %#v, want unresolved route excluded", result.Routes)
+	result := observation.AnalyzeComparableRoutes(topo, []observation.FIB{{Node: "r1", VRF: "default", Entries: routes}}, observation.Options{})
+	if len(result.FIBs) != 1 || len(result.FIBs[0].Entries) != 0 {
+		t.Fatalf("fibs = %#v, want unresolved route excluded", result.FIBs)
 	}
 	if len(result.Unresolved) != 1 {
 		t.Fatalf("unresolved = %#v, want one diagnostic", result.Unresolved)
 	}
 	got := result.Unresolved[0]
-	if got.RouteKey != "r1|default|ipv4|10.3.0.0/16" || got.Reason != "unresolved_or_mgmt_fallback" {
+	if got.RouteKey != "r1|default|ipv4|bgp|forward|10.3.0.0/16" || got.Reason != "unresolved_or_mgmt_fallback" {
 		t.Fatalf("diagnostic = %#v", got)
 	}
 	if len(got.NextHops) != 1 || got.NextHops[0].Reason != "unresolved_or_mgmt_fallback" {
@@ -422,16 +408,15 @@ func TestAnalyzeComparableRoutesReportsManagementFallback(t *testing.T) {
 }
 
 func TestCompareFilterResultsWarnExcludesUnresolvedRoute(t *testing.T) {
-	expected := observation.FilterResult{Routes: []observation.FIBEntry{{
-		Node:     "r1",
-		VRF:      "default",
+	expected := observation.FilterResult{FIBs: []observation.FIB{{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
 		AFI:      "ipv4",
 		Prefix:   "10.3.0.0/16",
-		Protocol: "bgp",
+		Source:   observation.RouteSource{Protocol: model.RouteSourceBGP},
+		Action:   observation.ActionForward,
 		NextHops: []observation.NextHop{{Address: "192.0.2.0", Interface: "eth1"}},
-	}}}
+	}}}}}
 	actual := observation.FilterResult{Unresolved: []observation.UnresolvedRoute{{
-		RouteKey: "r1|default|ipv4|10.3.0.0/16",
+		RouteKey: "r1|default|ipv4|bgp|forward|10.3.0.0/16",
 		Node:     "r1",
 		VRF:      "default",
 		AFI:      "ipv4",
@@ -459,11 +444,9 @@ func TestComparableRoutesKeepsSRLinuxDetailNextHopAddress(t *testing.T) {
 		Links: []model.Link{{Name: "gz-hz", A: "core-gz", B: "core-hz", AIntf: "e1-4", BIntf: "eth3"}},
 	}
 	routes := []observation.FIBEntry{{
-		Node:     "core-gz",
-		VRF:      "default",
 		AFI:      "ipv4",
 		Prefix:   "10.4.0.0/16",
-		Protocol: "bgp",
+		Source:   observation.RouteSource{Protocol: model.RouteSourceBGP},
 		NextHops: []observation.NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}},
 	}}
 	filtered := observation.ComparableRoutes(topo, routes, observation.Options{})

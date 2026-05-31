@@ -47,7 +47,8 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
-	if len(routes) != 1 || routes[0].Prefix != "10.0.0.0/24" {
+	entries := flattenTestFIBs(routes)
+	if len(entries) != 1 || entries[0].Prefix != "10.0.0.0/24" {
 		t.Fatalf("routes = %#v", routes)
 	}
 }
@@ -81,7 +82,7 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 		t.Fatalf("Collect() error = %v", err)
 	}
 	for _, prefix := range []string{"10.0.0.0/24", "10.0.1.0/24", "10.0.2.0/24"} {
-		if routeByPrefix(routes, prefix) == nil {
+		if routeByPrefix(flattenTestFIBs(routes), prefix) == nil {
 			t.Fatalf("routes missing %s: %#v", prefix, routes)
 		}
 	}
@@ -106,7 +107,7 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
-	route := routeByPrefix(routes, "10.4.0.0/16")
+	route := routeByPrefix(flattenTestFIBs(routes), "10.4.0.0/16")
 	if route == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
@@ -132,7 +133,15 @@ func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
-	if routeByPrefix(routes, "198.18.20.4/31") == nil {
+	if routeByPrefix(flattenTestFIBs(routes), "198.18.20.4/31") == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
+}
+
+func flattenTestFIBs(fibs []FIB) []FIBEntry {
+	var out []FIBEntry
+	for _, fib := range fibs {
+		out = append(out, fib.Entries...)
+	}
+	return out
 }

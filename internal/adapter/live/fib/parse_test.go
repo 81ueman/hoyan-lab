@@ -31,10 +31,10 @@ func TestParseLinuxIPRoute(t *testing.T) {
 	if got, want := ecmp.NextHops[0], (NextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}); got != want {
 		t.Fatalf("first next-hop = %#v, want %#v", got, want)
 	}
-	if def := routeByPrefix(routes, "0.0.0.0/0"); def == nil || def.Protocol != "static" || def.Metric != 100 {
+	if def := routeByPrefix(routes, "0.0.0.0/0"); def == nil || def.Source.Protocol != "static" || def.Metric != 100 {
 		t.Fatalf("default route = %#v", def)
 	}
-	if blackhole := routeByPrefix(routes, "203.0.113.0/24"); blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+	if blackhole := routeByPrefix(routes, "203.0.113.0/24"); blackhole == nil || blackhole.Source.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
 		t.Fatalf("blackhole route = %#v", blackhole)
 	}
 }
@@ -45,7 +45,7 @@ func TestParseLinuxIPRouteCanonicalizesConnectedProtocol(t *testing.T) {
 		t.Fatalf("ParseLinuxIPRoute() error = %v", err)
 	}
 	route := routeByPrefix(routes, "192.0.2.0/31")
-	if route == nil || route.Protocol != "connected" {
+	if route == nil || route.Source.Protocol != "connected" {
 		t.Fatalf("route = %#v", route)
 	}
 }
@@ -88,22 +88,22 @@ func TestParseCEOSRoutes(t *testing.T) {
 	if route == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
-	if route.Protocol != "bgp" || route.Preference != 200 || route.Metric != 10 {
+	if route.Source.Protocol != "bgp" || route.Preference != 200 || route.Metric != 10 {
 		t.Fatalf("route attrs = %#v", route)
 	}
 	if got, want := route.NextHops, []NextHop{{Address: "192.0.2.1", Interface: "Ethernet1"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("next-hops = %#v, want %#v", got, want)
 	}
 	connected := routeByPrefix(routes, "198.51.100.0/31")
-	if connected == nil || connected.Protocol != "connected" {
+	if connected == nil || connected.Source.Protocol != "connected" {
 		t.Fatalf("connected route = %#v", connected)
 	}
 	ospf := routeByPrefix(routes, "10.255.2.2/32")
-	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+	if ospf == nil || ospf.Source.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
 		t.Fatalf("OSPF route = %#v", ospf)
 	}
 	blackhole := routeByPrefix(routes, "203.0.113.0/24")
-	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+	if blackhole == nil || blackhole.Source.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
 		t.Fatalf("blackhole route = %#v", blackhole)
 	}
 }
@@ -113,14 +113,14 @@ func TestParseCEOSRoutesMultipleVRFs(t *testing.T) {
 	  "tenant-a":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}},
 	  "tenant-b":{"routes":{"10.255.0.1/32":{"kernelProgrammed":true,"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet2"}]}}}
 	}}`)
-	routes, err := ParseCEOSRoutes("ceos1", data)
+	fibs, err := ParseCEOSFIBs("ceos1", data)
 	if err != nil {
-		t.Fatalf("ParseCEOSRoutes() error = %v", err)
+		t.Fatalf("ParseCEOSFIBs() error = %v", err)
 	}
 	for _, vrf := range []string{"tenant-a", "tenant-b"} {
-		route := routeByVRFPrefix(routes, vrf, "10.255.0.1/32")
-		if route == nil || route.Protocol != "static" {
-			t.Fatalf("%s route = %#v, routes=%#v", vrf, route, routes)
+		route := routeByVRFPrefix(fibs, vrf, "10.255.0.1/32")
+		if route == nil || route.Source.Protocol != "static" {
+			t.Fatalf("%s route = %#v, fibs=%#v", vrf, route, fibs)
 		}
 	}
 }
@@ -131,8 +131,8 @@ func TestParseSRLinuxRoutesNetworkInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSRLinuxRoutesNetworkInstance() error = %v", err)
 	}
-	route := routeByVRFPrefix(routes, "tenant-a", "10.255.0.1/32")
-	if route == nil || route.Protocol != "static" {
+	route := routeByPrefix(routes, "10.255.0.1/32")
+	if route == nil || route.Source.Protocol != "static" {
 		t.Fatalf("route = %#v, routes=%#v", route, routes)
 	}
 }
@@ -161,22 +161,22 @@ func TestParseSRLinuxRoutes(t *testing.T) {
 	if route == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
-	if route.Protocol != "bgp" || route.Preference != 170 {
+	if route.Source.Protocol != "bgp" || route.Preference != 170 {
 		t.Fatalf("route attrs = %#v", route)
 	}
 	if got, want := route.NextHops, []NextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("next-hops = %#v, want %#v", got, want)
 	}
 	connected := routeByPrefix(routes, "198.51.100.0/31")
-	if connected == nil || connected.Protocol != "connected" {
+	if connected == nil || connected.Source.Protocol != "connected" {
 		t.Fatalf("connected route = %#v", connected)
 	}
 	ospf := routeByPrefix(routes, "10.255.2.2/32")
-	if ospf == nil || ospf.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
+	if ospf == nil || ospf.Source.Protocol != "ospf" || ospf.Preference != 110 || ospf.Metric != 20 {
 		t.Fatalf("OSPF route = %#v", ospf)
 	}
 	blackhole := routeByPrefix(routes, "198.51.100.0/24")
-	if blackhole == nil || blackhole.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
+	if blackhole == nil || blackhole.Source.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
 		t.Fatalf("blackhole route = %#v", blackhole)
 	}
 }
@@ -213,7 +213,7 @@ func TestParseSRLinuxRouteDetailsNormalizesPeerGateway(t *testing.T) {
 	if route == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
-	if route.Protocol != "bgp" || route.Preference != 170 {
+	if route.Source.Protocol != "bgp" || route.Preference != 170 {
 		t.Fatalf("route attrs = %#v", route)
 	}
 	want := []NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
@@ -231,10 +231,15 @@ func routeByPrefix(routes []FIBEntry, prefix string) *FIBEntry {
 	return nil
 }
 
-func routeByVRFPrefix(routes []FIBEntry, vrf, prefix string) *FIBEntry {
-	for i := range routes {
-		if routes[i].VRF == vrf && routes[i].Prefix == prefix {
-			return &routes[i]
+func routeByVRFPrefix(fibs []FIB, vrf, prefix string) *FIBEntry {
+	for fi := range fibs {
+		if string(fibs[fi].VRF) != vrf {
+			continue
+		}
+		for ri := range fibs[fi].Entries {
+			if fibs[fi].Entries[ri].Prefix == prefix {
+				return &fibs[fi].Entries[ri]
+			}
 		}
 	}
 	return nil

@@ -2,6 +2,8 @@ package fib
 
 import (
 	"net/netip"
+	"sort"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
@@ -20,15 +22,27 @@ func NewExpectedBuilder() ExpectedBuilder {
 
 // Expected builds modeled FIB routes for all topology nodes.
 func (b ExpectedBuilder) Expected(topo *model.Topology) []observation.FIBEntry {
-	return b.ExpectedForNodes(topo, topo.Nodes)
+	return flattenFIBs(b.ExpectedFIBs(topo))
 }
 
 // ExpectedForNodes builds modeled FIB routes for the selected topology nodes.
 func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observation.FIBEntry {
-	return ExpectedBuilder{}.ExpectedForNodesWithFailureSet(topo, nodes, sim.NoFailures())
+	return flattenFIBs(ExpectedBuilder{}.ExpectedFIBsForNodesWithFailureSet(topo, nodes, sim.NoFailures()))
 }
 
 func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observation.FIBEntry {
+	return flattenFIBs(ExpectedBuilder{}.ExpectedFIBsForNodesWithFailureSet(topo, nodes, failures))
+}
+
+func (b ExpectedBuilder) ExpectedFIBs(topo *model.Topology) []observation.FIB {
+	return b.ExpectedFIBsForNodes(topo, topo.Nodes)
+}
+
+func (ExpectedBuilder) ExpectedFIBsForNodes(topo *model.Topology, nodes []model.Node) []observation.FIB {
+	return ExpectedBuilder{}.ExpectedFIBsForNodesWithFailureSet(topo, nodes, sim.NoFailures())
+}
+
+func (ExpectedBuilder) ExpectedFIBsForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observation.FIB {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true
@@ -83,12 +97,25 @@ func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, node
 			}
 		}
 	}
-	out := make([]observation.FIBEntry, 0, len(byRoute))
-	for _, route := range byRoute {
+	byFIB := map[string]observation.FIB{}
+	for key, route := range byRoute {
 		route.NextHops = dedupeNextHops(route.NextHops)
-		out = append(out, route)
+		parts := strings.SplitN(key, "|", 3)
+		fibKey := parts[0] + "|" + parts[1]
+		fib := byFIB[fibKey]
+		if fib.Node == "" {
+			fib.Node = model.NodeID(parts[0])
+			fib.VRF = model.NetworkInstanceID(parts[1])
+		}
+		fib.Entries = append(fib.Entries, route)
+		byFIB[fibKey] = fib
 	}
-	observation.SortFIBEntriesForCompare(out)
+	out := make([]observation.FIB, 0, len(byFIB))
+	for _, fib := range byFIB {
+		observation.SortFIBEntriesForCompare(fib.Entries)
+		out = append(out, fib)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Key() < out[j].Key() })
 	return out
 }
 
@@ -107,24 +134,24 @@ func bgpSuppressedByNonBGPFIB(entries []dataplane.FIBEntry, ctx sim.FailureConte
 }
 
 func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, vrf, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
+	_ = class
 	route := observation.FIBEntry{
-		Node:           node,
-		VRF:            string(model.NormalizeNetworkInstance(vrf)),
-		AFI:            "ipv4",
-		Prefix:         prefix,
-		Protocol:       expectedProtocol(source, nextHop),
-		ConnectedClass: class,
-		Metric:         metric,
-		Installed:      true,
+		AFI:    model.AFIIPv4,
+		Prefix: prefix,
+		Source: observation.RouteSource{
+			Protocol: expectedProtocol(source, nextHop),
+		},
+		Action: actionForExpectedRoute(source, nextHop),
+		Metric: metric,
 	}
 	if nextHop != "" {
 		route.NextHops = []observation.NextHop{expectedNextHop(idx, fib, ctx, node, prefix, nextHop)}
 	} else if iface != "" && source != model.RouteSourceBlackhole {
 		route.NextHops = []observation.NextHop{{Interface: iface}}
 	}
-	key := observation.RouteKey(route)
+	key := node + "|" + string(model.NormalizeNetworkInstance(vrf)) + "|" + observation.RouteKey(route)
 	existing := byRoute[key]
-	if existing.Node == "" {
+	if existing.Prefix == "" {
 		byRoute[key] = route
 		return
 	}
@@ -135,18 +162,39 @@ func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.Topolo
 	byRoute[key] = existing
 }
 
-func expectedProtocol(source model.RouteSourceKind, nextHop string) string {
+func expectedProtocol(source model.RouteSourceKind, nextHop string) model.RouteSourceKind {
 	switch source {
 	case model.RouteSourceConnected:
-		return "connected"
+		return model.RouteSourceConnected
 	case model.RouteSourceStatic:
-		return "static"
+		return model.RouteSourceStatic
 	case model.RouteSourceBlackhole:
-		return "blackhole"
+		return model.RouteSourceBlackhole
 	case model.RouteSourceOSPF:
-		return "ospf"
+		return model.RouteSourceOSPF
 	}
-	return "bgp"
+	return model.RouteSourceBGP
+}
+
+func actionForExpectedRoute(source model.RouteSourceKind, nextHop string) observation.ForwardingAction {
+	switch source {
+	case model.RouteSourceBlackhole:
+		return observation.ActionDrop
+	case model.RouteSourceConnected:
+		if nextHop == "" {
+			return observation.ActionReceive
+		}
+	}
+	return observation.ActionForward
+}
+
+func flattenFIBs(fibs []observation.FIB) []observation.FIBEntry {
+	var out []observation.FIBEntry
+	for _, fib := range fibs {
+		out = append(out, fib.Entries...)
+	}
+	observation.SortFIBEntriesForCompare(out)
+	return out
 }
 
 func forwardingNextHop(entry sim.RIBEntry) string {

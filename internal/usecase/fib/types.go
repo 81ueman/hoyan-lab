@@ -16,7 +16,7 @@ func New(collector observation.FIBCollector) Usecase {
 	return Usecase{collector: collector}
 }
 
-func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error) {
+func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
 	return u.collector.Collect(ctx, nodes, opts)
 }
 

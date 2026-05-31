@@ -68,7 +68,7 @@ func TestSimulatorAndContainerlabStyleCollectorsUseSameInterface(t *testing.T) {
 	containerlab := NewContainerlabCollector(
 		topo.Nodes,
 		fakeRIBCollector{routes: (ribusecase.ExpectedBuilder{}).Build(topo)},
-		fakeFIBCollector{routes: fibusecase.NewExpectedBuilder().Expected(topo)},
+		fakeFIBCollector{fibs: fibusecase.NewExpectedBuilder().ExpectedFIBs(topo)},
 		observation.Options{},
 	)
 
@@ -134,20 +134,19 @@ func (f fakeRIBCollector) routesFor(nodes []model.Node, bgp bool) []observation.
 }
 
 type fakeFIBCollector struct {
-	routes []observation.FIBEntry
+	fibs []observation.FIB
 }
 
-func (f fakeFIBCollector) Collect(_ context.Context, nodes []model.Node, _ observation.Options) ([]observation.FIBEntry, error) {
+func (f fakeFIBCollector) Collect(_ context.Context, nodes []model.Node, _ observation.Options) ([]observation.FIB, error) {
 	allowed := map[string]bool{}
 	for _, node := range nodes {
 		allowed[node.Name] = true
 	}
-	var out []observation.FIBEntry
-	for _, route := range f.routes {
-		if allowed[route.Node] {
-			out = append(out, route)
+	var out []observation.FIB
+	for _, fib := range f.fibs {
+		if allowed[string(fib.Node)] {
+			out = append(out, fib)
 		}
 	}
-	observation.SortFIBEntriesForCompare(out)
 	return out, nil
 }

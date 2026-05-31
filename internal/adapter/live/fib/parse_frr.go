@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
-
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func ParseLinuxIPRoute(node string, data []byte) ([]FIBEntry, error) {
@@ -14,6 +12,7 @@ func ParseLinuxIPRoute(node string, data []byte) ([]FIBEntry, error) {
 }
 
 func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]FIBEntry, error) {
+	_, _ = node, vrf
 	var raw []map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -34,15 +33,13 @@ func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]FIBEntry, error) {
 			nextHops = nil
 		}
 		route := FIBEntry{
-			Node:       node,
-			VRF:        string(model.NormalizeNetworkInstance(vrf)),
 			AFI:        "ipv4",
 			Prefix:     prefix,
 			NextHops:   nextHops,
-			Protocol:   protocol,
+			Source:     canonicalRouteSource(protocol),
+			Action:     forwardingAction(protocol, nextHops),
 			Preference: intValue(item["pref"]),
 			Metric:     intValue(item["metric"]),
-			Installed:  true,
 		}
 		route.NextHops = dedupeNextHops(route.NextHops)
 		out = append(out, route)
