@@ -1,20 +1,14 @@
 package bgp
 
-type OriginCode string
+import "github.com/81ueman/hoyan-lab/internal/domain/model"
 
-const (
-	OriginIGP        OriginCode = "igp"
-	OriginEGP        OriginCode = "egp"
-	OriginIncomplete OriginCode = "incomplete"
-)
-
-func OriginCodeRank(origin string) int {
-	switch OriginCode(origin) {
-	case OriginIGP:
+func OriginCodeRank(origin model.BGPOriginCode) int {
+	switch model.NormalizeBGPOriginCode(origin) {
+	case model.BGPOriginIGP:
 		return 0
-	case OriginEGP:
+	case model.BGPOriginEGP:
 		return 1
-	case OriginIncomplete:
+	case model.BGPOriginIncomplete:
 		return 2
 	default:
 		return 3

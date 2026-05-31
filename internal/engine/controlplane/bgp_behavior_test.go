@@ -65,7 +65,7 @@ func withFrom(from string) testRIBOption {
 	}
 }
 
-func withOriginCode(origin domainroute.BGPOriginCode) testRIBOption {
+func withOriginCode(origin model.BGPOriginCode) testRIBOption {
 	return func(route *domainroute.RIBEntry) {
 		route.Attrs.OriginCode = origin
 	}
@@ -88,12 +88,12 @@ func TestRIBEntryNormalizeSeparatesRouteModelFields(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
 	route := domainroute.RIBEntry{
 		NLRI:              domainroute.NLRI{Prefix: prefix},
-		Attrs:             domainroute.BGPAttributes{ASPath: []uint32{65100}, OriginCode: domainroute.BGPOriginEGP, LocalPref: 150, MED: 20, LearnedIBGP: true},
+		Attrs:             domainroute.BGPAttributes{ASPath: []uint32{65100}, OriginCode: model.BGPOriginEGP, LocalPref: 150, MED: 20, LearnedIBGP: true},
 		Provenance:        domainroute.Provenance{OriginNode: "origin-node", FromNode: "peer-node", PathNodes: []string{"origin-node", "peer-node", "rx"}, PathLinks: []string{"a", "b"}},
 		ForwardingNextHop: domainroute.NextHop{Node: "peer-node"},
 	}.Normalize()
 
-	if route.Provenance.OriginNode != "origin-node" || route.Attrs.OriginCode != domainroute.BGPOriginEGP {
+	if route.Provenance.OriginNode != "origin-node" || route.Attrs.OriginCode != model.BGPOriginEGP {
 		t.Fatalf("origin node/code = %q/%q, want separated origin-node/egp", route.Provenance.OriginNode, route.Attrs.OriginCode)
 	}
 	if route.Provenance.OriginNode == string(route.Attrs.OriginCode) {
@@ -326,7 +326,7 @@ func TestDefaultBGPDecisionProcessOrdering(t *testing.T) {
 	assertLess("local-pref", testRIB("", withLocalPref(200)), testRIB("", withLocalPref(100)))
 	assertLess("local-origin", testRIB("", withOrigin("rx"), withLocalPref(100)), testRIB("", withOrigin("remote"), withLocalPref(100)))
 	assertLess("as-path-length", testRIB("", withASPath(65100)), testRIB("", withASPath(65100, 65200)))
-	assertLess("origin-code", testRIB("", withASPath(65100), withOriginCode(domainroute.BGPOriginIGP), withMED(20)), testRIB("", withASPath(65100), withOriginCode(domainroute.BGPOriginIncomplete), withMED(10)))
+	assertLess("origin-code", testRIB("", withASPath(65100), withOriginCode(model.BGPOriginIGP), withMED(20)), testRIB("", withASPath(65100), withOriginCode(model.BGPOriginIncomplete), withMED(10)))
 	assertLess("med", testRIB("", withASPath(65100), withMED(10)), testRIB("", withASPath(65100), withMED(20)))
 	assertLess("ebgp-over-ibgp", testRIB("", withASPath(65100)), testRIB("", withASPath(65100), withIBGP()))
 	assertLess("shorter-link-path", testRIB("", withASPath(65100), withPath([]string{"a"}, []string{"a"})), testRIB("", withASPath(65100), withPath([]string{"a", "b"}, []string{"a", "b"})))
@@ -381,7 +381,7 @@ func TestDefaultBGPDecisionProcessEquivalent(t *testing.T) {
 	if !decision.Equivalent(receiver, a, d) {
 		t.Fatalf("routes with equal BGP attributes before tie-break should be equivalent")
 	}
-	e := testRIB("", withLocalPref(100), withASPath(65100), withOriginCode(domainroute.BGPOriginIncomplete), withMED(10))
+	e := testRIB("", withLocalPref(100), withASPath(65100), withOriginCode(model.BGPOriginIncomplete), withMED(10))
 	if decision.Equivalent(receiver, a, e) {
 		t.Fatalf("routes with different origin-code should not be equivalent")
 	}

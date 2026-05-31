@@ -438,7 +438,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 		case dialect.SupportsAdvancedRouteMapPolicy() && currentRouteRule != nil && len(fields) >= 3 && fields[0] == "set" && fields[1] == "origin":
 			switch fields[2] {
 			case "igp", "egp", "incomplete":
-				currentRouteRule.SetOriginCode = fields[2]
+				currentRouteRule.SetOriginCode = model.NormalizeBGPOriginCode(model.BGPOriginCode(fields[2]))
 			default:
 				if !collectWarnings {
 					return ParseResult{}, fmt.Errorf("unsupported %s route-map origin %q", dialect.VendorName(), line)

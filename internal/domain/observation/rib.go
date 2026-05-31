@@ -51,20 +51,20 @@ type BGPRIBRoute struct {
 }
 
 type BGPPath struct {
-	NextHop          NextHop  `json:"next_hop,omitempty"`
-	ASPath           []uint32 `json:"as_path,omitempty"`
-	Origin           string   `json:"origin,omitempty"`
-	LocalPref        int      `json:"local_pref,omitempty"`
-	MED              int      `json:"med,omitempty"`
-	Weight           int      `json:"weight,omitempty"`
-	Communities      []string `json:"communities,omitempty"`
-	LargeCommunities []string `json:"large_communities,omitempty"`
-	OriginatorID     string   `json:"originator_id,omitempty"`
-	ClusterList      []string `json:"cluster_list,omitempty"`
-	Peer             string   `json:"peer,omitempty"`
-	PeerAS           uint32   `json:"peer_as,omitempty"`
-	Eligible         bool     `json:"eligible"`
-	Best             bool     `json:"best"`
+	NextHop          NextHop             `json:"next_hop,omitempty"`
+	ASPath           []uint32            `json:"as_path,omitempty"`
+	Origin           model.BGPOriginCode `json:"origin,omitempty"`
+	LocalPref        int                 `json:"local_pref,omitempty"`
+	MED              int                 `json:"med,omitempty"`
+	Weight           int                 `json:"weight,omitempty"`
+	Communities      []string            `json:"communities,omitempty"`
+	LargeCommunities []string            `json:"large_communities,omitempty"`
+	OriginatorID     string              `json:"originator_id,omitempty"`
+	ClusterList      []string            `json:"cluster_list,omitempty"`
+	Peer             string              `json:"peer,omitempty"`
+	PeerAS           uint32              `json:"peer_as,omitempty"`
+	Eligible         bool                `json:"eligible"`
+	Best             bool                `json:"best"`
 }
 
 type OSPFRouteType string

@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
@@ -23,16 +24,16 @@ func parseASPath(raw string) []uint32 {
 	return out
 }
 
-func normalizeOrigin(origin string) string {
+func normalizeOrigin(origin string) model.BGPOriginCode {
 	switch strings.ToLower(strings.TrimSpace(origin)) {
 	case "", "i", "igp":
-		return "igp"
+		return model.BGPOriginIGP
 	case "e", "egp":
-		return "egp"
+		return model.BGPOriginEGP
 	case "?", "incomplete":
-		return "incomplete"
+		return model.BGPOriginIncomplete
 	default:
-		return strings.ToLower(strings.TrimSpace(origin))
+		return model.NormalizeBGPOriginCode(model.BGPOriginCode(origin))
 	}
 }
 

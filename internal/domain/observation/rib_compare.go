@@ -14,7 +14,7 @@ type comparablePath struct {
 	Valid            bool
 	NextHop          string
 	ASPath           []uint32
-	Origin           string
+	Origin           model.BGPOriginCode
 	LocalPref        int
 	MED              int
 	Weight           int
@@ -331,7 +331,7 @@ func comparablePaths(route RIBRoute) []comparablePath {
 	case route.Static != nil:
 		return comparablePathsFromNextHops(route.Static.NextHops)
 	case route.Connected != nil, route.Blackhole != nil:
-		return []comparablePath{{Best: route.Common.Best, Valid: route.Common.Eligible, Origin: "igp", LocalPref: 100}}
+		return []comparablePath{{Best: route.Common.Best, Valid: route.Common.Eligible, Origin: model.BGPOriginIGP, LocalPref: 100}}
 	default:
 		return nil
 	}
@@ -367,7 +367,7 @@ func comparablePathsFromOSPFPaths(paths []OSPFPath) []comparablePath {
 			Best:      true,
 			Valid:     true,
 			NextHop:   path.NextHop.Address,
-			Origin:    "igp",
+			Origin:    model.BGPOriginIGP,
 			LocalPref: 100,
 			MED:       path.Cost,
 		})
@@ -377,7 +377,7 @@ func comparablePathsFromOSPFPaths(paths []OSPFPath) []comparablePath {
 
 func comparablePathsFromNextHops(hops []NextHop) []comparablePath {
 	if len(hops) == 0 {
-		return []comparablePath{{Best: true, Valid: true, Origin: "igp", LocalPref: 100}}
+		return []comparablePath{{Best: true, Valid: true, Origin: model.BGPOriginIGP, LocalPref: 100}}
 	}
 	out := make([]comparablePath, 0, len(hops))
 	for _, hop := range hops {
@@ -385,7 +385,7 @@ func comparablePathsFromNextHops(hops []NextHop) []comparablePath {
 			Best:      true,
 			Valid:     true,
 			NextHop:   hop.Address,
-			Origin:    "igp",
+			Origin:    model.BGPOriginIGP,
 			LocalPref: 100,
 			Weight:    hop.Weight,
 		})
@@ -447,16 +447,16 @@ func formatASPath(path []uint32) string {
 	return strings.Join(parts, " ")
 }
 
-func normalizeOrigin(origin string) string {
-	switch strings.ToLower(strings.TrimSpace(origin)) {
+func normalizeOrigin(origin model.BGPOriginCode) model.BGPOriginCode {
+	switch strings.ToLower(strings.TrimSpace(string(origin))) {
 	case "", "i", "igp":
-		return "igp"
+		return model.BGPOriginIGP
 	case "e", "egp":
-		return "egp"
+		return model.BGPOriginEGP
 	case "?", "incomplete":
-		return "incomplete"
+		return model.BGPOriginIncomplete
 	default:
-		return strings.ToLower(strings.TrimSpace(origin))
+		return model.NormalizeBGPOriginCode(origin)
 	}
 }
 
