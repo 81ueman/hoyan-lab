@@ -120,12 +120,12 @@ func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
 }
 
 type fakeFIBCollector struct {
-	routes []observation.FIBEntry
+	fibs []observation.FIB
 }
 
 func (f fakeFIBCollector) SupportedNodes(nodes []model.Node) []model.Node { return nodes }
-func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error) {
-	return f.routes, nil
+func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
+	return f.fibs, nil
 }
 
 type fakeProber struct {
@@ -384,7 +384,7 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
 	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observation.RIBRoute{expected}}
 	deps := deps(rt, rib)
-	deps.FIBCollector = fakeFIBCollector{routes: []observation.FIBEntry{{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.255.1.1/32", Protocol: "connected", Installed: true}}}
+	deps.FIBCollector = fakeFIBCollector{fibs: []observation.FIB{{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{AFI: "ipv4", Prefix: "10.255.1.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, Action: observation.ActionReceive}}}}}
 	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observation.Options{UnresolvedPolicy: observation.UnresolvedPolicyIgnore}, Out: &out}
 	err = New(deps).Run(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "live FIB comparison found diff") {

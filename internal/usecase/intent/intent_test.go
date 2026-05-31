@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/facts"
 )
 
@@ -103,12 +105,19 @@ func TestVerifyWithProviderCachesAndLazilyLoadsSnapshots(t *testing.T) {
 			"current": {
 				Name:    "current",
 				LabPath: "labs/current",
-				RIB: []facts.RIBRow{{
-					Snapshot: "current",
-					Device:   "leaf1",
-					Prefix:   "10.0.0.0/24",
-					Protocol: "static",
-					Selected: true,
+				RIB: []observation.RIB{{
+					Node: "leaf1",
+					VRF:  "default",
+					Routes: []observation.RIBRoute{{
+						Common: observation.RIBRouteCommon{
+							AFI:      model.AFIIPv4,
+							Prefix:   "10.0.0.0/24",
+							Protocol: model.RouteSourceStatic,
+							Eligible: true,
+							Best:     true,
+						},
+						Static: &observation.StaticRIBRoute{},
+					}},
 				}},
 			},
 		},

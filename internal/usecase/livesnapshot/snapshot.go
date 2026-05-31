@@ -156,6 +156,14 @@ func AllRIBRoutes(snap *Snapshot) []observation.RIBRoute {
 
 func FIBRoutes(snap *Snapshot) []observation.FIBEntry {
 	var out []observation.FIBEntry
+	for _, fib := range FIBs(snap) {
+		out = append(out, fib.Entries...)
+	}
+	return out
+}
+
+func FIBs(snap *Snapshot) []observation.FIB {
+	var out []observation.FIB
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].FIB...)
 	}
@@ -191,11 +199,11 @@ func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observation.RIBRoute, 
 	}
 }
 
-func addFIBRoutes(nodes map[string]NodeSnapshot, routes []observation.FIBEntry) {
-	for _, route := range routes {
-		ns := nodes[route.Node]
-		ns.FIB = append(ns.FIB, route)
-		nodes[route.Node] = ns
+func addFIBRoutes(nodes map[string]NodeSnapshot, fibs []observation.FIB) {
+	for _, fib := range fibs {
+		ns := nodes[string(fib.Node)]
+		ns.FIB = append(ns.FIB, fib)
+		nodes[string(fib.Node)] = ns
 	}
 }
 

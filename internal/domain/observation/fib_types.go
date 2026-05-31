@@ -9,22 +9,8 @@ import (
 )
 
 type FIBCollector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIBEntry, error)
+	Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIB, error)
 	SupportedNodes(nodes []model.Node) []model.Node
-}
-
-type FIBParser interface {
-	Parse(node string, data []byte) ([]FIBEntry, error)
-}
-
-type FIBParserFunc func(node string, data []byte) ([]FIBEntry, error)
-
-func (f FIBParserFunc) Parse(node string, data []byte) ([]FIBEntry, error) {
-	return f(node, data)
-}
-
-type FIBRunner interface {
-	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 type Options struct {
@@ -64,7 +50,7 @@ func ParseUnresolvedPolicy(policy string) (UnresolvedPolicy, bool) {
 }
 
 type FilterResult struct {
-	Routes     []FIBEntry
+	FIBs       []FIB
 	Unresolved []UnresolvedRoute
 }
 

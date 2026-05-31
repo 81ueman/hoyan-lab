@@ -158,7 +158,7 @@ func runCompareFIBEntries(ctx context.Context, opts fibCompareOptions, out io.Wr
 		nodes = livefib.NewCollector(nil).SupportedNodes(nodes)
 	}
 	fibOpts := observation.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.unresolvedPolicy)}
-	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, nodes), fibOpts)
+	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, nodes), fibOpts)
 	var actualFiltered observation.FilterResult
 	if opts.snapshotPath != "" {
 		snap, err := snapshotfile.Load(opts.snapshotPath)
@@ -168,7 +168,7 @@ func runCompareFIBEntries(ctx context.Context, opts fibCompareOptions, out io.Wr
 		if err := checkSnapshotHashes(opts.topologyPath, snap, opts.snapshotHashPolicy, out); err != nil {
 			return err
 		}
-		actualFiltered = observation.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), fibOpts)
+		actualFiltered = observation.AnalyzeComparableRoutes(topo, livesnapshot.FIBs(snap), fibOpts)
 	} else {
 		actual, err := fibcompare.New(livefib.NewCollector(liveexec.ExecRunner{})).Collect(ctx, nodes, fibOpts)
 		if err != nil {

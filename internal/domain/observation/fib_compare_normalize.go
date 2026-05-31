@@ -50,17 +50,16 @@ func normalizeRoutesForSide(side string, routes []FIBEntry, keyFunc func(FIBEntr
 }
 
 func normalizeFIBEntryForCompare(route FIBEntry) FIBEntry {
-	if route.Protocol == "" {
-		route.Protocol = string(route.Source.Protocol)
-	}
-	route.Protocol = canonicalProtocol(route.Protocol)
+	route.Source.Protocol = model.NormalizeRouteSourceKind(route.Source.Protocol)
 	if route.AFI == "" {
 		route.AFI = model.AFIIPv4
+	} else {
+		route.AFI = model.NormalizeAFI(route.AFI)
 	}
 	if route.Action == "" {
-		if route.Protocol == string(model.RouteSourceBlackhole) {
+		if route.Source.Protocol == model.RouteSourceBlackhole {
 			route.Action = ActionDrop
-		} else if route.Protocol == string(model.RouteSourceConnected) && len(route.NextHops) == 0 {
+		} else if route.Source.Protocol == model.RouteSourceConnected && len(route.NextHops) == 0 {
 			route.Action = ActionReceive
 		} else {
 			route.Action = ActionForward
@@ -80,23 +79,14 @@ func mergeDuplicateRoute(a, b FIBEntry) (FIBEntry, string, bool) {
 	conflict := func(field string) (FIBEntry, string, bool) {
 		return FIBEntry{}, field + " mismatch", false
 	}
-	if a.Node != b.Node {
-		return conflict("node")
-	}
-	if a.VRF != b.VRF {
-		return conflict("vrf")
-	}
 	if a.AFI != b.AFI {
 		return conflict("afi")
 	}
 	if a.Prefix != b.Prefix {
 		return conflict("prefix")
 	}
-	if canonicalProtocol(a.Protocol) != canonicalProtocol(b.Protocol) {
+	if model.NormalizeRouteSourceKind(a.Source.Protocol) != model.NormalizeRouteSourceKind(b.Source.Protocol) {
 		return conflict("protocol")
-	}
-	if a.ConnectedClass != b.ConnectedClass {
-		return conflict("connected_class")
 	}
 	if a.Preference != 0 && b.Preference != 0 && a.Preference != b.Preference {
 		return conflict("preference")
@@ -104,14 +94,8 @@ func mergeDuplicateRoute(a, b FIBEntry) (FIBEntry, string, bool) {
 	if a.Metric != 0 && b.Metric != 0 && a.Metric != b.Metric {
 		return conflict("metric")
 	}
-	if a.Installed != b.Installed {
-		return conflict("installed")
-	}
 
 	merged := a
-	if merged.Protocol == "" {
-		merged.Protocol = canonicalProtocol(b.Protocol)
-	}
 	if merged.Preference == 0 {
 		merged.Preference = b.Preference
 	}

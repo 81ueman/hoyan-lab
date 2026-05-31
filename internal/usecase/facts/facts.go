@@ -7,22 +7,18 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	fibusecase "github.com/81ueman/hoyan-lab/internal/usecase/fib"
+	ribusecase "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
-
-type RIBRow = observation.RIBRow
-type FIBRow = observation.FIBRow
-type CanonicalRIBRow = observation.CanonicalRIBRow
-
-var CanonicalRIBRows = observation.CanonicalRIBRows
 
 type Snapshot struct {
 	Name     string
 	LabPath  string
 	Topology *model.Topology
 	Graph    *sim.Graph
-	RIB      []RIBRow
-	FIB      []FIBRow
+	RIB      []observation.RIB
+	FIB      []observation.FIB
 }
 
 func Build(labPath, snapshotName string) (Snapshot, error) {
@@ -34,85 +30,30 @@ func Build(labPath, snapshotName string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	graph := sim.NewGraph(topo)
-	fibInstalled := map[string]map[string]bool{}
-	var fibRows []FIBRow
-	nodes := nodeNames(topo)
-	for _, node := range nodes {
-		for _, entry := range graph.FIB(node) {
-			if fibInstalled[node] == nil {
-				fibInstalled[node] = map[string]bool{}
-			}
-			fibInstalled[node][entry.Prefix.String()] = true
-			fibRows = append(fibRows, FIBRow{
-				Snapshot:  snapshotName,
-				Device:    node,
-				Prefix:    entry.Prefix.String(),
-				NextHop:   firstNonEmpty(entry.NextHop, entry.NextHopAddress, entry.RawNextHop),
-				Interface: entry.Interface,
-				Installed: true,
-			})
-		}
-	}
-	sort.SliceStable(fibRows, func(i, j int) bool {
-		return factKey(fibRows[i].Snapshot, fibRows[i].Device, fibRows[i].Prefix, fibRows[i].NextHop, fibRows[i].Interface) <
-			factKey(fibRows[j].Snapshot, fibRows[j].Device, fibRows[j].Prefix, fibRows[j].NextHop, fibRows[j].Interface)
-	})
-
-	var ribRows []RIBRow
-	for _, node := range nodes {
-		table := graph.RIBTable(node)
-		prefixes := make([]string, 0, len(table))
-		for prefix := range table {
-			prefixes = append(prefixes, prefix)
-		}
-		sort.Strings(prefixes)
-		for _, prefix := range prefixes {
-			for _, route := range table[prefix] {
-				route = route.Normalize()
-				ribRows = append(ribRows, RIBRow{
-					Snapshot:  snapshotName,
-					Device:    node,
-					VRF:       string(route.RouteSource.NetworkInstance),
-					Prefix:    route.NLRI.Prefix.String(),
-					Protocol:  string(route.SourceKind),
-					NextHop:   firstNonEmpty(route.ForwardingNextHop.Node, route.ForwardingNextHop.Addr),
-					LocalPref: route.Attrs.LocalPref,
-					MED:       route.Attrs.MED,
-					Selected:  route.SelectedCond != nil,
-					Installed: fibInstalled[node][route.NLRI.Prefix.String()],
-				})
-			}
-		}
-	}
-	sort.SliceStable(ribRows, func(i, j int) bool {
-		return factKey(ribRows[i].Snapshot, ribRows[i].Device, ribRows[i].Prefix, ribRows[i].Protocol, ribRows[i].NextHop) <
-			factKey(ribRows[j].Snapshot, ribRows[j].Device, ribRows[j].Prefix, ribRows[j].Protocol, ribRows[j].NextHop)
-	})
-	return Snapshot{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: graph, RIB: ribRows, FIB: fibRows}, nil
+	rib := groupRIBRoutes((ribusecase.ExpectedBuilder{}).Build(topo))
+	fib := fibusecase.NewExpectedBuilder().ExpectedFIBs(topo)
+	return Snapshot{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: graph, RIB: rib, FIB: fib}, nil
 }
 
-func nodeNames(topo *model.Topology) []string {
-	nodes := make([]string, 0, len(topo.Nodes))
-	for _, node := range topo.Nodes {
-		nodes = append(nodes, node.Name)
-	}
-	sort.Strings(nodes)
-	return nodes
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
+func groupRIBRoutes(routes []observation.RIBRoute) []observation.RIB {
+	byKey := map[string]observation.RIB{}
+	for _, route := range routes {
+		node := route.ModelInfo.Provenance.FromNode
+		vrf := model.NetworkInstanceDefault
+		key := string(node) + "|" + string(vrf)
+		rib := byKey[key]
+		if rib.Node == "" {
+			rib.Node = node
+			rib.VRF = vrf
 		}
+		rib.Routes = append(rib.Routes, route)
+		byKey[key] = rib
 	}
-	return ""
-}
-
-func factKey(parts ...string) string {
-	key := ""
-	for _, part := range parts {
-		key += "\x00" + part
+	out := make([]observation.RIB, 0, len(byKey))
+	for _, rib := range byKey {
+		observation.SortRIBRoutes(rib.Routes)
+		out = append(out, rib)
 	}
-	return key
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Key() < out[j].Key() })
+	return out
 }

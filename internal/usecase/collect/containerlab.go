@@ -14,7 +14,7 @@ type RIBCollector interface {
 }
 
 type FIBCollector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error)
+	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error)
 }
 
 type ContainerlabCollector struct {
@@ -96,8 +96,8 @@ func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.NodeID
 	if err != nil {
 		return observation.FIB{}, err
 	}
-	routes = filterFIBEntrys(routes, string(node), string(vrf))
-	return observation.FilterFIB(observation.FIBFromRouteRecords(node, vrf, routes), opts), nil
+	fib := filterFIBs(routes, node, vrf)
+	return observation.FilterFIB(fib, opts), nil
 }
 
 func (c ContainerlabCollector) node(node model.NodeID) (model.Node, bool) {

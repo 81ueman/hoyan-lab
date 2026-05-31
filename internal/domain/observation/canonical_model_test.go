@@ -35,34 +35,19 @@ func TestRIBRouteValidateRequiresExactlyOneMatchingPayload(t *testing.T) {
 	}
 }
 
-func TestFIBEntryFromRouteRecordMapsForwardingAction(t *testing.T) {
-	blackhole := FIBEntryFromRouteRecord(FIBEntry{
-		AFI:       "ipv4",
-		Prefix:    "203.0.113.0/24",
-		Protocol:  "blackhole",
-		Installed: true,
-	})
-	if blackhole.Source.Protocol != model.RouteSourceBlackhole || blackhole.Action != ActionDrop {
-		t.Fatalf("blackhole conversion = %#v", blackhole)
-	}
-
-	connected := FIBEntryFromRouteRecord(FIBEntry{
-		AFI:       "ipv4",
-		Prefix:    "192.0.2.1/32",
-		Protocol:  "connected",
-		Installed: true,
-	})
-	if connected.Action != ActionReceive {
-		t.Fatalf("connected no-next-hop action = %q, want %q", connected.Action, ActionReceive)
-	}
-
-	forward := FIBEntryFromRouteRecord(FIBEntry{
-		AFI:      "ipv4",
+func TestFIBEntryValidateRequiresCanonicalForwardingFields(t *testing.T) {
+	entry := FIBEntry{
+		AFI:      model.AFIIPv4,
 		Prefix:   "10.0.0.0/24",
-		Protocol: "bgp",
-		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1", Weight: 1}},
-	})
-	if forward.Action != ActionForward || len(forward.NextHops) != 1 || forward.NextHops[0].Interface != "eth1" {
-		t.Fatalf("forward conversion = %#v", forward)
+		Source:   RouteSource{Protocol: model.RouteSourceBGP},
+		Action:   ActionForward,
+		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
+	}
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("canonical forward entry failed validation: %v", err)
+	}
+	entry.NextHops = nil
+	if err := entry.Validate(); err == nil {
+		t.Fatalf("forward entry without next-hop passed validation")
 	}
 }

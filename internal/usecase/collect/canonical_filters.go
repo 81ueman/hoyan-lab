@@ -13,17 +13,13 @@ func filterObservationRIBRoutes(routes []observation.RIBRoute, node, vrf string)
 	return out
 }
 
-func filterFIBEntrys(routes []observation.FIBEntry, node, vrf string) []observation.FIBEntry {
-	vrf = string(model.NormalizeNetworkInstance(vrf))
-	out := make([]observation.FIBEntry, 0, len(routes))
-	for _, route := range routes {
-		if route.VRF == "" {
-			route.VRF = string(model.NetworkInstanceDefault)
-		}
-		if route.Node == node && route.VRF == vrf {
-			out = append(out, route)
+func filterFIBs(fibs []observation.FIB, node model.NodeID, vrf model.NetworkInstanceID) observation.FIB {
+	vrf = model.NetworkInstanceID(model.NormalizeNetworkInstance(string(vrf)))
+	for _, fib := range fibs {
+		if fib.Node == node && fib.VRF == vrf {
+			observation.SortFIBEntriesForCompare(fib.Entries)
+			return fib
 		}
 	}
-	observation.SortFIBEntriesForCompare(out)
-	return out
+	return observation.FIB{Node: node, VRF: vrf}
 }

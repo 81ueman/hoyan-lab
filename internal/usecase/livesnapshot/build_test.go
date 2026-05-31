@@ -71,7 +71,7 @@ func (fakeRIBCollector) CollectRouteTableRoutes(context.Context, []model.Node) (
 
 type fakeFIBCollector struct{}
 
-func (fakeFIBCollector) Collect(context.Context, []model.Node, observation.Options) ([]observation.FIBEntry, error) {
+func (fakeFIBCollector) Collect(context.Context, []model.Node, observation.Options) ([]observation.FIB, error) {
 	return nil, nil
 }
 

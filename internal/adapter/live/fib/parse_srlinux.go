@@ -75,6 +75,7 @@ func jsonPayload(data []byte) ([]byte, error) {
 }
 
 func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, bool) {
+	_, _ = node, networkInstance
 	if !boolString(m["Active"]) {
 		return FIBEntry{}, false
 	}
@@ -84,14 +85,12 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, boo
 	}
 	protocol := canonicalProtocol(stringValue(m["Route Type"]))
 	route := FIBEntry{
-		Node:       node,
-		VRF:        networkInstance,
 		AFI:        "ipv4",
 		Prefix:     prefix,
-		Protocol:   protocol,
+		Source:     canonicalRouteSource(protocol),
+		Action:     forwardingAction(protocol, nil),
 		Preference: intValue(m["Pref"]),
 		Metric:     intValue(m["Metric"]),
-		Installed:  true,
 	}
 	hop := NextHop{
 		Address:   srlinuxNextHopAddress(stringValue(m["Next-hop (Type)"])),
@@ -108,14 +107,16 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, boo
 		route.NextHops = append(route.NextHops, backupHop)
 	}
 	if discardNextHops(route.NextHops) {
-		route.Protocol = "blackhole"
+		route.Source = canonicalRouteSource("blackhole")
 		route.NextHops = nil
 	}
+	route.Action = forwardingAction(string(route.Source.Protocol), route.NextHops)
 	route.NextHops = dedupeNextHops(route.NextHops)
 	return route, true
 }
 
 func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (FIBEntry, bool) {
+	_, _ = node, networkInstance
 	if !boolValue(m["Active"]) {
 		return FIBEntry{}, false
 	}
@@ -127,18 +128,16 @@ func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (FIBEntr
 		return FIBEntry{}, false
 	}
 	route := FIBEntry{
-		Node:       node,
-		VRF:        networkInstance,
 		AFI:        "ipv4",
 		Prefix:     prefix,
-		Protocol:   canonicalProtocol(stringValue(m["Route Type"])),
+		Source:     canonicalRouteSource(stringValue(m["Route Type"])),
 		Preference: firstIntValue(m["Preference"], m["Pref"]),
 		Metric:     intValue(m["Metric"]),
-		Installed:  true,
 	}
 	route.NextHops = append(route.NextHops, srlinuxDetailNextHops(mapValue(m["ip route nexthop"]), "Next hops")...)
 	route.NextHops = append(route.NextHops, srlinuxDetailNextHops(mapValue(m["ip route backup nexthop"]), "Backup Next hops")...)
 	route.NextHops = dedupeNextHops(route.NextHops)
+	route.Action = forwardingAction(string(route.Source.Protocol), route.NextHops)
 	return route, true
 }
 

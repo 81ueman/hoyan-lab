@@ -27,7 +27,7 @@ type NodeSnapshot struct {
 	Kind          model.DeviceKind              `json:"kind"`
 	BGPRIB        []observation.RIBRoute        `json:"bgp_rib,omitempty"`
 	RouteTable    []observation.RIBRoute        `json:"route_table,omitempty"`
-	FIB           []observation.FIBEntry        `json:"fib,omitempty"`
+	FIB           []observation.FIB             `json:"fib,omitempty"`
 	UnresolvedFIB []observation.UnresolvedRoute `json:"unresolved_fib,omitempty"`
 	Raw           map[string]json.RawMessage    `json:"raw,omitempty"`
 }

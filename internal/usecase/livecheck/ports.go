@@ -37,7 +37,7 @@ type RIBCollector interface {
 
 type FIBCollector interface {
 	SupportedNodes(nodes []model.Node) []model.Node
-	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error)
+	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error)
 }
 
 type DataplaneProber interface {
