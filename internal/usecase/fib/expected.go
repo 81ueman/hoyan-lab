@@ -25,6 +25,10 @@ func (b ExpectedBuilder) Expected(topo *model.Topology) []observationfib.Normali
 
 // ExpectedForNodes builds modeled FIB routes for the selected topology nodes.
 func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationfib.NormalizedFIBRoute {
+	return ExpectedBuilder{}.ExpectedForNodesWithFailureSet(topo, nodes, sim.NoFailures())
+}
+
+func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observationfib.NormalizedFIBRoute {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true
@@ -34,7 +38,7 @@ func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node
 		panic(err)
 	}
 	graph := sim.NewGraph(topo)
-	ctx := graph.FailureContext(sim.NoFailures())
+	ctx := graph.FailureContext(failures)
 	byRoute := map[string]observationfib.NormalizedFIBRoute{}
 	for _, n := range topo.Nodes {
 		if !allowed[n.Name] || ctx.NodeFailed(model.NodeID(n.Name)) {

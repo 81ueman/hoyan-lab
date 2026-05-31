@@ -1,0 +1,86 @@
+package collect
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
+	fibusecase "github.com/81ueman/hoyan-lab/internal/usecase/fib"
+	ribusecase "github.com/81ueman/hoyan-lab/internal/usecase/rib"
+)
+
+type Simulator struct {
+	topo     *model.Topology
+	failures sim.FailureSet
+}
+
+func NewSimulator(topo *model.Topology) Simulator {
+	return Simulator{topo: topo, failures: sim.NoFailures()}
+}
+
+func (s Simulator) CollectorFor(failures sim.FailureSet) observation.Collector {
+	s.failures = failures
+	return s
+}
+
+func (s Simulator) Metadata(context.Context) observation.CollectorMetadata {
+	return observation.CollectorMetadata{Source: "simulator"}
+}
+
+func (s Simulator) Nodes(context.Context) ([]observation.NodeID, error) {
+	if s.topo == nil {
+		return nil, fmt.Errorf("simulator collector has no topology")
+	}
+	out := make([]observation.NodeID, 0, len(s.topo.Nodes))
+	for _, node := range s.topo.Nodes {
+		out = append(out, observation.NodeID(node.Name))
+	}
+	return out, nil
+}
+
+func (s Simulator) VRFs(_ context.Context, node observation.NodeID) ([]observation.VRFName, error) {
+	n, ok := s.node(node)
+	if !ok {
+		return nil, fmt.Errorf("simulator node %q not found", node)
+	}
+	vrfs := model.NetworkInstancesForNode(n)
+	out := make([]observation.VRFName, 0, len(vrfs))
+	for _, vrf := range vrfs {
+		out = append(out, observation.VRFName(vrf))
+	}
+	return out, nil
+}
+
+func (s Simulator) CollectRIB(_ context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
+	n, ok := s.node(node)
+	if !ok {
+		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node)
+	}
+	routes := (ribusecase.ExpectedBuilder{}).BuildForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
+	routes = filterNormalizedRIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterRIB(observation.RIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+}
+
+func (s Simulator) CollectFIB(_ context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
+	n, ok := s.node(node)
+	if !ok {
+		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
+	}
+	routes := fibusecase.NewExpectedBuilder().ExpectedForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
+	routes = filterNormalizedFIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterFIB(observation.FIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+}
+
+func (s Simulator) node(node observation.NodeID) (model.Node, bool) {
+	if s.topo == nil {
+		return model.Node{}, false
+	}
+	for _, n := range s.topo.Nodes {
+		if n.Name == string(node) {
+			return n, true
+		}
+	}
+	return model.Node{}, false
+}
