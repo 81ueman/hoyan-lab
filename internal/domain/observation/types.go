@@ -7,6 +7,9 @@ type RouteSource struct {
 	Origin   string                `json:"origin,omitempty"`
 }
 
+// NextHop is an observed RIB/FIB next-hop as reported by a device or simulator.
+// It may include observation-specific metadata such as interface, weight, and
+// resolution state; the control-plane forwarding reference is route.NextHop.
 type NextHop struct {
 	Address   string       `json:"address,omitempty"`
 	Interface string       `json:"interface,omitempty"`
