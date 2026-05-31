@@ -1,5 +1,7 @@
 package observation
 
+import "github.com/81ueman/hoyan-lab/internal/domain/model"
+
 func NormalizeFIBEntries(routes []FIBEntry) ([]FIBEntry, []DuplicateRouteConflict) {
 	return normalizeRoutesForSide("", routes, fibRouteKey)
 }
@@ -53,7 +55,7 @@ func normalizeFIBEntryForCompare(route FIBEntry) FIBEntry {
 	}
 	route.Protocol = canonicalProtocol(route.Protocol)
 	if route.AFI == "" {
-		route.AFI = AFIIPv4
+		route.AFI = model.AFIIPv4
 	}
 	if route.Action == "" {
 		if route.Protocol == string(ProtocolBlackhole) {

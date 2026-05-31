@@ -3,6 +3,8 @@ package observation
 import (
 	"fmt"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func normalizeRoute(r RIBRoute) RIBRoute {
@@ -34,7 +36,7 @@ func comparableRIBRoute(route RIBRoute) RIBRoute {
 		return route
 	}
 	out := RIBRoute{
-		AFI:      string(NormalizeAddressFamily(route.Common.AFI)),
+		AFI:      string(model.NormalizeAFI(route.Common.AFI)),
 		Prefix:   route.Common.Prefix,
 		Protocol: string(NormalizeRouteProtocol(route.Common.Protocol)),
 	}

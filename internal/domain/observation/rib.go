@@ -36,7 +36,7 @@ type RIBRoute struct {
 }
 
 type RIBRouteCommon struct {
-	AFI      AddressFamily `json:"afi"`
+	AFI      model.AFI     `json:"afi"`
 	Prefix   string        `json:"prefix"`
 	Protocol RouteProtocol `json:"protocol"`
 
@@ -139,7 +139,7 @@ func (r RIB) Key() string {
 
 func (r RIBRoute) Key() string {
 	return strings.Join([]string{
-		string(NormalizeAddressFamily(r.Common.AFI)),
+		string(model.NormalizeAFI(r.Common.AFI)),
 		string(NormalizeRouteProtocol(r.Common.Protocol)),
 		r.Common.Prefix,
 	}, "|")
@@ -242,7 +242,7 @@ func RIBRouteFromRouteRecord(route RIBRoute) RIBRoute {
 	route = NormalizeRIBRouteRecord(route)
 	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
 	common := RIBRouteCommon{
-		AFI:      NormalizeAddressFamily(AddressFamily(route.AFI)),
+		AFI:      model.NormalizeAFI(model.AFI(route.AFI)),
 		Prefix:   route.Prefix,
 		Protocol: protocol,
 		Eligible: routeHasEligiblePath(route.Paths),

@@ -17,7 +17,7 @@ type Collector interface {
 }
 
 type CollectOptions struct {
-	AFI       AddressFamily
+	AFI       model.AFI
 	Protocols []RouteProtocol
 	Prefixes  []netip.Prefix
 
@@ -106,8 +106,8 @@ func FilterFIB(fib FIB, opts CollectOptions) FIB {
 	return out
 }
 
-func collectOptionsMatchRoute(opts CollectOptions, afi AddressFamily, protocol RouteProtocol, prefix string) bool {
-	if opts.AFI != "" && NormalizeAddressFamily(opts.AFI) != NormalizeAddressFamily(afi) {
+func collectOptionsMatchRoute(opts CollectOptions, afi model.AFI, protocol RouteProtocol, prefix string) bool {
+	if opts.AFI != "" && model.NormalizeAFI(opts.AFI) != model.NormalizeAFI(afi) {
 		return false
 	}
 	if len(opts.Protocols) > 0 {
