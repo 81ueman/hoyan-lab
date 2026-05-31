@@ -20,7 +20,7 @@ type NodeSnapshot struct {
 }
 
 type VRFSnapshot struct {
-	VRF VRFName `json:"vrf"`
-	RIB RIB     `json:"rib"`
-	FIB FIB     `json:"fib"`
+	VRF model.NetworkInstanceID `json:"vrf"`
+	RIB RIB                     `json:"rib"`
+	FIB FIB                     `json:"fib"`
 }

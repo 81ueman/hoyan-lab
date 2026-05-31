@@ -40,20 +40,21 @@ func (s Simulator) Nodes(context.Context) ([]model.NodeID, error) {
 	return out, nil
 }
 
-func (s Simulator) VRFs(_ context.Context, node model.NodeID) ([]observation.VRFName, error) {
+func (s Simulator) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkInstanceID, error) {
 	n, ok := s.node(node)
 	if !ok {
 		return nil, fmt.Errorf("simulator node %q not found", node)
 	}
 	vrfs := model.NetworkInstancesForNode(n)
-	out := make([]observation.VRFName, 0, len(vrfs))
+	out := make([]model.NetworkInstanceID, 0, len(vrfs))
 	for _, vrf := range vrfs {
-		out = append(out, observation.VRFName(vrf))
+		out = append(out, model.NormalizeNetworkInstance(vrf))
 	}
 	return out, nil
 }
 
-func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
+func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := s.node(node)
 	if !ok {
 		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node)
@@ -63,7 +64,8 @@ func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf observat
 	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
-func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
+func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.FIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := s.node(node)
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
