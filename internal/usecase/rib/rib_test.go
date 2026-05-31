@@ -391,10 +391,27 @@ func TestCompareRoutes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := observation.Compare(tt.exp, tt.act); !tt.want(got) {
-				t.Fatalf("observation.Compare() = %#v", got)
+			if got := observation.CompareRIB(ribFromRecords(tt.exp), ribFromRecords(tt.act), observation.DefaultCompareOptions()); !tt.want(got) {
+				t.Fatalf("observation.CompareRIB() = %#v", got)
 			}
 		})
+	}
+}
+
+func TestCompareRIBUsesTableScopedRouteKeys(t *testing.T) {
+	expected := ribFromRecords([]observation.RIBRoute{route("r1", "10.0.0.0/24",
+		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
+	)})
+	actual := ribFromRecords([]observation.RIBRoute{route("r1", "10.0.0.0/24",
+		path(false, true, "192.0.2.1", []uint32{65001}, 100, 0),
+	)})
+
+	result := observation.CompareRIB(expected, actual, observation.DefaultCompareOptions())
+	if result.OK || len(result.Mismatched) != 1 {
+		t.Fatalf("observation.CompareRIB() = %#v, want one mismatch", result)
+	}
+	if result.Mismatched[0].RouteKey != "ipv4|bgp|10.0.0.0/24" {
+		t.Fatalf("route key = %q, want table-scoped key", result.Mismatched[0].RouteKey)
 	}
 }
 
@@ -508,6 +525,10 @@ func mismatch(field string) func(observation.CompareResult) bool {
 	return func(r observation.CompareResult) bool {
 		return len(r.Mismatched) == 1 && r.Mismatched[0].Field == field
 	}
+}
+
+func ribFromRecords(routes []observation.RIBRoute) observation.RIB {
+	return observation.RIBFromRouteRecords("r1", "default", routes)
 }
 
 func route(node, prefix string, paths ...observation.RIBPath) observation.RIBRoute {

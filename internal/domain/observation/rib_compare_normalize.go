@@ -21,6 +21,52 @@ func normalizeRoute(r RIBRoute) RIBRoute {
 	return r
 }
 
+func comparableRIBRoutes(routes []RIBRoute) []RIBRoute {
+	out := make([]RIBRoute, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, comparableRIBRoute(route))
+	}
+	return out
+}
+
+func comparableRIBRoute(route RIBRoute) RIBRoute {
+	if route.Common.Prefix == "" {
+		return route
+	}
+	out := RIBRoute{
+		AFI:      string(NormalizeAddressFamily(route.Common.AFI)),
+		Prefix:   route.Common.Prefix,
+		Protocol: string(NormalizeRouteProtocol(route.Common.Protocol)),
+	}
+	if route.BGP != nil {
+		out.Paths = ribPathsFromBGPPaths(route.BGP.Paths)
+	}
+	return out
+}
+
+func ribPathsFromBGPPaths(paths []BGPPath) []RIBPath {
+	out := make([]RIBPath, 0, len(paths))
+	for _, path := range paths {
+		out = append(out, RIBPath{
+			NextHop:          path.NextHop.Address,
+			ASPath:           append([]uint32(nil), path.ASPath...),
+			Origin:           path.Origin,
+			LocalPref:        path.LocalPref,
+			MED:              path.MED,
+			Weight:           path.Weight,
+			Communities:      append([]string(nil), path.Communities...),
+			LargeCommunities: append([]string(nil), path.LargeCommunities...),
+			OriginatorID:     path.OriginatorID,
+			ClusterList:      append([]string(nil), path.ClusterList...),
+			Peer:             path.Peer,
+			PeerAS:           path.PeerAS,
+			Valid:            path.Eligible,
+			Best:             path.Best,
+		})
+	}
+	return out
+}
+
 func NormalizeRIBRouteRecord(r RIBRoute) RIBRoute {
 	return normalizeRoute(r)
 }
@@ -39,6 +85,11 @@ func routeKey(r RIBRoute) string {
 		return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Protocol + "|" + r.Prefix
 	}
 	return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Prefix
+}
+
+func ribTableRouteKey(r RIBRoute) string {
+	r = normalizeRoute(r)
+	return r.AFI + "|" + r.Protocol + "|" + r.Prefix
 }
 
 func pathKey(p RIBPath, opts CompareOptions) string {

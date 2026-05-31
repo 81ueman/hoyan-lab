@@ -3,8 +3,16 @@ package observation
 import "sort"
 
 func CompareFIBEntries(expected, actual []FIBEntry) Result {
-	expected, expConflicts := normalizeRoutesForSide("expected", expected)
-	actual, actConflicts := normalizeRoutesForSide("actual", actual)
+	return compareFIBEntries(expected, actual, fibRouteKey)
+}
+
+func CompareFIB(expected, actual FIB) Result {
+	return compareFIBEntries(expected.Entries, actual.Entries, fibTableRouteKey)
+}
+
+func compareFIBEntries(expected, actual []FIBEntry, keyFunc func(FIBEntry) string) Result {
+	expected, expConflicts := normalizeRoutesForSide("expected", expected, keyFunc)
+	actual, actConflicts := normalizeRoutesForSide("actual", actual, keyFunc)
 	exp := map[string]FIBEntry{}
 	act := map[string]FIBEntry{}
 	conflictedKeys := map[string]bool{}
@@ -15,10 +23,10 @@ func CompareFIBEntries(expected, actual []FIBEntry) Result {
 		conflictedKeys[conflict.RouteKey] = true
 	}
 	for _, route := range expected {
-		exp[fibRouteKey(route)] = route
+		exp[keyFunc(route)] = route
 	}
 	for _, route := range actual {
-		act[fibRouteKey(route)] = route
+		act[keyFunc(route)] = route
 	}
 	keys := sortedUnion(exp, act)
 	for _, key := range keys {

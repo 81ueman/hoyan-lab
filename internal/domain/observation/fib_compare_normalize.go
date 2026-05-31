@@ -1,15 +1,15 @@
 package observation
 
 func NormalizeFIBEntries(routes []FIBEntry) ([]FIBEntry, []DuplicateRouteConflict) {
-	return normalizeRoutesForSide("", routes)
+	return normalizeRoutesForSide("", routes, fibRouteKey)
 }
 
-func normalizeRoutesForSide(side string, routes []FIBEntry) ([]FIBEntry, []DuplicateRouteConflict) {
+func normalizeRoutesForSide(side string, routes []FIBEntry, keyFunc func(FIBEntry) string) ([]FIBEntry, []DuplicateRouteConflict) {
 	entries := map[string]routeIndexEntry{}
 	for _, route := range routes {
-		route.Protocol = canonicalProtocol(route.Protocol)
+		route = normalizeFIBEntryForCompare(route)
 		route.NextHops = dedupeFIBNextHops(route.NextHops)
-		key := fibRouteKey(route)
+		key := keyFunc(route)
 		entry, ok := entries[key]
 		if !ok {
 			entries[key] = routeIndexEntry{route: route, routes: []FIBEntry{route}}
@@ -45,6 +45,26 @@ func normalizeRoutesForSide(side string, routes []FIBEntry) ([]FIBEntry, []Dupli
 	sortFIBEntriesForCompare(out)
 	sortDuplicateRouteConflicts(conflicts)
 	return out, conflicts
+}
+
+func normalizeFIBEntryForCompare(route FIBEntry) FIBEntry {
+	if route.Protocol == "" {
+		route.Protocol = string(route.Source.Protocol)
+	}
+	route.Protocol = canonicalProtocol(route.Protocol)
+	if route.AFI == "" {
+		route.AFI = AFIIPv4
+	}
+	if route.Action == "" {
+		if route.Protocol == string(ProtocolBlackhole) {
+			route.Action = ActionDrop
+		} else if route.Protocol == string(ProtocolConnected) && len(route.NextHops) == 0 {
+			route.Action = ActionReceive
+		} else {
+			route.Action = ActionForward
+		}
+	}
+	return route
 }
 
 type routeIndexEntry struct {
