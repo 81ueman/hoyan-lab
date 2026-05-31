@@ -7,7 +7,13 @@ func CompareFIBEntries(expected, actual []FIBEntry) Result {
 }
 
 func CompareFIB(expected, actual FIB) Result {
-	return compareFIBEntries(expected.Entries, actual.Entries, fibTableRouteKey)
+	result := compareFIBEntries(expected.Entries, actual.Entries, fibTableRouteKey)
+	compareFIBTableIdentity(expected, actual, &result)
+	sort.Slice(result.Mismatched, func(i, j int) bool {
+		return result.Mismatched[i].RouteKey+"|"+result.Mismatched[i].Field < result.Mismatched[j].RouteKey+"|"+result.Mismatched[j].Field
+	})
+	result.OK = result.OK && len(result.Mismatched) == 0
+	return result
 }
 
 func compareFIBEntries(expected, actual []FIBEntry, keyFunc func(FIBEntry) string) Result {
@@ -122,4 +128,23 @@ func sortNextHopDiffs(diffs []NextHopDiff) {
 	sort.Slice(diffs, func(i, j int) bool {
 		return diffs[i].RouteKey+"|"+diffs[i].NextHopKey < diffs[j].RouteKey+"|"+diffs[j].NextHopKey
 	})
+}
+
+func compareFIBTableIdentity(expected, actual FIB, result *Result) {
+	if expected.Node != actual.Node {
+		result.Mismatched = append(result.Mismatched, FIBAttributeMismatch{
+			RouteKey: "table",
+			Field:    "node",
+			Expected: expected.Node,
+			Actual:   actual.Node,
+		})
+	}
+	if expected.VRF != actual.VRF {
+		result.Mismatched = append(result.Mismatched, FIBAttributeMismatch{
+			RouteKey: "table",
+			Field:    "vrf",
+			Expected: expected.VRF,
+			Actual:   actual.VRF,
+		})
+	}
 }

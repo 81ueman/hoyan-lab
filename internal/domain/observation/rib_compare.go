@@ -9,7 +9,13 @@ func CompareRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions) 
 }
 
 func CompareRIB(expected RIB, actual RIB, opts CompareOptions) CompareResult {
-	return compareRIBRoutes(comparableRIBRoutes(expected.Routes), comparableRIBRoutes(actual.Routes), opts, ribTableRouteKey)
+	result := compareRIBRoutes(comparableRIBRoutes(expected.Routes), comparableRIBRoutes(actual.Routes), opts, ribTableRouteKey)
+	compareRIBTableIdentity(expected, actual, &result)
+	sort.Slice(result.Mismatched, func(i, j int) bool {
+		return mismatchSortKey(result.Mismatched[i]) < mismatchSortKey(result.Mismatched[j])
+	})
+	result.OK = result.OK && len(result.Mismatched) == 0
+	return result
 }
 
 func compareRIBRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions, keyFunc func(RIBRoute) string) CompareResult {
@@ -61,4 +67,23 @@ func compareRIBRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOption
 
 func Compare(expected RIB, actual RIB) CompareResult {
 	return CompareRIB(expected, actual, DefaultCompareOptions())
+}
+
+func compareRIBTableIdentity(expected, actual RIB, result *CompareResult) {
+	if expected.Node != actual.Node {
+		result.Mismatched = append(result.Mismatched, AttributeMismatch{
+			RouteKey: "table",
+			Field:    "node",
+			Expected: expected.Node,
+			Actual:   actual.Node,
+		})
+	}
+	if expected.VRF != actual.VRF {
+		result.Mismatched = append(result.Mismatched, AttributeMismatch{
+			RouteKey: "table",
+			Field:    "vrf",
+			Expected: expected.VRF,
+			Actual:   actual.VRF,
+		})
+	}
 }
