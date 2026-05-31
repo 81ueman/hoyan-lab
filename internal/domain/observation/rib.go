@@ -36,9 +36,9 @@ type RIBRoute struct {
 }
 
 type RIBRouteCommon struct {
-	AFI      model.AFI     `json:"afi"`
-	Prefix   string        `json:"prefix"`
-	Protocol RouteProtocol `json:"protocol"`
+	AFI      model.AFI             `json:"afi"`
+	Prefix   string                `json:"prefix"`
+	Protocol model.RouteSourceKind `json:"protocol"`
 
 	Preference int `json:"preference,omitempty"`
 	Metric     int `json:"metric,omitempty"`
@@ -105,7 +105,7 @@ func (r RIBRoute) Validate() error {
 	if r.Common.Prefix == "" {
 		return errors.New("rib route prefix is required")
 	}
-	if NormalizeRouteProtocol(r.Common.Protocol) != r.Common.Protocol {
+	if model.NormalizeRouteSourceKind(r.Common.Protocol) != r.Common.Protocol {
 		return fmt.Errorf("rib route protocol %q is not normalized", r.Common.Protocol)
 	}
 	payloads := r.payloadCount()
@@ -140,7 +140,7 @@ func (r RIB) Key() string {
 func (r RIBRoute) Key() string {
 	return strings.Join([]string{
 		string(model.NormalizeAFI(r.Common.AFI)),
-		string(NormalizeRouteProtocol(r.Common.Protocol)),
+		string(model.NormalizeRouteSourceKind(r.Common.Protocol)),
 		r.Common.Prefix,
 	}, "|")
 }
@@ -165,20 +165,20 @@ func (r RIBRoute) payloadCount() int {
 	return count
 }
 
-func (r RIBRoute) payloadProtocol() RouteProtocol {
+func (r RIBRoute) payloadProtocol() model.RouteSourceKind {
 	switch {
 	case r.BGP != nil:
-		return ProtocolBGP
+		return model.RouteSourceBGP
 	case r.OSPF != nil:
-		return ProtocolOSPF
+		return model.RouteSourceOSPF
 	case r.Static != nil:
-		return ProtocolStatic
+		return model.RouteSourceStatic
 	case r.Connected != nil:
-		return ProtocolConnected
+		return model.RouteSourceConnected
 	case r.Blackhole != nil:
-		return ProtocolBlackhole
+		return model.RouteSourceBlackhole
 	default:
-		return ProtocolUnknown
+		return model.RouteSourceUnknown
 	}
 }
 
@@ -240,7 +240,7 @@ func RIBsFromRouteRecords(routes []RIBRoute) []RIB {
 
 func RIBRouteFromRouteRecord(route RIBRoute) RIBRoute {
 	route = NormalizeRIBRouteRecord(route)
-	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
+	protocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(route.Protocol))
 	common := RIBRouteCommon{
 		AFI:      model.NormalizeAFI(model.AFI(route.AFI)),
 		Prefix:   route.Prefix,
@@ -250,18 +250,18 @@ func RIBRouteFromRouteRecord(route RIBRoute) RIBRoute {
 	}
 	out := RIBRoute{Common: common}
 	switch protocol {
-	case ProtocolBGP:
+	case model.RouteSourceBGP:
 		out.BGP = &BGPRIBRoute{Paths: bgpPathsFromRouteRecord(route.Paths)}
-	case ProtocolOSPF:
+	case model.RouteSourceOSPF:
 		out.OSPF = &OSPFRIBRoute{RouteType: OSPFRouteTypeUnknown, Paths: ospfPathsFromRouteRecord(route.Paths)}
-	case ProtocolStatic:
+	case model.RouteSourceStatic:
 		out.Static = &StaticRIBRoute{NextHops: nextHopsFromRouteRecordRIBPaths(route.Paths)}
-	case ProtocolConnected:
+	case model.RouteSourceConnected:
 		out.Connected = &ConnectedRIBRoute{}
-	case ProtocolBlackhole:
+	case model.RouteSourceBlackhole:
 		out.Blackhole = &BlackholeRIBRoute{}
 	default:
-		out.Common.Protocol = ProtocolUnknown
+		out.Common.Protocol = model.RouteSourceUnknown
 	}
 	return out
 }

@@ -36,13 +36,13 @@ func TestSnapshotBackedCollectorsCanCompareWithEachOther(t *testing.T) {
 			VRFs: []observation.VRFSnapshot{{
 				VRF: "default",
 				RIB: observation.RIB{Node: "r1", VRF: "default", Routes: []observation.RIBRoute{{
-					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: observation.ProtocolStatic, Eligible: true, Best: true},
+					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceStatic, Eligible: true, Best: true},
 					Static: &observation.StaticRIBRoute{NextHops: []observation.NextHop{{Address: "192.0.2.1"}}},
 				}}},
 				FIB: observation.FIB{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
 					AFI:      model.AFIIPv4,
 					Prefix:   "10.0.0.0/24",
-					Source:   observation.RouteSource{Protocol: observation.ProtocolStatic},
+					Source:   observation.RouteSource{Protocol: model.RouteSourceStatic},
 					Action:   observation.ActionForward,
 					NextHops: []observation.NextHop{{Address: "192.0.2.1"}},
 				}}},

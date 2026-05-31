@@ -1,26 +1,10 @@
 package observation
 
-import (
-	"strings"
-
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
-)
-
-type RouteProtocol string
-
-const (
-	ProtocolBGP       RouteProtocol = "bgp"
-	ProtocolOSPF      RouteProtocol = "ospf"
-	ProtocolStatic    RouteProtocol = "static"
-	ProtocolConnected RouteProtocol = "connected"
-	ProtocolBlackhole RouteProtocol = "blackhole"
-	ProtocolAggregate RouteProtocol = "aggregate"
-	ProtocolUnknown   RouteProtocol = "unknown"
-)
+import "github.com/81ueman/hoyan-lab/internal/domain/model"
 
 type RouteSource struct {
-	Protocol RouteProtocol `json:"protocol"`
-	Origin   string        `json:"origin,omitempty"`
+	Protocol model.RouteSourceKind `json:"protocol"`
+	Origin   string                `json:"origin,omitempty"`
 }
 
 type NextHop struct {
@@ -70,27 +54,4 @@ type DecisionInfo struct {
 type ResolutionInfo struct {
 	Status string `json:"status,omitempty"`
 	Reason string `json:"reason,omitempty"`
-}
-
-func NormalizeRouteProtocol(protocol RouteProtocol) RouteProtocol {
-	switch RouteProtocol(strings.ToLower(strings.TrimSpace(string(protocol)))) {
-	case ProtocolBGP:
-		return ProtocolBGP
-	case ProtocolOSPF:
-		return ProtocolOSPF
-	case "ospf-ia", "ospf-ia-routes", "ospf-inter-area":
-		return ProtocolOSPF
-	case ProtocolStatic:
-		return ProtocolStatic
-	case ProtocolConnected:
-		return ProtocolConnected
-	case ProtocolBlackhole:
-		return ProtocolBlackhole
-	case ProtocolAggregate:
-		return ProtocolAggregate
-	case "", ProtocolUnknown:
-		return ProtocolUnknown
-	default:
-		return RouteProtocol(strings.ToLower(strings.TrimSpace(string(protocol))))
-	}
 }

@@ -58,9 +58,9 @@ func normalizeFIBEntryForCompare(route FIBEntry) FIBEntry {
 		route.AFI = model.AFIIPv4
 	}
 	if route.Action == "" {
-		if route.Protocol == string(ProtocolBlackhole) {
+		if route.Protocol == string(model.RouteSourceBlackhole) {
 			route.Action = ActionDrop
-		} else if route.Protocol == string(ProtocolConnected) && len(route.NextHops) == 0 {
+		} else if route.Protocol == string(model.RouteSourceConnected) && len(route.NextHops) == 0 {
 			route.Action = ActionReceive
 		} else {
 			route.Action = ActionForward

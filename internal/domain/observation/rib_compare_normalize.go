@@ -38,7 +38,7 @@ func comparableRIBRoute(route RIBRoute) RIBRoute {
 	out := RIBRoute{
 		AFI:      string(model.NormalizeAFI(route.Common.AFI)),
 		Prefix:   route.Common.Prefix,
-		Protocol: string(NormalizeRouteProtocol(route.Common.Protocol)),
+		Protocol: string(model.NormalizeRouteSourceKind(route.Common.Protocol)),
 	}
 	if route.BGP != nil {
 		out.Paths = ribPathsFromBGPPaths(route.BGP.Paths)

@@ -18,7 +18,7 @@ type Collector interface {
 
 type CollectOptions struct {
 	AFI       model.AFI
-	Protocols []RouteProtocol
+	Protocols []model.RouteSourceKind
 	Prefixes  []netip.Prefix
 
 	IncludeInactive  bool
@@ -106,14 +106,14 @@ func FilterFIB(fib FIB, opts CollectOptions) FIB {
 	return out
 }
 
-func collectOptionsMatchRoute(opts CollectOptions, afi model.AFI, protocol RouteProtocol, prefix string) bool {
+func collectOptionsMatchRoute(opts CollectOptions, afi model.AFI, protocol model.RouteSourceKind, prefix string) bool {
 	if opts.AFI != "" && model.NormalizeAFI(opts.AFI) != model.NormalizeAFI(afi) {
 		return false
 	}
 	if len(opts.Protocols) > 0 {
 		found := false
 		for _, allowed := range opts.Protocols {
-			if NormalizeRouteProtocol(allowed) == NormalizeRouteProtocol(protocol) {
+			if model.NormalizeRouteSourceKind(allowed) == model.NormalizeRouteSourceKind(protocol) {
 				found = true
 				break
 			}
