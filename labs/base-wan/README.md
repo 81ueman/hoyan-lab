@@ -8,10 +8,8 @@ Examples:
 
 ```bash
 go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
-go run ./cmd/hoyan live check --lab labs/base-wan
-go run ./cmd/hoyan compare rib --lab labs/base-wan
-go run ./cmd/hoyan compare fib --lab labs/base-wan
-go run ./cmd/hoyan compare rib --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
-go run ./cmd/hoyan compare fib --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json
-go run ./cmd/hoyan live check --lab labs/base-wan --snapshot labs/base-wan/snapshots/latest.json --offline
+go run ./cmd/hoyan compare labs/base-wan/hoyan.clab.yml labs/base-wan/hoyan.clab.yml --left-type model --right-type clab
+go run ./cmd/hoyan compare labs/base-wan/hoyan.clab.yml labs/base-wan/hoyan.clab.yml --left-type model --right-type clab --check rib
+go run ./cmd/hoyan compare labs/base-wan/hoyan.clab.yml labs/base-wan/hoyan.clab.yml --left-type model --right-type clab --check fib
+go run ./cmd/hoyan compare labs/base-wan/hoyan.clab.yml labs/base-wan/snapshots/actual.json --left-type model --right-type snapshot
 ```

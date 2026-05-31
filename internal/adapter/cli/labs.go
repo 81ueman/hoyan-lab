@@ -128,12 +128,19 @@ type labsLiveCheckOptions struct {
 }
 
 func (o labsLiveCheckOptions) validate() error {
-	return liveCheckOptions{
-		timeout:             o.timeout,
-		pollInterval:        o.pollInterval,
-		maxPolls:            o.maxPolls,
-		fibUnresolvedPolicy: o.fibUnresolvedPolicy,
-	}.validate()
+	if o.timeout <= 0 {
+		return fmt.Errorf("--timeout must be greater than zero")
+	}
+	if o.pollInterval <= 0 {
+		return fmt.Errorf("--poll-interval must be greater than zero")
+	}
+	if o.maxPolls <= 0 {
+		return fmt.Errorf("--max-polls must be greater than zero")
+	}
+	if _, ok := observation.ParseUnresolvedPolicy(o.fibUnresolvedPolicy); !ok {
+		return fmt.Errorf("FIB unresolved policy must be one of warn, fail, or ignore")
+	}
+	return nil
 }
 
 func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner liveexec.Runner) error {
