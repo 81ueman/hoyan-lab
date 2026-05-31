@@ -48,7 +48,7 @@ func (e FIBEntry) Validate() error {
 	if e.Prefix == "" {
 		return errors.New("fib entry prefix is required")
 	}
-	if NormalizeRouteProtocol(e.Source.Protocol) != e.Source.Protocol {
+	if model.NormalizeRouteSourceKind(e.Source.Protocol) != e.Source.Protocol {
 		return fmt.Errorf("fib entry source protocol %q is not normalized", e.Source.Protocol)
 	}
 	switch e.Action {
@@ -81,7 +81,7 @@ func (f FIB) Key() string {
 func (e FIBEntry) Key() string {
 	return strings.Join([]string{
 		string(model.NormalizeAFI(e.AFI)),
-		string(NormalizeRouteProtocol(e.Source.Protocol)),
+		string(model.NormalizeRouteSourceKind(e.Source.Protocol)),
 		string(e.Action),
 		e.Prefix,
 	}, "|")
@@ -142,11 +142,11 @@ func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 }
 
 func FIBEntryFromRouteRecord(route FIBEntry) FIBEntry {
-	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
+	protocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(route.Protocol))
 	action := ActionForward
-	if protocol == ProtocolBlackhole {
+	if protocol == model.RouteSourceBlackhole {
 		action = ActionDrop
-	} else if protocol == ProtocolConnected && len(route.NextHops) == 0 {
+	} else if protocol == model.RouteSourceConnected && len(route.NextHops) == 0 {
 		action = ActionReceive
 	}
 	return FIBEntry{
