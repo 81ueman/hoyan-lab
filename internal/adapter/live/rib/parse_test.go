@@ -412,10 +412,11 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 			return nil, nil
 		}
 	})
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}})
+	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectRIB() error = %v", err)
 	}
+	routes := rib.Routes
 	if routeByPrefixProtocol(routes, "192.0.2.0/30", "connected") == nil {
 		t.Fatalf("connected route missing from collected routes: %#v", routes)
 	}
@@ -438,10 +439,11 @@ func TestCollectSkipsBGPCommandsForNodesWithoutASN(t *testing.T) {
 			return nil, nil
 		}
 	})
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"}})
+	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectRIB() error = %v", err)
 	}
+	routes := rib.Routes
 	ospf := routeByPrefixProtocol(routes, "10.255.2.2/32", "ospf")
 	if ospf == nil || pathCount(ospf) != 1 || firstNextHop(ospf) != "198.51.100.2" {
 		t.Fatalf("OSPF route = %#v in %#v", ospf, routes)

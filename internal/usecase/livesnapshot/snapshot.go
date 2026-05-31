@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
@@ -91,16 +92,15 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 	}
 	ribUsecase := ribcompare.New(u.ribCollector)
 	fibUsecase := fibcompare.New(u.fibCollector)
-	bgp, err := ribUsecase.CollectBGPRoutes(ctx, topo.Nodes)
+	routes, err := ribUsecase.Collect(ctx, topo.Nodes)
 	if err != nil {
 		return nil, err
 	}
-	routes, err := ribUsecase.CollectRouteTableRoutes(ctx, topo.Nodes)
-	if err != nil {
-		return nil, err
-	}
-	fibNodes := fibUsecase.SupportedNodes(topo.Nodes)
-	fib, err := fibUsecase.Collect(ctx, fibNodes, fibOpts)
+	bgp := observation.BGPOnly(routes)
+	routeTable := observation.FilterRIBRoutes(routes, func(route observation.RIBRoute) bool {
+		return route.Common.Protocol != model.RouteSourceBGP
+	})
+	fib, err := fibUsecase.Collect(ctx, topo.Nodes, fibOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 		ns.BGPRIB = routes
 		return ns
 	})
-	addRIBRoutes(snap.Nodes, routes, func(ns NodeSnapshot, routes []observation.RIBRoute) NodeSnapshot {
+	addRIBRoutes(snap.Nodes, routeTable, func(ns NodeSnapshot, routes []observation.RIBRoute) NodeSnapshot {
 		ns.RouteTable = routes
 		return ns
 	})

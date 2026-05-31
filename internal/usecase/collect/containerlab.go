@@ -9,12 +9,11 @@ import (
 )
 
 type RIBCollector interface {
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
-	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
+	CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error)
 }
 
 type FIBCollector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error)
+	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error)
 }
 
 type ContainerlabCollector struct {
@@ -58,46 +57,35 @@ func (c ContainerlabCollector) VRFs(_ context.Context, node model.NodeID) ([]mod
 	return out, nil
 }
 
-func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	n, ok := c.node(node)
+	nodeID := model.NodeID(node.Name)
+	n, ok := c.node(nodeID)
 	if !ok {
-		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
+		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node.Name)
 	}
 	if c.ribCollector == nil {
-		return observation.RIB{Node: node, VRF: vrf}, nil
+		return observation.RIB{Node: nodeID, VRF: vrf}, nil
 	}
-	bgp, err := c.ribCollector.CollectBGPRoutes(ctx, []model.Node{n})
-	if err != nil {
-		return observation.RIB{}, err
-	}
-	routeTable, err := c.ribCollector.CollectRouteTableRoutes(ctx, []model.Node{n})
-	if err != nil {
-		return observation.RIB{}, err
-	}
-	routes := append(bgp, routeTable...)
-	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
-	observation.SortRIBRoutes(routes)
-	return observation.FilterRIB(observation.RIB{Node: node, VRF: vrf, Routes: routes}, opts), nil
+	return c.ribCollector.CollectRIB(ctx, n, vrf, opts)
 }
 
-func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.FIB, error) {
+func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	n, ok := c.node(node)
+	n, ok := c.node(model.NodeID(node.Name))
 	if !ok {
-		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)
+		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node.Name)
 	}
 	if c.fibCollector == nil {
-		return observation.FIB{Node: node, VRF: vrf}, nil
+		return observation.FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
 	}
 	fibOpts := c.fibOptions
 	fibOpts.AllowUnsupported = true
-	routes, err := c.fibCollector.Collect(ctx, []model.Node{n}, fibOpts)
+	fib, err := c.fibCollector.CollectFIB(ctx, n, vrf, fibOpts)
 	if err != nil {
 		return observation.FIB{}, err
 	}
-	fib := filterFIBs(routes, node, vrf)
-	return observation.FilterFIB(fib, opts), nil
+	return fib, nil
 }
 
 func (c ContainerlabCollector) node(node model.NodeID) (model.Node, bool) {

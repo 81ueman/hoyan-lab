@@ -54,27 +54,16 @@ func (fakeCommitProvider) Commit() string {
 
 type fakeRIBCollector struct{}
 
-func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
-	return []observation.RIBRoute{{
+func (fakeRIBCollector) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	routes := []observation.RIBRoute{{
 		Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
 		BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
-	}}, nil
-}
-
-func (fakeRIBCollector) CollectOSPFRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
-	return nil, nil
-}
-
-func (fakeRIBCollector) CollectRouteTableRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
-	return nil, nil
+	}}
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: model.NormalizeNetworkInstance(string(vrf)), Routes: routes}, opts), nil
 }
 
 type fakeFIBCollector struct{}
 
-func (fakeFIBCollector) Collect(context.Context, []model.Node, observation.Options) ([]observation.FIB, error) {
-	return nil, nil
-}
-
-func (fakeFIBCollector) SupportedNodes(nodes []model.Node) []model.Node {
-	return nodes
+func (fakeFIBCollector) CollectFIB(context.Context, model.Node, model.NetworkInstanceID, observation.Options) (observation.FIB, error) {
+	return observation.FIB{}, nil
 }

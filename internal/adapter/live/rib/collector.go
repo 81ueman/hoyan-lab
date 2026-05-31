@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	"github.com/81ueman/hoyan-lab/internal/adapter/srlinuxjson"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 type LiveCollector struct {
@@ -19,16 +19,12 @@ func NewCollector(runner Runner) LiveCollector {
 	return LiveCollector{runner: runner}
 }
 
-func Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return NewCollector(runner).Collect(ctx, nodes)
-}
-
-func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
-	out, err := c.CollectBGPRoutes(ctx, nodes)
+func (c LiveCollector) collectRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	out, err := c.collectBGPRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
 	}
-	nonBGP, err := c.CollectRouteTableRoutes(ctx, nodes)
+	nonBGP, err := c.collectRouteTableRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
 	}
@@ -37,11 +33,16 @@ func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node) ([]RIBRo
 	return out, nil
 }
 
-func CollectBGPRoutesWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return NewCollector(runner).CollectBGPRoutes(ctx, nodes)
+func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
+	routes, err := c.collectRoutes(ctx, []model.Node{node})
+	if err != nil {
+		return observation.RIB{}, err
+	}
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: routes}, opts), nil
 }
 
-func (c LiveCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := collectorsByID(c.runner)
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -58,7 +59,7 @@ func (c LiveCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node)
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.CollectBGPRoutes(ctx, selected)
+		routes, err := collector.collectBGPRoutes(ctx, selected)
 		if err != nil {
 			return nil, err
 		}
@@ -66,34 +67,6 @@ func (c LiveCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node)
 	}
 	SortRoutes(out)
 	return out, nil
-}
-
-func CollectWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return Collect(ctx, runner, nodes)
-}
-
-func CollectFRR(nodes []model.Node) ([]RIBRoute, error) {
-	return CollectFRRWithRunner(context.Background(), liveexec.ExecRunner{}, nodes)
-}
-
-func CollectFRRWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return frrCollector{runner: runner}.CollectBGPRoutes(ctx, nodes)
-}
-
-func SupportedNodes(nodes []model.Node) []model.Node {
-	return NewCollector(nil).SupportedNodes(nodes)
-}
-
-func (c LiveCollector) SupportedNodes(nodes []model.Node) []model.Node {
-	var out []model.Node
-	collectors := collectorsByID(nil)
-	for _, n := range nodes {
-		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().BGPRIBCollector()
-		if ok && collectors[collectorID] != nil {
-			out = append(out, n)
-		}
-	}
-	return out
 }
 
 func FRRNodes(nodes []model.Node) []model.Node {
@@ -124,15 +97,21 @@ type frrCollector struct{ runner Runner }
 type ceosCollector struct{ runner Runner }
 type srlinuxCollector struct{ runner Runner }
 
-func collectorsByID(runner Runner) map[model.LiveCollectorID]Collector {
-	return map[model.LiveCollectorID]Collector{
+type routeCollector interface {
+	collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+}
+
+func collectorsByID(runner Runner) map[model.LiveCollectorID]routeCollector {
+	return map[model.LiveCollectorID]routeCollector{
 		model.LiveCollectorFRR:     frrCollector{runner: runner},
 		model.LiveCollectorCEOS:    ceosCollector{runner: runner},
 		model.LiveCollectorSRLinux: srlinuxCollector{runner: runner},
 	}
 }
 
-func (c frrCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -183,7 +162,7 @@ func frrVRFsFromNode(n model.Node) []string {
 	return vrfs
 }
 
-func (c ceosCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -201,11 +180,7 @@ func (c ceosCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node)
 	return out, nil
 }
 
-func CollectOSPFRoutesWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return NewCollector(runner).CollectOSPFRoutes(ctx, nodes)
-}
-
-func (c LiveCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := collectorsByID(c.runner)
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -221,7 +196,7 @@ func (c LiveCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.CollectOSPFRoutes(ctx, selected)
+		routes, err := collector.collectOSPFRoutes(ctx, selected)
 		if err != nil {
 			return nil, err
 		}
@@ -231,11 +206,7 @@ func (c LiveCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node
 	return out, nil
 }
 
-func CollectRouteTableRoutesWithRunner(ctx context.Context, runner Runner, nodes []model.Node) ([]RIBRoute, error) {
-	return NewCollector(runner).CollectRouteTableRoutes(ctx, nodes)
-}
-
-func (c LiveCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := collectorsByID(c.runner)
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -251,7 +222,7 @@ func (c LiveCollector) CollectRouteTableRoutes(ctx context.Context, nodes []mode
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.CollectRouteTableRoutes(ctx, selected)
+		routes, err := collector.collectRouteTableRoutes(ctx, selected)
 		if err != nil {
 			return nil, err
 		}
@@ -261,7 +232,7 @@ func (c LiveCollector) CollectRouteTableRoutes(ctx context.Context, nodes []mode
 	return out, nil
 }
 
-func (c srlinuxCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()

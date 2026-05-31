@@ -23,9 +23,9 @@ func (f fakeRunner) Run(ctx context.Context, name string, args ...string) ([]byt
 }
 
 func TestCollectRejectsUnsupportedNodes(t *testing.T) {
-	_, err := Collect(context.Background(), fakeRunner{}, []model.Node{{Name: "unknown1", Kind: model.DeviceKind("unknown")}}, observation.Options{})
+	_, err := CollectFIB(context.Background(), fakeRunner{}, model.Node{Name: "unknown1", Kind: model.DeviceKind("unknown")}, model.NetworkInstanceDefault, observation.Options{})
 	if err == nil || !strings.Contains(err.Error(), "unsupported live FIB collector") {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectFIB() error = %v", err)
 	}
 }
 
@@ -33,8 +33,6 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		got := name + " " + strings.Join(args, " ")
 		switch got {
-		case "docker exec -i clab-test-r1 ip -j link show type vrf":
-			return []byte(`[]`), nil
 		case "docker exec -i clab-test-r1 ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
 		case "docker exec -i clab-test-r1 ip -j route show table local":
@@ -43,13 +41,13 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 			return nil, errors.New("unexpected command: " + got)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "r1", Kind: model.KindFRR, ContainerName: "clab-test-r1"}}, observation.Options{})
+	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "clab-test-r1"}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectFIB() error = %v", err)
 	}
-	entries := flattenTestFIBs(routes)
+	entries := fib.Entries
 	if len(entries) != 1 || entries[0].Prefix != "10.0.0.0/24" {
-		t.Fatalf("routes = %#v", routes)
+		t.Fatalf("fib = %#v", fib)
 	}
 }
 
@@ -57,8 +55,6 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch {
-		case cmd == "docker exec -i frr1 ip -j link show type vrf":
-			return []byte(`[]`), nil
 		case cmd == "docker exec -i frr1 ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
 		case cmd == "docker exec -i frr1 ip -j route show table local":
@@ -73,17 +69,21 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{
+	var fibs []FIB
+	for _, node := range []model.Node{
 		{Name: "frr", Kind: model.KindFRR, ContainerName: "frr1"},
 		{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"},
 		{Name: "srl", Kind: model.KindSRLinux, ContainerName: "srl1"},
-	}, observation.Options{})
-	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+	} {
+		fib, err := CollectFIB(context.Background(), runner, node, model.NetworkInstanceDefault, observation.Options{})
+		if err != nil {
+			t.Fatalf("CollectFIB() error = %v", err)
+		}
+		fibs = append(fibs, fib)
 	}
 	for _, prefix := range []string{"10.0.0.0/24", "10.0.1.0/24", "10.0.2.0/24"} {
-		if routeByPrefix(flattenTestFIBs(routes), prefix) == nil {
-			t.Fatalf("routes missing %s: %#v", prefix, routes)
+		if routeByPrefix(flattenTestFIBs(fibs), prefix) == nil {
+			t.Fatalf("fibs missing %s: %#v", prefix, fibs)
 		}
 	}
 }
@@ -103,13 +103,13 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observation.Options{})
+	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectFIB() error = %v", err)
 	}
-	route := routeByPrefix(flattenTestFIBs(routes), "10.4.0.0/16")
+	route := routeByPrefix(fib.Entries, "10.4.0.0/16")
 	if route == nil {
-		t.Fatalf("routes = %#v", routes)
+		t.Fatalf("fib = %#v", fib)
 	}
 	want := []observation.NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
 	if !reflect.DeepEqual(route.NextHops, want) {
@@ -129,12 +129,12 @@ func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observation.Options{})
+	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
-		t.Fatalf("Collect() error = %v", err)
+		t.Fatalf("CollectFIB() error = %v", err)
 	}
-	if routeByPrefix(flattenTestFIBs(routes), "198.18.20.4/31") == nil {
-		t.Fatalf("routes = %#v", routes)
+	if routeByPrefix(fib.Entries, "198.18.20.4/31") == nil {
+		t.Fatalf("fib = %#v", fib)
 	}
 }
 

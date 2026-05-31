@@ -97,7 +97,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	nodes := u.deps.RIBCollector.SupportedNodes(topo.Nodes)
+	nodes := topo.Nodes
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	expectedBGP := observation.BGPOnly(expected)
 
@@ -172,9 +172,6 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	}
 	if opts.CheckFIB && snap == nil {
 		fibNodes := topo.Nodes
-		if opts.FIBOptions.AllowUnsupported {
-			fibNodes = u.deps.FIBCollector.SupportedNodes(fibNodes)
-		}
 		expectedFIB := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, fibNodes), opts.FIBOptions)
 		actualFIB, err := fibcompare.New(u.deps.FIBCollector).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
 		if err != nil {
@@ -223,9 +220,6 @@ func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ob
 
 func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, collector FIBCollector, opts observation.Options, out io.Writer) error {
 	fibNodes := topo.Nodes
-	if opts.AllowUnsupported && collector != nil {
-		fibNodes = collector.SupportedNodes(fibNodes)
-	}
 	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, fibNodes), opts)
 	actual := observation.AnalyzeComparableRoutes(topo, livesnapshot.FIBs(snap), opts)
 	for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actual, opts)) {
@@ -360,10 +354,22 @@ func WaitForMatchingRIBs(ctx context.Context, collector RIBCollector, nodes []mo
 }
 
 func collectExpectedRIBSources(ctx context.Context, collector RIBCollector, nodes []model.Node, expected []observation.RIBRoute) ([]observation.RIBRoute, error) {
-	if expectedHasNonBGP(expected) {
-		return collector.Collect(ctx, nodes)
+	opts := observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true}
+	var out []observation.RIBRoute
+	for _, node := range nodes {
+		for _, vrf := range model.NetworkInstancesForNode(node) {
+			rib, err := collector.CollectRIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, rib.Routes...)
+		}
 	}
-	return collector.CollectBGPRoutes(ctx, nodes)
+	observation.SortRoutes(out)
+	if !expectedHasNonBGP(expected) {
+		return observation.BGPOnly(out), nil
+	}
+	return out, nil
 }
 
 func expectedHasNonBGP(routes []observation.RIBRoute) bool {

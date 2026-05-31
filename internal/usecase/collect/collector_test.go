@@ -109,44 +109,27 @@ type fakeRIBCollector struct {
 	routes []observation.RIBRoute
 }
 
-func (f fakeRIBCollector) CollectBGPRoutes(_ context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return f.routesFor(nodes, true), nil
-}
-
-func (f fakeRIBCollector) CollectRouteTableRoutes(_ context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return f.routesFor(nodes, false), nil
-}
-
-func (f fakeRIBCollector) routesFor(nodes []model.Node, bgp bool) []observation.RIBRoute {
-	allowed := map[string]bool{}
-	for _, node := range nodes {
-		allowed[node.Name] = true
-	}
+func (f fakeRIBCollector) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	var out []observation.RIBRoute
 	for _, route := range f.routes {
-		nodeOK := route.ModelInfo == nil || allowed[string(route.ModelInfo.Provenance.FromNode)]
-		if nodeOK && ((route.Common.Protocol == model.RouteSourceBGP) == bgp) {
+		if route.ModelInfo == nil || route.ModelInfo.Provenance.FromNode == model.NodeID(node.Name) {
 			out = append(out, route)
 		}
 	}
 	observation.SortRoutes(out)
-	return out
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: model.NormalizeNetworkInstance(string(vrf)), Routes: out}, opts), nil
 }
 
 type fakeFIBCollector struct {
 	fibs []observation.FIB
 }
 
-func (f fakeFIBCollector) Collect(_ context.Context, nodes []model.Node, _ observation.Options) ([]observation.FIB, error) {
-	allowed := map[string]bool{}
-	for _, node := range nodes {
-		allowed[node.Name] = true
-	}
-	var out []observation.FIB
+func (f fakeFIBCollector) CollectFIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	for _, fib := range f.fibs {
-		if allowed[string(fib.Node)] {
-			out = append(out, fib)
+		if fib.Node == model.NodeID(node.Name) && fib.VRF == vrf {
+			return fib, nil
 		}
 	}
-	return out, nil
+	return observation.FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
 }

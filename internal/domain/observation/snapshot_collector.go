@@ -45,20 +45,22 @@ func (c SnapshotBackedCollector) VRFs(_ context.Context, node model.NodeID) ([]m
 	return out, nil
 }
 
-func (c SnapshotBackedCollector) CollectRIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error) {
-	vs, ok := c.vrf(node, vrf)
+func (c SnapshotBackedCollector) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error) {
+	nodeID := model.NodeID(node.Name)
+	vs, ok := c.vrf(nodeID, vrf)
 	if !ok {
-		return RIB{}, fmt.Errorf("snapshot RIB %q/%q not found", node, vrf)
+		return RIB{}, fmt.Errorf("snapshot RIB %q/%q not found", nodeID, vrf)
 	}
-	return normalizeRIBForSnapshot(node, vrf, vs.RIB, opts), nil
+	return normalizeRIBForSnapshot(nodeID, vrf, vs.RIB, opts), nil
 }
 
-func (c SnapshotBackedCollector) CollectFIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (FIB, error) {
-	vs, ok := c.vrf(node, vrf)
+func (c SnapshotBackedCollector) CollectFIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, _ Options) (FIB, error) {
+	nodeID := model.NodeID(node.Name)
+	vs, ok := c.vrf(nodeID, vrf)
 	if !ok {
-		return FIB{}, fmt.Errorf("snapshot FIB %q/%q not found", node, vrf)
+		return FIB{}, fmt.Errorf("snapshot FIB %q/%q not found", nodeID, vrf)
 	}
-	return normalizeFIBForSnapshot(node, vrf, vs.FIB, opts), nil
+	return normalizeFIBForSnapshot(nodeID, vrf, vs.FIB, CollectOptions{IncludeModelInfo: true}), nil
 }
 
 func (c SnapshotBackedCollector) node(node model.NodeID) (NodeSnapshot, bool) {

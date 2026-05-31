@@ -53,27 +53,27 @@ func (s Simulator) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkIn
 	return out, nil
 }
 
-func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+func (s Simulator) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	n, ok := s.node(node)
+	nodeID := model.NodeID(node.Name)
+	n, ok := s.node(nodeID)
 	if !ok {
-		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node)
+		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node.Name)
 	}
 	routes := (ribusecase.ExpectedBuilder{}).BuildForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
-	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
+	routes = filterObservationRIBRoutes(routes, string(nodeID), string(vrf))
 	observation.SortRIBRoutes(routes)
-	return observation.FilterRIB(observation.RIB{Node: node, VRF: vrf, Routes: routes}, opts), nil
+	return observation.FilterRIB(observation.RIB{Node: nodeID, VRF: vrf, Routes: routes}, opts), nil
 }
 
-func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.FIB, error) {
+func (s Simulator) CollectFIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	n, ok := s.node(node)
+	n, ok := s.node(model.NodeID(node.Name))
 	if !ok {
-		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
+		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node.Name)
 	}
 	fibs := fibusecase.NewExpectedBuilder().ExpectedFIBsForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
-	fib := filterFIBs(fibs, node, vrf)
-	return observation.FilterFIB(fib, opts), nil
+	return filterFIBs(fibs, model.NodeID(node.Name), vrf), nil
 }
 
 func (s Simulator) node(node model.NodeID) (model.Node, bool) {

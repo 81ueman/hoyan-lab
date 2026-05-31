@@ -16,10 +16,20 @@ func New(collector observation.FIBCollector) Usecase {
 	return Usecase{collector: collector}
 }
 
-func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
-	return u.collector.Collect(ctx, nodes, opts)
+func (u Usecase) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
+	return u.collector.CollectFIB(ctx, node, vrf, opts)
 }
 
-func (u Usecase) SupportedNodes(nodes []model.Node) []model.Node {
-	return u.collector.SupportedNodes(nodes)
+func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
+	var out []observation.FIB
+	for _, node := range nodes {
+		for _, vrf := range model.NetworkInstancesForNode(node) {
+			fib, err := u.CollectFIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, fib)
+		}
+	}
+	return out, nil
 }

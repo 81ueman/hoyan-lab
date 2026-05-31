@@ -7,7 +7,6 @@ import (
 
 type RIBRoute = observation.RIBRoute
 type CompareOptions = observation.CompareOptions
-type Collector = observation.RIBCollector
 type Runner = liveadapter.Runner
 
 var DefaultCompareOptions = observation.DefaultCompareOptions

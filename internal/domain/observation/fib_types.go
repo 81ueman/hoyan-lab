@@ -9,8 +9,7 @@ import (
 )
 
 type FIBCollector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIB, error)
-	SupportedNodes(nodes []model.Node) []model.Node
+	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts Options) (FIB, error)
 }
 
 type Options struct {

@@ -9,11 +9,11 @@ import (
 )
 
 type Collector interface {
+	RIBCollector
+	FIBCollector
+
 	Nodes(ctx context.Context) ([]model.NodeID, error)
 	VRFs(ctx context.Context, node model.NodeID) ([]model.NetworkInstanceID, error)
-
-	CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error)
-	CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (FIB, error)
 }
 
 type CollectOptions struct {
@@ -54,11 +54,11 @@ func CollectSnapshot(ctx context.Context, collector Collector, opts CollectOptio
 		sortNetworkInstanceIDs(vrfs)
 		nodeSnapshot := NodeSnapshot{Node: node, VRFs: make([]VRFSnapshot, 0, len(vrfs))}
 		for _, vrf := range vrfs {
-			rib, err := collector.CollectRIB(ctx, node, vrf, opts)
+			rib, err := collector.CollectRIB(ctx, model.Node{Name: string(node)}, vrf, opts)
 			if err != nil {
 				return NetworkSnapshot{}, err
 			}
-			fib, err := collector.CollectFIB(ctx, node, vrf, opts)
+			fib, err := collector.CollectFIB(ctx, model.Node{Name: string(node)}, vrf, Options{})
 			if err != nil {
 				return NetworkSnapshot{}, err
 			}
