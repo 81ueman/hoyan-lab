@@ -2,6 +2,7 @@ package model
 
 import (
 	"sort"
+	"strings"
 )
 
 type NodeID string
@@ -17,6 +18,7 @@ const (
 
 	NetworkInstanceDefault NetworkInstanceID = "default"
 	AFIIPv4                AFI               = "ipv4"
+	AFIIPv6                AFI               = "ipv6"
 )
 
 func NormalizeNetworkInstance(vrf string) NetworkInstanceID {
@@ -24,6 +26,17 @@ func NormalizeNetworkInstance(vrf string) NetworkInstanceID {
 		return NetworkInstanceDefault
 	}
 	return NetworkInstanceID(vrf)
+}
+
+func NormalizeAFI(afi AFI) AFI {
+	switch AFI(strings.ToLower(strings.TrimSpace(string(afi)))) {
+	case "", AFIIPv4:
+		return AFIIPv4
+	case AFIIPv6:
+		return AFIIPv6
+	default:
+		return AFI(strings.ToLower(strings.TrimSpace(string(afi))))
+	}
 }
 
 func NetworkInstancesForNode(n Node) []string {

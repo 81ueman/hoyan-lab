@@ -6,13 +6,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-type AddressFamily string
 type RouteProtocol string
-
-const (
-	AFIIPv4 AddressFamily = "ipv4"
-	AFIIPv6 AddressFamily = "ipv6"
-)
 
 const (
 	ProtocolBGP       RouteProtocol = "bgp"
@@ -76,17 +70,6 @@ type DecisionInfo struct {
 type ResolutionInfo struct {
 	Status string `json:"status,omitempty"`
 	Reason string `json:"reason,omitempty"`
-}
-
-func NormalizeAddressFamily(afi AddressFamily) AddressFamily {
-	switch AddressFamily(strings.ToLower(strings.TrimSpace(string(afi)))) {
-	case "", AFIIPv4:
-		return AFIIPv4
-	case AFIIPv6:
-		return AFIIPv6
-	default:
-		return AddressFamily(strings.ToLower(strings.TrimSpace(string(afi))))
-	}
 }
 
 func NormalizeRouteProtocol(protocol RouteProtocol) RouteProtocol {

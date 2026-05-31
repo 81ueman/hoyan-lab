@@ -22,8 +22,8 @@ type FIBEntry struct {
 	ConnectedClass model.ConnectedRouteClass `json:"connected_class,omitempty"`
 	Installed      bool                      `json:"installed,omitempty"`
 
-	AFI    AddressFamily `json:"afi"`
-	Prefix string        `json:"prefix"`
+	AFI    model.AFI `json:"afi"`
+	Prefix string    `json:"prefix"`
 
 	Source RouteSource      `json:"source"`
 	Action ForwardingAction `json:"action"`
@@ -80,7 +80,7 @@ func (f FIB) Key() string {
 
 func (e FIBEntry) Key() string {
 	return strings.Join([]string{
-		string(NormalizeAddressFamily(e.AFI)),
+		string(model.NormalizeAFI(e.AFI)),
 		string(NormalizeRouteProtocol(e.Source.Protocol)),
 		string(e.Action),
 		e.Prefix,
@@ -150,7 +150,7 @@ func FIBEntryFromRouteRecord(route FIBEntry) FIBEntry {
 		action = ActionReceive
 	}
 	return FIBEntry{
-		AFI:    NormalizeAddressFamily(AddressFamily(route.AFI)),
+		AFI:    model.NormalizeAFI(model.AFI(route.AFI)),
 		Prefix: route.Prefix,
 		Source: RouteSource{
 			Protocol: protocol,
