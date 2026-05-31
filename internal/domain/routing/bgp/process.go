@@ -66,7 +66,7 @@ func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEn
 	if len(a.Attrs.ASPath) != len(b.Attrs.ASPath) {
 		return false
 	}
-	if OriginCodeRank(string(a.Attrs.OriginCode)) != OriginCodeRank(string(b.Attrs.OriginCode)) {
+	if OriginCodeRank(a.Attrs.OriginCode) != OriginCodeRank(b.Attrs.OriginCode) {
 		return false
 	}
 	if d.shouldCompareMED(a, b) && a.Attrs.MED != b.Attrs.MED {
@@ -223,8 +223,8 @@ func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEnt
 	if len(a.Attrs.ASPath) != len(b.Attrs.ASPath) {
 		return len(a.Attrs.ASPath) < len(b.Attrs.ASPath)
 	}
-	if OriginCodeRank(string(a.Attrs.OriginCode)) != OriginCodeRank(string(b.Attrs.OriginCode)) {
-		return OriginCodeRank(string(a.Attrs.OriginCode)) < OriginCodeRank(string(b.Attrs.OriginCode))
+	if OriginCodeRank(a.Attrs.OriginCode) != OriginCodeRank(b.Attrs.OriginCode) {
+		return OriginCodeRank(a.Attrs.OriginCode) < OriginCodeRank(b.Attrs.OriginCode)
 	}
 	if compareMED(a, b) && a.Attrs.MED != b.Attrs.MED {
 		return a.Attrs.MED < b.Attrs.MED
