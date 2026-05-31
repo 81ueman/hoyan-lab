@@ -21,7 +21,7 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 			"r1": {
 				Kind: model.KindFRR,
 				BGPRIB: []observation.RIBRoute{{
-					Common: observation.RIBRouteCommon{AFI: observation.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: observation.ProtocolBGP, Eligible: true, Best: true},
+					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
 					BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
 				}},
 			},

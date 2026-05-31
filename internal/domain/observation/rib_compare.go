@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type comparablePath struct {
@@ -139,7 +141,7 @@ func compareRIBRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOption
 		a, aok := act[key]
 		switch {
 		case !eok:
-			if normalizeRoute(a).Common.Protocol != ProtocolBGP {
+			if normalizeRoute(a).Common.Protocol != model.RouteSourceBGP {
 				continue
 			}
 			if !opts.AllowExtraPrefixes {
@@ -300,10 +302,10 @@ func appendMismatches(routeKey, pathKey string, e, a comparablePath, opts Compar
 }
 
 func normalizeRoute(r RIBRoute) RIBRoute {
-	r.Common.AFI = NormalizeAddressFamily(r.Common.AFI)
-	r.Common.Protocol = NormalizeRouteProtocol(r.Common.Protocol)
+	r.Common.AFI = model.NormalizeAFI(r.Common.AFI)
+	r.Common.Protocol = model.NormalizeRouteSourceKind(r.Common.Protocol)
 	if r.Common.AFI == "" {
-		r.Common.AFI = AFIIPv4
+		r.Common.AFI = model.AFIIPv4
 	}
 	return r
 }

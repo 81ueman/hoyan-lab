@@ -11,9 +11,9 @@ import (
 )
 
 type RIB struct {
-	Node   NodeID     `json:"node"`
-	VRF    VRFName    `json:"vrf"`
-	Routes []RIBRoute `json:"routes"`
+	Node   model.NodeID            `json:"node"`
+	VRF    model.NetworkInstanceID `json:"vrf"`
+	Routes []RIBRoute              `json:"routes"`
 }
 
 type RIBCollector interface {
@@ -35,9 +35,9 @@ type RIBRoute struct {
 }
 
 type RIBRouteCommon struct {
-	AFI      AddressFamily `json:"afi"`
-	Prefix   string        `json:"prefix"`
-	Protocol RouteProtocol `json:"protocol"`
+	AFI      model.AFI             `json:"afi"`
+	Prefix   string                `json:"prefix"`
+	Protocol model.RouteSourceKind `json:"protocol"`
 
 	Preference int `json:"preference,omitempty"`
 	Metric     int `json:"metric,omitempty"`
@@ -104,7 +104,7 @@ func (r RIBRoute) Validate() error {
 	if r.Common.Prefix == "" {
 		return errors.New("rib route prefix is required")
 	}
-	if NormalizeRouteProtocol(r.Common.Protocol) != r.Common.Protocol {
+	if model.NormalizeRouteSourceKind(r.Common.Protocol) != r.Common.Protocol {
 		return fmt.Errorf("rib route protocol %q is not normalized", r.Common.Protocol)
 	}
 	payloads := r.payloadCount()
@@ -138,8 +138,8 @@ func (r RIB) Key() string {
 
 func (r RIBRoute) Key() string {
 	return strings.Join([]string{
-		string(NormalizeAddressFamily(r.Common.AFI)),
-		string(NormalizeRouteProtocol(r.Common.Protocol)),
+		string(model.NormalizeAFI(r.Common.AFI)),
+		string(model.NormalizeRouteSourceKind(r.Common.Protocol)),
 		r.Common.Prefix,
 	}, "|")
 }
@@ -164,20 +164,20 @@ func (r RIBRoute) payloadCount() int {
 	return count
 }
 
-func (r RIBRoute) payloadProtocol() RouteProtocol {
+func (r RIBRoute) payloadProtocol() model.RouteSourceKind {
 	switch {
 	case r.BGP != nil:
-		return ProtocolBGP
+		return model.RouteSourceBGP
 	case r.OSPF != nil:
-		return ProtocolOSPF
+		return model.RouteSourceOSPF
 	case r.Static != nil:
-		return ProtocolStatic
+		return model.RouteSourceStatic
 	case r.Connected != nil:
-		return ProtocolConnected
+		return model.RouteSourceConnected
 	case r.Blackhole != nil:
-		return ProtocolBlackhole
+		return model.RouteSourceBlackhole
 	default:
-		return ProtocolUnknown
+		return model.RouteSourceUnknown
 	}
 }
 

@@ -1,14 +1,17 @@
 package rib
 
-import "github.com/81ueman/hoyan-lab/internal/domain/observation"
+import (
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+)
 
 func bgpRoute(prefix string, paths []observation.BGPPath) RIBRoute {
 	observation.SortBGPPaths(paths, observation.DefaultCompareOptions())
 	return RIBRoute{
 		Common: observation.RIBRouteCommon{
-			AFI:      observation.AFIIPv4,
+			AFI:      model.AFIIPv4,
 			Prefix:   prefix,
-			Protocol: observation.ProtocolBGP,
+			Protocol: model.RouteSourceBGP,
 			Eligible: bgpHasEligiblePath(paths),
 			Best:     bgpHasBestPath(paths),
 		},
@@ -17,9 +20,9 @@ func bgpRoute(prefix string, paths []observation.BGPPath) RIBRoute {
 }
 
 func nonBGPRoute(prefix, protocol string, hops []routeTableNextHop) RIBRoute {
-	routeProtocol := observation.NormalizeRouteProtocol(observation.RouteProtocol(protocol))
+	routeProtocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(protocol))
 	common := observation.RIBRouteCommon{
-		AFI:      observation.AFIIPv4,
+		AFI:      model.AFIIPv4,
 		Prefix:   prefix,
 		Protocol: routeProtocol,
 		Eligible: true,
@@ -27,18 +30,18 @@ func nonBGPRoute(prefix, protocol string, hops []routeTableNextHop) RIBRoute {
 	}
 	route := RIBRoute{Common: common}
 	switch routeProtocol {
-	case observation.ProtocolOSPF:
+	case model.RouteSourceOSPF:
 		paths := ospfPathsFromRouteTableHops(hops)
 		observation.SortOSPFPaths(paths, observation.DefaultCompareOptions())
 		route.OSPF = &observation.OSPFRIBRoute{RouteType: ospfRouteType(protocol), Paths: paths}
-	case observation.ProtocolStatic:
+	case model.RouteSourceStatic:
 		route.Static = &observation.StaticRIBRoute{NextHops: nextHopsFromRouteTableHops(hops)}
-	case observation.ProtocolConnected:
+	case model.RouteSourceConnected:
 		route.Connected = &observation.ConnectedRIBRoute{}
-	case observation.ProtocolBlackhole:
+	case model.RouteSourceBlackhole:
 		route.Blackhole = &observation.BlackholeRIBRoute{}
 	default:
-		route.Common.Protocol = observation.ProtocolUnknown
+		route.Common.Protocol = model.RouteSourceUnknown
 	}
 	return route
 }

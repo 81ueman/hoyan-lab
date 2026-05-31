@@ -10,9 +10,9 @@ import (
 )
 
 type FIB struct {
-	Node    NodeID     `json:"node"`
-	VRF     VRFName    `json:"vrf"`
-	Entries []FIBEntry `json:"entries"`
+	Node    model.NodeID            `json:"node"`
+	VRF     model.NetworkInstanceID `json:"vrf"`
+	Entries []FIBEntry              `json:"entries"`
 }
 
 type FIBEntry struct {
@@ -22,8 +22,8 @@ type FIBEntry struct {
 	ConnectedClass model.ConnectedRouteClass `json:"connected_class,omitempty"`
 	Installed      bool                      `json:"installed,omitempty"`
 
-	AFI    AddressFamily `json:"afi"`
-	Prefix string        `json:"prefix"`
+	AFI    model.AFI `json:"afi"`
+	Prefix string    `json:"prefix"`
 
 	Source RouteSource      `json:"source"`
 	Action ForwardingAction `json:"action"`
@@ -48,7 +48,7 @@ func (e FIBEntry) Validate() error {
 	if e.Prefix == "" {
 		return errors.New("fib entry prefix is required")
 	}
-	if NormalizeRouteProtocol(e.Source.Protocol) != e.Source.Protocol {
+	if model.NormalizeRouteSourceKind(e.Source.Protocol) != e.Source.Protocol {
 		return fmt.Errorf("fib entry source protocol %q is not normalized", e.Source.Protocol)
 	}
 	switch e.Action {
@@ -80,8 +80,8 @@ func (f FIB) Key() string {
 
 func (e FIBEntry) Key() string {
 	return strings.Join([]string{
-		string(NormalizeAddressFamily(e.AFI)),
-		string(NormalizeRouteProtocol(e.Source.Protocol)),
+		string(model.NormalizeAFI(e.AFI)),
+		string(model.NormalizeRouteSourceKind(e.Source.Protocol)),
 		string(e.Action),
 		e.Prefix,
 	}, "|")
@@ -103,14 +103,15 @@ func FilterFIBEntries(entries []FIBEntry, pred func(FIBEntry) bool) []FIBEntry {
 	return out
 }
 
-func FIBFromRouteRecords(node NodeID, vrf VRFName, routes []FIBEntry) FIB {
-	out := FIB{Node: node, VRF: vrf}
+func FIBFromRouteRecords(node model.NodeID, vrf model.NetworkInstanceID, routes []FIBEntry) FIB {
+	requestedVRF := vrf
+	out := FIB{Node: node, VRF: model.NormalizeNetworkInstance(string(vrf))}
 	for _, route := range routes {
 		if node == "" {
-			out.Node = NodeID(route.Node)
+			out.Node = model.NodeID(route.Node)
 		}
-		if vrf == "" {
-			out.VRF = VRFName(route.VRF)
+		if requestedVRF == "" {
+			out.VRF = model.NormalizeNetworkInstance(route.VRF)
 		}
 		out.Entries = append(out.Entries, FIBEntryFromRouteRecord(route))
 	}
@@ -121,8 +122,8 @@ func FIBFromRouteRecords(node NodeID, vrf VRFName, routes []FIBEntry) FIB {
 func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 	byKey := map[string]*FIB{}
 	for _, route := range routes {
-		node := NodeID(route.Node)
-		vrf := VRFName(route.VRF)
+		node := model.NodeID(route.Node)
+		vrf := model.NormalizeNetworkInstance(route.VRF)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {
 			byKey[key] = &FIB{Node: node, VRF: vrf}
@@ -141,15 +142,15 @@ func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 }
 
 func FIBEntryFromRouteRecord(route FIBEntry) FIBEntry {
-	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
+	protocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(route.Protocol))
 	action := ActionForward
-	if protocol == ProtocolBlackhole {
+	if protocol == model.RouteSourceBlackhole {
 		action = ActionDrop
-	} else if protocol == ProtocolConnected && len(route.NextHops) == 0 {
+	} else if protocol == model.RouteSourceConnected && len(route.NextHops) == 0 {
 		action = ActionReceive
 	}
 	return FIBEntry{
-		AFI:    NormalizeAddressFamily(AddressFamily(route.AFI)),
+		AFI:    model.NormalizeAFI(model.AFI(route.AFI)),
 		Prefix: route.Prefix,
 		Source: RouteSource{
 			Protocol: protocol,

@@ -36,13 +36,13 @@ func TestSnapshotBackedCollectorsCanCompareWithEachOther(t *testing.T) {
 			VRFs: []observation.VRFSnapshot{{
 				VRF: "default",
 				RIB: observation.RIB{Node: "r1", VRF: "default", Routes: []observation.RIBRoute{{
-					Common: observation.RIBRouteCommon{AFI: observation.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: observation.ProtocolStatic, Eligible: true, Best: true},
+					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceStatic, Eligible: true, Best: true},
 					Static: &observation.StaticRIBRoute{NextHops: []observation.NextHop{{Address: "192.0.2.1"}}},
 				}}},
 				FIB: observation.FIB{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{
-					AFI:      observation.AFIIPv4,
+					AFI:      model.AFIIPv4,
 					Prefix:   "10.0.0.0/24",
-					Source:   observation.RouteSource{Protocol: observation.ProtocolStatic},
+					Source:   observation.RouteSource{Protocol: model.RouteSourceStatic},
 					Action:   observation.ActionForward,
 					NextHops: []observation.NextHop{{Address: "192.0.2.1"}},
 				}}},
@@ -125,7 +125,7 @@ func (f fakeRIBCollector) routesFor(nodes []model.Node, bgp bool) []observation.
 	var out []observation.RIBRoute
 	for _, route := range f.routes {
 		nodeOK := route.ModelInfo == nil || allowed[string(route.ModelInfo.Provenance.FromNode)]
-		if nodeOK && ((route.Common.Protocol == observation.ProtocolBGP) == bgp) {
+		if nodeOK && ((route.Common.Protocol == model.RouteSourceBGP) == bgp) {
 			out = append(out, route)
 		}
 	}

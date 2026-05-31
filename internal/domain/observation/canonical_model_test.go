@@ -2,24 +2,26 @@ package observation
 
 import (
 	"testing"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func TestRIBRouteValidateRequiresExactlyOneMatchingPayload(t *testing.T) {
 	valid := RIBRoute{
-		Common: RIBRouteCommon{AFI: AFIIPv4, Prefix: "10.0.0.0/24", Protocol: ProtocolBGP, Eligible: true, Best: true},
+		Common: RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
 		BGP:    &BGPRIBRoute{Paths: []BGPPath{{NextHop: NextHop{Address: "192.0.2.1"}, Eligible: true, Best: true}}},
 	}
 	if err := valid.Validate(); err != nil {
 		t.Fatalf("valid BGP route failed validation: %v", err)
 	}
 
-	none := RIBRoute{Common: RIBRouteCommon{AFI: AFIIPv4, Prefix: "10.0.0.0/24", Protocol: ProtocolBGP}}
+	none := RIBRoute{Common: RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP}}
 	if err := none.Validate(); err == nil {
 		t.Fatalf("route without protocol payload passed validation")
 	}
 
 	mismatch := RIBRoute{
-		Common: RIBRouteCommon{AFI: AFIIPv4, Prefix: "10.0.0.0/24", Protocol: ProtocolStatic},
+		Common: RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceStatic},
 		BGP:    &BGPRIBRoute{},
 	}
 	if err := mismatch.Validate(); err == nil {
@@ -40,7 +42,7 @@ func TestFIBEntryFromRouteRecordMapsForwardingAction(t *testing.T) {
 		Protocol:  "blackhole",
 		Installed: true,
 	})
-	if blackhole.Source.Protocol != ProtocolBlackhole || blackhole.Action != ActionDrop {
+	if blackhole.Source.Protocol != model.RouteSourceBlackhole || blackhole.Action != ActionDrop {
 		t.Fatalf("blackhole conversion = %#v", blackhole)
 	}
 

@@ -548,9 +548,9 @@ func route(node, prefix string, paths ...observation.BGPPath) observation.RIBRou
 	_ = node
 	return observation.RIBRoute{
 		Common: observation.RIBRouteCommon{
-			AFI:      observation.AFIIPv4,
+			AFI:      model.AFIIPv4,
 			Prefix:   prefix,
-			Protocol: observation.ProtocolBGP,
+			Protocol: model.RouteSourceBGP,
 			Eligible: true,
 			Best:     true,
 		},

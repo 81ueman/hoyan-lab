@@ -113,7 +113,7 @@ func ospfRoutes(routes []RIBRoute) []RIBRoute {
 	out := make([]RIBRoute, 0, len(routes))
 	for _, route := range routes {
 		switch route.Common.Protocol {
-		case observation.ProtocolOSPF:
+		case model.RouteSourceOSPF:
 			out = append(out, route)
 		}
 	}
@@ -131,7 +131,7 @@ func normalizeSRLinuxStaticRouteNextHops(node model.Node, networkInstance string
 		configured[vrf+"|"+route.Prefix.String()] = route.NextHop
 	}
 	for ri := range routes {
-		if routes[ri].Common.Protocol != observation.ProtocolStatic || routes[ri].Static == nil {
+		if routes[ri].Common.Protocol != model.RouteSourceStatic || routes[ri].Static == nil {
 			continue
 		}
 		nh := configured[networkInstance+"|"+routes[ri].Common.Prefix]

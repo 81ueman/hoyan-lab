@@ -148,9 +148,9 @@ func comparableConnectedClass(class model.ConnectedRouteClass) bool {
 }
 
 func expectedRoute(idx *model.TopologyIndex, node model.Node, prefix, protocol string, entries []sim.RIBEntry, ctx sim.FailureContext) observation.RIBRoute {
-	routeProtocol := observation.NormalizeRouteProtocol(observation.RouteProtocol(protocol))
+	routeProtocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(protocol))
 	common := observation.RIBRouteCommon{
-		AFI:      observation.AFIIPv4,
+		AFI:      model.AFIIPv4,
 		Prefix:   prefix,
 		Protocol: routeProtocol,
 		Eligible: expectedEntriesHaveEligiblePath(node, entries),
@@ -158,28 +158,28 @@ func expectedRoute(idx *model.TopologyIndex, node model.Node, prefix, protocol s
 	}
 	route := observation.RIBRoute{
 		Common:    common,
-		ModelInfo: &observation.ModelRouteInfo{Provenance: observation.RouteProvenance{FromNode: observation.NodeID(node.Name)}},
+		ModelInfo: &observation.ModelRouteInfo{Provenance: observation.RouteProvenance{FromNode: model.NodeID(node.Name)}},
 	}
 	switch routeProtocol {
-	case observation.ProtocolBGP:
+	case model.RouteSourceBGP:
 		paths := make([]observation.BGPPath, 0, len(entries))
 		for _, entry := range entries {
 			paths = append(paths, expectedBGPPath(idx, node, entry, ctx))
 		}
 		observation.SortBGPPaths(paths, observation.DefaultCompareOptions())
 		route.BGP = &observation.BGPRIBRoute{Paths: paths}
-	case observation.ProtocolOSPF:
+	case model.RouteSourceOSPF:
 		paths := make([]observation.OSPFPath, 0, len(entries))
 		for _, entry := range entries {
 			paths = append(paths, expectedOSPFPath(idx, node, entry))
 		}
 		observation.SortOSPFPaths(paths, observation.DefaultCompareOptions())
 		route.OSPF = &observation.OSPFRIBRoute{RouteType: expectedOSPFRouteType(protocol), Paths: paths}
-	case observation.ProtocolStatic:
+	case model.RouteSourceStatic:
 		route.Static = &observation.StaticRIBRoute{NextHops: expectedNextHops(idx, node, entries)}
-	case observation.ProtocolConnected:
+	case model.RouteSourceConnected:
 		route.Connected = &observation.ConnectedRIBRoute{}
-	case observation.ProtocolBlackhole:
+	case model.RouteSourceBlackhole:
 		route.Blackhole = &observation.BlackholeRIBRoute{}
 	}
 	return route

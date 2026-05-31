@@ -1,5 +1,7 @@
 package model
 
+import "strings"
+
 type RouteSourceKind string
 
 const (
@@ -9,7 +11,33 @@ const (
 	RouteSourceOSPF      RouteSourceKind = "ospf"
 	RouteSourceAggregate RouteSourceKind = "aggregate"
 	RouteSourceBlackhole RouteSourceKind = "blackhole"
+	RouteSourceUnknown   RouteSourceKind = "unknown"
 )
+
+func NormalizeRouteSourceKind(kind RouteSourceKind) RouteSourceKind {
+	normalized := strings.ToLower(strings.TrimSpace(string(kind)))
+	if strings.Contains(normalized, "ospf") {
+		return RouteSourceOSPF
+	}
+	switch normalized {
+	case "ebgp", "ibgp", string(RouteSourceBGP):
+		return RouteSourceBGP
+	case string(RouteSourceOSPF), "188":
+		return RouteSourceOSPF
+	case "kernel", string(RouteSourceConnected), "direct", "local", "host":
+		return RouteSourceConnected
+	case string(RouteSourceStatic), "196":
+		return RouteSourceStatic
+	case string(RouteSourceBlackhole), "discard", "drop", "null0", "null":
+		return RouteSourceBlackhole
+	case string(RouteSourceAggregate):
+		return RouteSourceAggregate
+	case "", string(RouteSourceUnknown):
+		return RouteSourceUnknown
+	default:
+		return RouteSourceKind(normalized)
+	}
+}
 
 type ConnectedRouteClass string
 

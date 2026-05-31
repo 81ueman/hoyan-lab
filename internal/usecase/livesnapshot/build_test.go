@@ -56,7 +56,7 @@ type fakeRIBCollector struct{}
 
 func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
 	return []observation.RIBRoute{{
-		Common: observation.RIBRouteCommon{AFI: observation.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: observation.ProtocolBGP, Eligible: true, Best: true},
+		Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
 		BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
 	}}, nil
 }

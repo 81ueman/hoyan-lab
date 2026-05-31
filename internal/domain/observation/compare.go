@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type SnapshotCompareOptions struct {
@@ -13,8 +15,8 @@ type SnapshotCompareOptions struct {
 
 type SnapshotComparison struct {
 	OK              bool
-	MissingNodes    []NodeID
-	UnexpectedNodes []NodeID
+	MissingNodes    []model.NodeID
+	UnexpectedNodes []model.NodeID
 	MissingVRFs     []SnapshotVRFKey
 	UnexpectedVRFs  []SnapshotVRFKey
 	RIBMismatches   []SnapshotTableMismatch
@@ -22,15 +24,15 @@ type SnapshotComparison struct {
 }
 
 type SnapshotVRFKey struct {
-	Node NodeID  `json:"node"`
-	VRF  VRFName `json:"vrf"`
+	Node model.NodeID            `json:"node"`
+	VRF  model.NetworkInstanceID `json:"vrf"`
 }
 
 type SnapshotTableMismatch struct {
-	Node     NodeID  `json:"node"`
-	VRF      VRFName `json:"vrf"`
-	Expected string  `json:"expected"`
-	Actual   string  `json:"actual"`
+	Node     model.NodeID            `json:"node"`
+	VRF      model.NetworkInstanceID `json:"vrf"`
+	Expected string                  `json:"expected"`
+	Actual   string                  `json:"actual"`
 }
 
 func CompareCollectors(ctx context.Context, expected, actual Collector, collectOpts CollectOptions, compareOpts SnapshotCompareOptions) (SnapshotComparison, error) {
@@ -121,31 +123,31 @@ func snapshotForCompare(snapshot NetworkSnapshot, opts SnapshotCompareOptions) N
 	return snapshot
 }
 
-func snapshotNodesByID(snapshot NetworkSnapshot) map[NodeID]NodeSnapshot {
-	out := map[NodeID]NodeSnapshot{}
+func snapshotNodesByID(snapshot NetworkSnapshot) map[model.NodeID]NodeSnapshot {
+	out := map[model.NodeID]NodeSnapshot{}
 	for _, node := range snapshot.Nodes {
 		out[node.Node] = node
 	}
 	return out
 }
 
-func snapshotVRFsByName(node NodeSnapshot) map[VRFName]VRFSnapshot {
-	out := map[VRFName]VRFSnapshot{}
+func snapshotVRFsByName(node NodeSnapshot) map[model.NetworkInstanceID]VRFSnapshot {
+	out := map[model.NetworkInstanceID]VRFSnapshot{}
 	for _, vrf := range node.VRFs {
 		out[vrf.VRF] = vrf
 	}
 	return out
 }
 
-func sortedNodeMapKeys(a, b map[NodeID]NodeSnapshot) []NodeID {
-	seen := map[NodeID]bool{}
+func sortedNodeMapKeys(a, b map[model.NodeID]NodeSnapshot) []model.NodeID {
+	seen := map[model.NodeID]bool{}
 	for k := range a {
 		seen[k] = true
 	}
 	for k := range b {
 		seen[k] = true
 	}
-	out := make([]NodeID, 0, len(seen))
+	out := make([]model.NodeID, 0, len(seen))
 	for k := range seen {
 		out = append(out, k)
 	}
@@ -153,19 +155,19 @@ func sortedNodeMapKeys(a, b map[NodeID]NodeSnapshot) []NodeID {
 	return out
 }
 
-func sortedVRFMapKeys(a, b map[VRFName]VRFSnapshot) []VRFName {
-	seen := map[VRFName]bool{}
+func sortedVRFMapKeys(a, b map[model.NetworkInstanceID]VRFSnapshot) []model.NetworkInstanceID {
+	seen := map[model.NetworkInstanceID]bool{}
 	for k := range a {
 		seen[k] = true
 	}
 	for k := range b {
 		seen[k] = true
 	}
-	out := make([]VRFName, 0, len(seen))
+	out := make([]model.NetworkInstanceID, 0, len(seen))
 	for k := range seen {
 		out = append(out, k)
 	}
-	sortVRFNames(out)
+	sortNetworkInstanceIDs(out)
 	return out
 }
 

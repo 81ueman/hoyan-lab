@@ -4,19 +4,21 @@ import (
 	"context"
 	"net/netip"
 	"sort"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type Collector interface {
-	Nodes(ctx context.Context) ([]NodeID, error)
-	VRFs(ctx context.Context, node NodeID) ([]VRFName, error)
+	Nodes(ctx context.Context) ([]model.NodeID, error)
+	VRFs(ctx context.Context, node model.NodeID) ([]model.NetworkInstanceID, error)
 
-	CollectRIB(ctx context.Context, node NodeID, vrf VRFName, opts CollectOptions) (RIB, error)
-	CollectFIB(ctx context.Context, node NodeID, vrf VRFName, opts CollectOptions) (FIB, error)
+	CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error)
+	CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts CollectOptions) (FIB, error)
 }
 
 type CollectOptions struct {
-	AFI       AddressFamily
-	Protocols []RouteProtocol
+	AFI       model.AFI
+	Protocols []model.RouteSourceKind
 	Prefixes  []netip.Prefix
 
 	IncludeInactive  bool
@@ -49,7 +51,7 @@ func CollectSnapshot(ctx context.Context, collector Collector, opts CollectOptio
 		if err != nil {
 			return NetworkSnapshot{}, err
 		}
-		sortVRFNames(vrfs)
+		sortNetworkInstanceIDs(vrfs)
 		nodeSnapshot := NodeSnapshot{Node: node, VRFs: make([]VRFSnapshot, 0, len(vrfs))}
 		for _, vrf := range vrfs {
 			rib, err := collector.CollectRIB(ctx, node, vrf, opts)
@@ -104,14 +106,14 @@ func FilterFIB(fib FIB, opts CollectOptions) FIB {
 	return out
 }
 
-func collectOptionsMatchRoute(opts CollectOptions, afi AddressFamily, protocol RouteProtocol, prefix string) bool {
-	if opts.AFI != "" && NormalizeAddressFamily(opts.AFI) != NormalizeAddressFamily(afi) {
+func collectOptionsMatchRoute(opts CollectOptions, afi model.AFI, protocol model.RouteSourceKind, prefix string) bool {
+	if opts.AFI != "" && model.NormalizeAFI(opts.AFI) != model.NormalizeAFI(afi) {
 		return false
 	}
 	if len(opts.Protocols) > 0 {
 		found := false
 		for _, allowed := range opts.Protocols {
-			if NormalizeRouteProtocol(allowed) == NormalizeRouteProtocol(protocol) {
+			if model.NormalizeRouteSourceKind(allowed) == model.NormalizeRouteSourceKind(protocol) {
 				found = true
 				break
 			}
@@ -139,25 +141,27 @@ func collectOptionsMatchRoute(opts CollectOptions, afi AddressFamily, protocol R
 	return true
 }
 
-func normalizeRIBForSnapshot(node NodeID, vrf VRFName, rib RIB, opts CollectOptions) RIB {
+func normalizeRIBForSnapshot(node model.NodeID, vrf model.NetworkInstanceID, rib RIB, opts CollectOptions) RIB {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	rib.Node = node
 	rib.VRF = vrf
 	return FilterRIB(rib, opts)
 }
 
-func normalizeFIBForSnapshot(node NodeID, vrf VRFName, fib FIB, opts CollectOptions) FIB {
+func normalizeFIBForSnapshot(node model.NodeID, vrf model.NetworkInstanceID, fib FIB, opts CollectOptions) FIB {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	fib.Node = node
 	fib.VRF = vrf
 	return FilterFIB(fib, opts)
 }
 
-func sortNodeIDs(nodes []NodeID) {
+func sortNodeIDs(nodes []model.NodeID) {
 	sort.SliceStable(nodes, func(i, j int) bool {
 		return nodes[i] < nodes[j]
 	})
 }
 
-func sortVRFNames(vrfs []VRFName) {
+func sortNetworkInstanceIDs(vrfs []model.NetworkInstanceID) {
 	sort.SliceStable(vrfs, func(i, j int) bool {
 		return vrfs[i] < vrfs[j]
 	})

@@ -240,10 +240,10 @@ func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 		Node: "r1",
 		VRF:  "default",
 		Entries: []observation.FIBEntry{{
-			AFI:    observation.AFIIPv4,
+			AFI:    model.AFIIPv4,
 			Prefix: "10.0.0.0/24",
 			Source: observation.RouteSource{
-				Protocol: observation.ProtocolBGP,
+				Protocol: model.RouteSourceBGP,
 			},
 			Action: observation.ActionForward,
 		}},
@@ -252,10 +252,10 @@ func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 		Node: "r1",
 		VRF:  "default",
 		Entries: []observation.FIBEntry{{
-			AFI:    observation.AFIIPv4,
+			AFI:    model.AFIIPv4,
 			Prefix: "10.0.0.0/24",
 			Source: observation.RouteSource{
-				Protocol: observation.ProtocolBGP,
+				Protocol: model.RouteSourceBGP,
 			},
 			Action: observation.ActionDrop,
 		}},

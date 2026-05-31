@@ -401,7 +401,7 @@ func testRIBRoute(prefix, nextHop string, best bool) observation.RIBRoute {
 		LocalPref: 100,
 	}
 	return observation.RIBRoute{
-		Common: observation.RIBRouteCommon{AFI: observation.AFIIPv4, Prefix: prefix, Protocol: observation.ProtocolBGP, Eligible: true, Best: best},
+		Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: prefix, Protocol: model.RouteSourceBGP, Eligible: true, Best: best},
 		BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{path}},
 	}
 }
