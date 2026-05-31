@@ -23,7 +23,7 @@ type Options struct {
 	Topology       string
 	Queries        string
 	Snapshot       string
-	HashPolicy     HashPolicy
+	HashPolicy     livesnapshot.HashPolicy
 	Offline        bool
 	Timeout        time.Duration
 	PollInterval   time.Duration
@@ -38,8 +38,6 @@ type Options struct {
 }
 
 const DefaultMaxPolls = 5
-
-type HashPolicy string
 
 type Usecase struct {
 	deps Dependencies
@@ -66,7 +64,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		opts.Out = io.Discard
 	}
 	if opts.HashPolicy == "" {
-		opts.HashPolicy = HashPolicy(livesnapshot.HashPolicyWarn)
+		opts.HashPolicy = livesnapshot.HashPolicyWarn
 	}
 	compareOptions := opts.CompareOptions
 	if isZeroCompareOptions(compareOptions) {
@@ -109,7 +107,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		if err != nil {
 			return err
 		}
-		if err := checkSnapshotHashes(opts.Topology, snap, livesnapshot.HashPolicy(opts.HashPolicy), opts.Out); err != nil {
+		if err := checkSnapshotHashes(opts.Topology, snap, opts.HashPolicy, opts.Out); err != nil {
 			return err
 		}
 		if err := compareSnapshotRIBs(snap, expected, expectedBGP, compareOptions, opts.Out); err != nil {

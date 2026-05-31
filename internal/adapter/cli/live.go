@@ -56,7 +56,7 @@ func NewLiveCheckCommand() *cobra.Command {
 				Topology:      opts.topologyPath,
 				Queries:       opts.queriesPath,
 				Snapshot:      opts.snapshotPath,
-				HashPolicy:    livecheck.HashPolicy(opts.snapshotHashPolicy),
+				HashPolicy:    livesnapshot.HashPolicy(opts.snapshotHashPolicy),
 				Offline:       opts.offline,
 				StrictConfig:  opts.strictConfig,
 				Timeout:       opts.timeout,
