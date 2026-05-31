@@ -19,27 +19,16 @@ func (u Usecase) Collect(ctx context.Context, nodes []model.Node) ([]observation
 	if u.collector == nil {
 		return nil, nil
 	}
-	out, err := u.collector.CollectBGPRoutes(ctx, nodes)
-	if err != nil {
-		return nil, err
+	var out []observation.RIBRoute
+	for _, node := range nodes {
+		for _, vrf := range model.NetworkInstancesForNode(node) {
+			rib, err := u.collector.CollectRIB(ctx, node, model.NormalizeNetworkInstance(vrf), observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, rib.Routes...)
+		}
 	}
-	nonBGP, err := u.collector.CollectRouteTableRoutes(ctx, nodes)
-	if err != nil {
-		return nil, err
-	}
-	out = append(out, nonBGP...)
 	observation.SortRoutes(out)
 	return out, nil
-}
-
-func (u Usecase) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return u.collector.CollectBGPRoutes(ctx, nodes)
-}
-
-func (u Usecase) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return u.collector.CollectOSPFRoutes(ctx, nodes)
-}
-
-func (u Usecase) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return u.collector.CollectRouteTableRoutes(ctx, nodes)
 }

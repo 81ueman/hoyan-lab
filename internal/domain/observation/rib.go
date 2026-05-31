@@ -17,9 +17,7 @@ type RIB struct {
 }
 
 type RIBCollector interface {
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
-	CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
-	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error)
 }
 
 type RIBRoute struct {

@@ -30,14 +30,11 @@ type QueryLoader interface {
 }
 
 type RIBCollector interface {
-	SupportedNodes(nodes []model.Node) []model.Node
-	Collect(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
+	CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error)
 }
 
 type FIBCollector interface {
-	SupportedNodes(nodes []model.Node) []model.Node
-	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error)
+	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error)
 }
 
 type DataplaneProber interface {

@@ -43,7 +43,7 @@ func CompareRIBsWithFailures(ctx context.Context, runtime FailureRuntime, collec
 	}
 	activeNodes := scenario.ActiveNodes
 	if activeNodes == nil {
-		activeNodes = collector.SupportedNodes(topo.Nodes)
+		activeNodes = topo.Nodes
 	}
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
 	if scenario.Inject != nil {

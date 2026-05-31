@@ -89,19 +89,12 @@ type fakeRIBCollector struct {
 	polls     int
 }
 
-func (f *fakeRIBCollector) SupportedNodes(nodes []model.Node) []model.Node {
-	if f.supported != nil {
-		return f.supported
+func (f *fakeRIBCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	routes, err := f.next()
+	if err != nil {
+		return observation.RIB{}, err
 	}
-	return nodes
-}
-
-func (f *fakeRIBCollector) Collect(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return f.next()
-}
-
-func (f *fakeRIBCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
-	return f.next()
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: model.NormalizeNetworkInstance(string(vrf)), Routes: routes}, opts), nil
 }
 
 func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
@@ -123,9 +116,13 @@ type fakeFIBCollector struct {
 	fibs []observation.FIB
 }
 
-func (f fakeFIBCollector) SupportedNodes(nodes []model.Node) []model.Node { return nodes }
-func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
-	return f.fibs, nil
+func (f fakeFIBCollector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
+	for _, fib := range f.fibs {
+		if fib.Node == model.NodeID(node.Name) && fib.VRF == vrf {
+			return fib, nil
+		}
+	}
+	return observation.FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
 }
 
 type fakeProber struct {

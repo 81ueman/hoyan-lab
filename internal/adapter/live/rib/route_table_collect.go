@@ -9,7 +9,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
-func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c frrCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -33,7 +33,7 @@ func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model
 	return out, nil
 }
 
-func (c ceosCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c ceosCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -51,7 +51,7 @@ func (c ceosCollector) CollectRouteTableRoutes(ctx context.Context, nodes []mode
 	return out, nil
 }
 
-func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c srlinuxCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -72,7 +72,7 @@ func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []m
 	return out, nil
 }
 
-func (c frrCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c frrCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
@@ -93,16 +93,16 @@ func (c frrCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node)
 	return out, nil
 }
 
-func (c ceosCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
-	routes, err := c.CollectRouteTableRoutes(ctx, nodes)
+func (c ceosCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	routes, err := c.collectRouteTableRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
 	}
 	return ospfRoutes(routes), nil
 }
 
-func (c srlinuxCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
-	routes, err := c.CollectRouteTableRoutes(ctx, nodes)
+func (c srlinuxCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	routes, err := c.collectRouteTableRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
 	}
