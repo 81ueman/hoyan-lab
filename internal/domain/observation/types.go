@@ -93,6 +93,8 @@ func NormalizeRouteProtocol(protocol RouteProtocol) RouteProtocol {
 		return ProtocolBGP
 	case ProtocolOSPF:
 		return ProtocolOSPF
+	case "ospf-ia", "ospf-ia-routes", "ospf-inter-area":
+		return ProtocolOSPF
 	case ProtocolStatic:
 		return ProtocolStatic
 	case ProtocolConnected:

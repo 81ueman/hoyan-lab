@@ -1,0 +1,109 @@
+package collect
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+)
+
+type LegacyRIBCollector interface {
+	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
+	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
+}
+
+type LegacyFIBCollector interface {
+	Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error)
+}
+
+type ContainerlabCollector struct {
+	nodes        []model.Node
+	ribCollector LegacyRIBCollector
+	fibCollector LegacyFIBCollector
+	fibOptions   observationfib.Options
+}
+
+func NewContainerlabCollector(nodes []model.Node, ribCollector LegacyRIBCollector, fibCollector LegacyFIBCollector, fibOptions observationfib.Options) ContainerlabCollector {
+	return ContainerlabCollector{
+		nodes:        append([]model.Node(nil), nodes...),
+		ribCollector: ribCollector,
+		fibCollector: fibCollector,
+		fibOptions:   fibOptions,
+	}
+}
+
+func (c ContainerlabCollector) Metadata(context.Context) observation.CollectorMetadata {
+	return observation.CollectorMetadata{Source: "containerlab"}
+}
+
+func (c ContainerlabCollector) Nodes(context.Context) ([]observation.NodeID, error) {
+	out := make([]observation.NodeID, 0, len(c.nodes))
+	for _, node := range c.nodes {
+		out = append(out, observation.NodeID(node.Name))
+	}
+	return out, nil
+}
+
+func (c ContainerlabCollector) VRFs(_ context.Context, node observation.NodeID) ([]observation.VRFName, error) {
+	n, ok := c.node(node)
+	if !ok {
+		return nil, fmt.Errorf("containerlab node %q not found", node)
+	}
+	vrfs := model.NetworkInstancesForNode(n)
+	out := make([]observation.VRFName, 0, len(vrfs))
+	for _, vrf := range vrfs {
+		out = append(out, observation.VRFName(vrf))
+	}
+	return out, nil
+}
+
+func (c ContainerlabCollector) CollectRIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
+	n, ok := c.node(node)
+	if !ok {
+		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
+	}
+	if c.ribCollector == nil {
+		return observation.RIB{Node: node, VRF: vrf}, nil
+	}
+	bgp, err := c.ribCollector.CollectBGPRoutes(ctx, []model.Node{n})
+	if err != nil {
+		return observation.RIB{}, err
+	}
+	routeTable, err := c.ribCollector.CollectRouteTableRoutes(ctx, []model.Node{n})
+	if err != nil {
+		return observation.RIB{}, err
+	}
+	routes := append(bgp, routeTable...)
+	routes = filterNormalizedRIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterRIB(observation.RIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+}
+
+func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
+	n, ok := c.node(node)
+	if !ok {
+		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)
+	}
+	if c.fibCollector == nil {
+		return observation.FIB{Node: node, VRF: vrf}, nil
+	}
+	fibOpts := c.fibOptions
+	fibOpts.AllowUnsupported = true
+	routes, err := c.fibCollector.Collect(ctx, []model.Node{n}, fibOpts)
+	if err != nil {
+		return observation.FIB{}, err
+	}
+	routes = filterNormalizedFIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterFIB(observation.FIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+}
+
+func (c ContainerlabCollector) node(node observation.NodeID) (model.Node, bool) {
+	for _, n := range c.nodes {
+		if n.Name == string(node) {
+			return n, true
+		}
+	}
+	return model.Node{}, false
+}
