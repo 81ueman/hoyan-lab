@@ -185,11 +185,7 @@ func (u Usecase) commit() string {
 }
 
 func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observation.RIBRoute, update func(NodeSnapshot, []observation.RIBRoute) NodeSnapshot) {
-	byNode := map[string][]observation.RIBRoute{}
-	for _, route := range routes {
-		byNode[route.Node] = append(byNode[route.Node], route)
-	}
-	for name, routes := range byNode {
+	for name := range nodes {
 		ns := nodes[name]
 		nodes[name] = update(ns, routes)
 	}

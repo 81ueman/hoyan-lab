@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
+	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 const containerNftablesConfig = "/etc/hoyan/nftables.conf"
 
 type Runtime struct {
-	Runner observation.RIBRunner
+	Runner liveadapter.Runner
 }
 
 func (r Runtime) BuildLocalImages(ctx context.Context, topologyPath string, out io.Writer) error {

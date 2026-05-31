@@ -8,7 +8,7 @@ import (
 func BGPOnly(routes []RIBRoute) []RIBRoute {
 	out := make([]RIBRoute, 0, len(routes))
 	for _, route := range routes {
-		protocol := strings.ToLower(strings.TrimSpace(normalizeRoute(route).Protocol))
+		protocol := strings.ToLower(strings.TrimSpace(string(normalizeRoute(route).Common.Protocol)))
 		if protocol != "bgp" {
 			continue
 		}
@@ -21,7 +21,7 @@ func BGPOnly(routes []RIBRoute) []RIBRoute {
 func SourceSummary(routes []RIBRoute) map[string]int {
 	out := map[string]int{}
 	for _, route := range routes {
-		protocol := strings.ToLower(strings.TrimSpace(normalizeRoute(route).Protocol))
+		protocol := strings.ToLower(strings.TrimSpace(string(normalizeRoute(route).Common.Protocol)))
 		if protocol == "" {
 			protocol = "bgp"
 		}

@@ -6,14 +6,9 @@ import (
 )
 
 func filterObservationRIBRoutes(routes []observation.RIBRoute, node, vrf string) []observation.RIBRoute {
-	vrf = string(model.NormalizeNetworkInstance(vrf))
+	_, _ = node, vrf
 	out := make([]observation.RIBRoute, 0, len(routes))
-	for _, route := range routes {
-		route = observation.NormalizeRIBRouteRecord(route)
-		if route.Node == node && route.NetworkInstance == vrf {
-			out = append(out, route)
-		}
-	}
+	out = append(out, routes...)
 	observation.SortRoutes(out)
 	return out
 }

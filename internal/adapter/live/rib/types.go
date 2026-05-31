@@ -1,12 +1,14 @@
 package rib
 
-import "github.com/81ueman/hoyan-lab/internal/domain/observation"
+import (
+	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+)
 
 type RIBRoute = observation.RIBRoute
-type RIBPath = observation.RIBPath
 type CompareOptions = observation.CompareOptions
 type Collector = observation.RIBCollector
-type Runner = observation.RIBRunner
+type Runner = liveadapter.Runner
 
 var DefaultCompareOptions = observation.DefaultCompareOptions
 var SortRoutes = observation.SortRoutes

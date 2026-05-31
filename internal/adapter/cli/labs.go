@@ -136,7 +136,7 @@ func (o labsLiveCheckOptions) validate() error {
 	}.validate()
 }
 
-func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner observation.RIBRunner) error {
+func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner liveexec.Runner) error {
 	labs, err := selectedLabDescriptors(args)
 	if err != nil {
 		return err

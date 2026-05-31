@@ -6,13 +6,13 @@ import (
 	"strconv"
 	"strings"
 
+	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 )
 
 type DockerProber struct {
-	Runner observation.RIBRunner
+	Runner liveadapter.Runner
 }
 
 func (p DockerProber) Probe(ctx context.Context, topo *model.Topology, check query.PacketCheck) (bool, error) {

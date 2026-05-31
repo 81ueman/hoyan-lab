@@ -22,9 +22,9 @@ func TestExpectedRoutesIncludesMultipleBgpPaths(t *testing.T) {
 		t.Fatalf("(ExpectedBuilder{}).Build() returned no routes")
 	}
 	for _, r := range routes {
-		if r.Node == "bj-edge1" && r.Prefix == "10.4.1.10/32" {
-			if len(r.Paths) < 2 {
-				t.Fatalf("bj-edge1 route paths = %#v, want multiple BGP paths", r.Paths)
+		if r.ModelInfo != nil && r.ModelInfo.Provenance.FromNode == "bj-edge1" && r.Common.Prefix == "10.4.1.10/32" {
+			if pathCount(&r) < 2 {
+				t.Fatalf("bj-edge1 route paths = %#v, want multiple BGP paths", r.BGP.Paths)
 			}
 			return
 		}
@@ -100,11 +100,11 @@ func TestExpectedConnectedRoutesCarryClassAndIncludeLoopbackService(t *testing.T
 	}
 	routes := (ExpectedBuilder{}).Build(topo)
 	link := routeByPrefixProtocol(routes, "192.0.2.0/31", "connected")
-	if link == nil || link.ConnectedClass != model.ConnectedRouteClassLink {
+	if link == nil || link.Connected == nil {
 		t.Fatalf("link connected route = %#v", link)
 	}
 	service := routeByPrefixProtocol(routes, "10.0.0.10/32", "connected")
-	if service == nil || service.ConnectedClass != model.ConnectedRouteClassService {
+	if service == nil || service.Connected == nil {
 		t.Fatalf("service connected route = %#v", service)
 	}
 }
@@ -126,13 +126,13 @@ func TestExpectedOSPFRoutesIncludeLocalAndSelectedRemoteRoutes(t *testing.T) {
 	}
 	routes := (ExpectedBuilder{}).Build(topo)
 	r1ToR2 := routeByNodePrefixProtocol(routes, "r1", "10.255.2.2/32", "ospf")
-	if r1ToR2 == nil || len(r1ToR2.Paths) != 1 || r1ToR2.Paths[0].NextHop != "198.51.100.6" {
+	if r1ToR2 == nil || pathCount(r1ToR2) != 1 || firstNextHop(r1ToR2) != "198.51.100.6" {
 		t.Fatalf("r1 OSPF route to r2 loopback = %#v, want selected remote route via r4", r1ToR2)
 	}
-	if local := routeByNodePrefixProtocol(routes, "r1", "10.255.1.1/32", "ospf"); local == nil || len(local.Paths) != 1 || local.Paths[0].NextHop != "" {
+	if local := routeByNodePrefixProtocol(routes, "r1", "10.255.1.1/32", "ospf"); local == nil || pathCount(local) != 1 || firstNextHop(local) != "" {
 		t.Fatalf("local OSPF loopback route = %#v, want directly connected OSPF route", local)
 	}
-	if connected := routeByNodePrefixProtocol(routes, "r1", "198.51.100.0/31", "ospf"); connected == nil || len(connected.Paths) != 1 || connected.Paths[0].NextHop != "" {
+	if connected := routeByNodePrefixProtocol(routes, "r1", "198.51.100.0/31", "ospf"); connected == nil || pathCount(connected) != 1 || firstNextHop(connected) != "" {
 		t.Fatalf("local connected OSPF network = %#v, want directly connected OSPF route", connected)
 	}
 }
@@ -170,8 +170,8 @@ func TestExpectedOSPFInterAreaRouteProtocol(t *testing.T) {
 		},
 	}
 	routes := (ExpectedBuilder{}).Build(topo)
-	route := routeByNodePrefixProtocol(routes, "r1", "10.255.4.4/32", "ospf-ia")
-	if route == nil || len(route.Paths) != 1 || route.Paths[0].NextHop != "198.51.100.1" {
+	route := routeByNodePrefixProtocol(routes, "r1", "10.255.4.4/32", "ospf")
+	if route == nil || route.OSPF == nil || route.OSPF.RouteType != observation.OSPFRouteTypeInterArea || pathCount(route) != 1 || firstNextHop(route) != "198.51.100.1" {
 		t.Fatalf("r1 OSPF inter-area route to r4 loopback = %#v", route)
 	}
 }
@@ -231,7 +231,7 @@ func TestExpectedPathUsesModeledAttributes(t *testing.T) {
 	}
 	node := model.Node{Name: "r1", Kind: "frr"}
 	ctx := sim.FailureContext{}
-	path := expectedPath(idx, node, sim.RIBEntry{
+	path := expectedBGPPath(idx, node, sim.RIBEntry{
 		Attrs:        domainroute.BGPAttributes{ASPath: []uint32{65001}, LocalPref: 175, MED: 42},
 		Condition:    sim.True(),
 		SelectedCond: sim.True(),
@@ -247,13 +247,13 @@ func TestExpectedPathUsesDeviceBehaviorValidity(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	node := model.Node{Name: "ceos", Kind: model.KindCEOS}
-	path := expectedPath(idx, node, sim.RIBEntry{
+	path := expectedBGPPath(idx, node, sim.RIBEntry{
 		Provenance:        domainroute.Provenance{FromNode: "peer"},
 		ForwardingNextHop: domainroute.NextHop{Node: "remote"},
 		Condition:         sim.True(),
 		SelectedCond:      sim.False(),
 	}, sim.FailureContext{})
-	if path.Valid {
+	if path.Eligible {
 		t.Fatalf("cEOS unresolved next-hop expected path should be invalid: %#v", path)
 	}
 }
@@ -356,11 +356,11 @@ func TestExpectedReflectsRouteMapAttributes(t *testing.T) {
 	}
 	routes := (ExpectedBuilder{}).BuildForNodes(topo, []model.Node{{Name: "rx", Kind: "frr"}})
 	route := routeByPrefix(routes, "10.0.0.0/24")
-	if route == nil || len(route.Paths) != 1 {
+	if route == nil || pathCount(route) != 1 {
 		t.Fatalf("routes = %#v", routes)
 	}
-	if route.Paths[0].LocalPref != 225 || route.Paths[0].MED != 33 {
-		t.Fatalf("path = %#v, want local-pref 225 MED 33", route.Paths[0])
+	if route.BGP.Paths[0].LocalPref != 225 || route.BGP.Paths[0].MED != 33 {
+		t.Fatalf("path = %#v, want local-pref 225 MED 33", route.BGP.Paths[0])
 	}
 }
 
@@ -378,8 +378,8 @@ func TestCompareRoutes(t *testing.T) {
 		{"exact", base, base, func(r observation.CompareResult) bool { return r.OK }},
 		{"missing prefix", base, nil, func(r observation.CompareResult) bool { return len(r.MissingPrefixes) == 1 }},
 		{"unexpected prefix", nil, base, func(r observation.CompareResult) bool { return len(r.UnexpectedPrefixes) == 1 }},
-		{"missing path", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, func(r observation.CompareResult) bool { return len(r.MissingPaths) == 1 }},
-		{"unexpected path", []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, base, func(r observation.CompareResult) bool { return len(r.UnexpectedPaths) == 1 }},
+		{"missing path", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].BGP.Paths[0])}, func(r observation.CompareResult) bool { return len(r.MissingPaths) == 1 }},
+		{"unexpected path", []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].BGP.Paths[0])}, base, func(r observation.CompareResult) bool { return len(r.UnexpectedPaths) == 1 }},
 		{"as path mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65009}, 100, 0))}, func(r observation.CompareResult) bool {
 			return len(r.MissingPaths) == 1 && len(r.UnexpectedPaths) == 1
 		}},
@@ -387,7 +387,7 @@ func TestCompareRoutes(t *testing.T) {
 		{"med mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 10))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 20))}, mismatch("med")},
 		{"best mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(false, true, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("best")},
 		{"valid mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, false, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("valid")},
-		{"path order ignored", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[1], base[0].Paths[0])}, func(r observation.CompareResult) bool { return r.OK }},
+		{"path order ignored", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].BGP.Paths[1], base[0].BGP.Paths[0])}, func(r observation.CompareResult) bool { return r.OK }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -485,7 +485,7 @@ func TestCompareReportsDuplicatePathConflictForAttributeDifference(t *testing.T)
 		t.Fatalf("observation.CompareRoutes() = %#v, want duplicate path conflict", result)
 	}
 	conflict := result.DuplicatePathConflicts[0]
-	if conflict.RouteKey != "r1|default|ipv4|10.0.0.0/24" || conflict.PathKey != "nh=192.0.2.1|as=65001" || conflict.Side != "expected" || len(conflict.Paths) != 2 {
+	if conflict.RouteKey != "ipv4|10.0.0.0/24" || conflict.PathKey != "nh=192.0.2.1|as=65001" || conflict.Side != "expected" || len(conflict.Paths) != 2 {
 		t.Fatalf("conflict = %#v", conflict)
 	}
 }
@@ -526,13 +526,9 @@ func TestFormatDiffsIncludesDuplicatePathConflict(t *testing.T) {
 		RouteKey: "r1|default|ipv4|10.0.0.0/24",
 		PathKey:  "nh=192.0.2.1|as=65001",
 		Side:     "actual",
-		Paths: []observation.RIBPath{
-			path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
-			path(false, true, "192.0.2.1", []uint32{65001}, 100, 0),
-		},
 	}}}
 	lines := observation.FormatDiffs(result)
-	want := "[DIFF] r1|default|ipv4|10.0.0.0/24 path nh=192.0.2.1|as=65001 duplicate path conflict side=actual paths=2"
+	want := "[DIFF] r1|default|ipv4|10.0.0.0/24 path nh=192.0.2.1|as=65001 duplicate path conflict side=actual paths=0"
 	if len(lines) != 1 || lines[0] != want {
 		t.Fatalf("observation.FormatDiffs() = %#v, want %#v", lines, want)
 	}
@@ -545,25 +541,35 @@ func mismatch(field string) func(observation.CompareResult) bool {
 }
 
 func ribFromRecords(routes []observation.RIBRoute) observation.RIB {
-	return observation.RIBFromRouteRecords("r1", "default", routes)
+	return observation.RIB{Node: "r1", VRF: "default", Routes: routes}
 }
 
-func route(node, prefix string, paths ...observation.RIBPath) observation.RIBRoute {
-	return observation.RIBRoute{Node: node, NetworkInstance: "default", AFI: "ipv4", Prefix: prefix, Paths: paths}
+func route(node, prefix string, paths ...observation.BGPPath) observation.RIBRoute {
+	_ = node
+	return observation.RIBRoute{
+		Common: observation.RIBRouteCommon{
+			AFI:      observation.AFIIPv4,
+			Prefix:   prefix,
+			Protocol: observation.ProtocolBGP,
+			Eligible: true,
+			Best:     true,
+		},
+		BGP: &observation.BGPRIBRoute{Paths: paths},
+	}
 }
 
-func path(best, valid bool, nextHop string, asPath []uint32, localPref, med int) observation.RIBPath {
-	return observation.RIBPath{Best: best, Valid: valid, NextHop: nextHop, ASPath: asPath, Origin: "igp", LocalPref: localPref, MED: med}
+func path(best, valid bool, nextHop string, asPath []uint32, localPref, med int) observation.BGPPath {
+	return observation.BGPPath{Best: best, Eligible: valid, NextHop: observation.NextHop{Address: nextHop}, ASPath: asPath, Origin: "igp", LocalPref: localPref, MED: med}
 }
 
-func pathWithPeer(p observation.RIBPath, peer string) observation.RIBPath {
+func pathWithPeer(p observation.BGPPath, peer string) observation.BGPPath {
 	p.Peer = peer
 	return p
 }
 
 func routeByPrefix(routes []observation.RIBRoute, prefix string) *observation.RIBRoute {
 	for i := range routes {
-		if routes[i].Prefix == prefix {
+		if routes[i].Common.Prefix == prefix {
 			return &routes[i]
 		}
 	}
@@ -572,7 +578,7 @@ func routeByPrefix(routes []observation.RIBRoute, prefix string) *observation.RI
 
 func routeByPrefixProtocol(routes []observation.RIBRoute, prefix, protocol string) *observation.RIBRoute {
 	for i := range routes {
-		if routes[i].Prefix == prefix && observation.NormalizeRIBRouteRecord(routes[i]).Protocol == protocol {
+		if routes[i].Common.Prefix == prefix && string(routes[i].Common.Protocol) == protocol {
 			return &routes[i]
 		}
 	}
@@ -581,9 +587,41 @@ func routeByPrefixProtocol(routes []observation.RIBRoute, prefix, protocol strin
 
 func routeByNodePrefixProtocol(routes []observation.RIBRoute, node, prefix, protocol string) *observation.RIBRoute {
 	for i := range routes {
-		if routes[i].Node == node && routes[i].Prefix == prefix && observation.NormalizeRIBRouteRecord(routes[i]).Protocol == protocol {
+		if routes[i].ModelInfo != nil && string(routes[i].ModelInfo.Provenance.FromNode) == node && routes[i].Common.Prefix == prefix && string(routes[i].Common.Protocol) == protocol {
 			return &routes[i]
 		}
 	}
 	return nil
+}
+
+func pathCount(route *observation.RIBRoute) int {
+	switch {
+	case route == nil:
+		return 0
+	case route.BGP != nil:
+		return len(route.BGP.Paths)
+	case route.OSPF != nil:
+		return len(route.OSPF.Paths)
+	case route.Static != nil:
+		return len(route.Static.NextHops)
+	case route.Connected != nil, route.Blackhole != nil:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func firstNextHop(route *observation.RIBRoute) string {
+	switch {
+	case route == nil:
+		return ""
+	case route.BGP != nil && len(route.BGP.Paths) > 0:
+		return route.BGP.Paths[0].NextHop.Address
+	case route.OSPF != nil && len(route.OSPF.Paths) > 0:
+		return route.OSPF.Paths[0].NextHop.Address
+	case route.Static != nil && len(route.Static.NextHops) > 0:
+		return route.Static.NextHops[0].Address
+	default:
+		return ""
+	}
 }

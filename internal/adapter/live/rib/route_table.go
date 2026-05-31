@@ -96,10 +96,8 @@ func parseFRRRouteTableMap(node, vrf string, routesMap map[string]any, ospfRoute
 				protocol = "blackhole"
 				hops = nil
 			}
-			route := nonBGPRoute(node, vrf, "ipv4", prefix, protocol, hops)
-			if len(route.Paths) > 0 {
-				out = append(out, route)
-			}
+			_, _ = node, vrf
+			out = append(out, nonBGPRoute(prefix, protocol, hops))
 		}
 	}
 	return out
@@ -154,10 +152,8 @@ func ParseFRROSPFRouteTable(node string, data []byte) ([]RIBRoute, error) {
 				protocol = normalized
 			}
 		}
-		route := nonBGPRoute(node, "default", "ipv4", prefix, protocol, frrRouteTableNextHops(m))
-		if len(route.Paths) > 0 {
-			out = append(out, route)
-		}
+		_ = node
+		out = append(out, nonBGPRoute(prefix, protocol, frrRouteTableNextHops(m)))
 	}
 	SortRoutes(out)
 	return out, nil
@@ -186,7 +182,8 @@ func ParseCEOSRouteTable(node string, data []byte) ([]RIBRoute, error) {
 				protocol = "blackhole"
 				hops = nil
 			}
-			out = append(out, nonBGPRoute(node, ni, "ipv4", prefix, protocol, hops))
+			_, _ = node, ni
+			out = append(out, nonBGPRoute(prefix, protocol, hops))
 		}
 	}
 	SortRoutes(out)
@@ -226,7 +223,8 @@ func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []
 				protocol = "blackhole"
 				hops = nil
 			}
-			out = append(out, nonBGPRoute(node, networkInstance, "ipv4", prefix, protocol, hops))
+			_, _ = node, networkInstance
+			out = append(out, nonBGPRoute(prefix, protocol, hops))
 		}
 	}
 	SortRoutes(out)
@@ -284,34 +282,6 @@ func frrRouteTableOSPFInterArea(m map[string]any) bool {
 		}
 	}
 	return false
-}
-
-func nonBGPRoute(node, ni, afi, prefix, protocol string, hops []routeTableNextHop) RIBRoute {
-	if ni == "" {
-		ni = "default"
-	}
-	if afi == "" {
-		afi = "ipv4"
-	}
-	return RIBRoute{
-		Node:            node,
-		NetworkInstance: ni,
-		AFI:             afi,
-		Prefix:          prefix,
-		Protocol:        protocol,
-		Paths:           []RIBPath{nonBGPPath(protocol, hops)},
-	}
-}
-
-func nonBGPPath(protocol string, hops []routeTableNextHop) RIBPath {
-	path := RIBPath{Best: true, Valid: true, Origin: "igp", LocalPref: 100}
-	if protocol == "connected" || protocol == "blackhole" || len(hops) == 0 {
-		return path
-	}
-	if hops[0].Address != "" && hops[0].Address != "0.0.0.0" {
-		path.NextHop = hops[0].Address
-	}
-	return path
 }
 
 func discardRouteTableNextHops(hops []routeTableNextHop) bool {

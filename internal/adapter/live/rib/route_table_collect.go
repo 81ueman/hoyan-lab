@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
@@ -63,7 +64,7 @@ func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []m
 			if err != nil {
 				return nil, fmt.Errorf("%s SR Linux route table network-instance %s: %w", n.Name, ni, err)
 			}
-			normalizeSRLinuxStaticRouteNextHops(n, routes)
+			normalizeSRLinuxStaticRouteNextHops(n, ni, routes)
 			out = append(out, routes...)
 		}
 	}
@@ -111,8 +112,8 @@ func (c srlinuxCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.N
 func ospfRoutes(routes []RIBRoute) []RIBRoute {
 	out := make([]RIBRoute, 0, len(routes))
 	for _, route := range routes {
-		switch route.Protocol {
-		case "ospf", "ospf-ia":
+		switch route.Common.Protocol {
+		case observation.ProtocolOSPF:
 			out = append(out, route)
 		}
 	}
@@ -120,7 +121,7 @@ func ospfRoutes(routes []RIBRoute) []RIBRoute {
 	return out
 }
 
-func normalizeSRLinuxStaticRouteNextHops(node model.Node, routes []RIBRoute) {
+func normalizeSRLinuxStaticRouteNextHops(node model.Node, networkInstance string, routes []RIBRoute) {
 	configured := map[string]string{}
 	for _, route := range node.Routes {
 		if route.Kind != model.RouteSourceStatic || route.NextHop == "" {
@@ -130,16 +131,19 @@ func normalizeSRLinuxStaticRouteNextHops(node model.Node, routes []RIBRoute) {
 		configured[vrf+"|"+route.Prefix.String()] = route.NextHop
 	}
 	for ri := range routes {
-		route := normalizeRoute(routes[ri])
-		if route.Protocol != "static" {
+		if routes[ri].Common.Protocol != observation.ProtocolStatic || routes[ri].Static == nil {
 			continue
 		}
-		nh := configured[routes[ri].NetworkInstance+"|"+routes[ri].Prefix]
+		nh := configured[networkInstance+"|"+routes[ri].Common.Prefix]
 		if nh == "" {
 			continue
 		}
-		for pi := range routes[ri].Paths {
-			routes[ri].Paths[pi].NextHop = nh
+		if len(routes[ri].Static.NextHops) == 0 {
+			routes[ri].Static.NextHops = []observation.NextHop{{Address: nh}}
+			continue
+		}
+		for pi := range routes[ri].Static.NextHops {
+			routes[ri].Static.NextHops[pi].Address = nh
 		}
 	}
 }

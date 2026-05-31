@@ -76,7 +76,8 @@ func (c ContainerlabCollector) CollectRIB(ctx context.Context, node observation.
 	}
 	routes := append(bgp, routeTable...)
 	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
+	observation.SortRIBRoutes(routes)
+	return observation.FilterRIB(observation.RIB{Node: node, VRF: vrf, Routes: routes}, opts), nil
 }
 
 func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {

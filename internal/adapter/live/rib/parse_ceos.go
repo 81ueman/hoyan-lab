@@ -2,9 +2,12 @@ package rib
 
 import (
 	"encoding/json"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
+	_ = node
 	var root map[string]any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -15,25 +18,27 @@ func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
 	}
 	var out []RIBRoute
 	for ni, rawVRF := range vrfs {
+		_ = ni
 		vrf := asMap(rawVRF)
 		entries := asMap(vrf["bgpRouteEntries"])
 		for prefix, rawEntry := range entries {
 			entry := asMap(rawEntry)
-			route := RIBRoute{Node: node, NetworkInstance: ni, AFI: "ipv4", Prefix: prefix}
+			var paths []observation.BGPPath
 			for _, rawPath := range asSlice(entry["bgpRoutePaths"]) {
 				p := asMap(rawPath)
 				routeType := asMap(p["routeType"])
 				peer := asMap(p["peerEntry"])
 				asPathEntry := asMap(p["asPathEntry"])
-				route.Paths = append(route.Paths, RIBPath{
+				weight := intValue(p["weight"])
+				paths = append(paths, observation.BGPPath{
 					Best:      boolValue(routeType["active"]),
-					Valid:     boolValue(routeType["valid"]),
-					NextHop:   normalizeLocalNextHop(stringValue(p["nextHop"])),
+					Eligible:  boolValue(routeType["valid"]),
+					NextHop:   observation.NextHop{Address: normalizeLocalNextHop(stringValue(p["nextHop"])), Weight: weight},
 					ASPath:    parseASPath(stringValue(asPathEntry["asPath"])),
 					Origin:    normalizeOrigin(firstString(p, "routeOrigin", "origin")),
 					LocalPref: defaultLocalPref(intValue(p["localPreference"])),
 					MED:       intValue(p["med"]),
-					Weight:    intValue(p["weight"]),
+					Weight:    weight,
 					Communities: sortedStrings(appendCommunities(nil,
 						firstPresent(p, "community", "communities", "communityList"),
 						firstPresent(asPathEntry, "community", "communities", "communityList"),
@@ -46,9 +51,8 @@ func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
 					PeerAS: uint32(intValue(peer["peerAS"])),
 				})
 			}
-			if len(route.Paths) > 0 {
-				sortPaths(route.Paths, DefaultCompareOptions())
-				out = append(out, route)
+			if len(paths) > 0 {
+				out = append(out, bgpRoute(prefix, paths))
 			}
 		}
 	}
