@@ -7,8 +7,7 @@ import (
 	"strings"
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
-	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
-	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	clabcollector "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	collectusecase "github.com/81ueman/hoyan-lab/internal/usecase/collect"
@@ -96,10 +95,9 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (observation.
 			return nil, err
 		}
 		runner := liveexec.ExecRunner{}
-		return collectusecase.NewContainerlabCollector(
+		return clabcollector.NewCollector(
 			topo.Nodes,
-			liverib.NewCollector(runner),
-			livefib.NewCollector(runner),
+			runner,
 			observation.Options{AllowUnsupported: true, UnresolvedPolicy: observation.UnresolvedPolicyWarn},
 		), nil
 	case TargetDevice:
