@@ -10,9 +10,9 @@ import (
 )
 
 type FIB struct {
-	Node    model.NodeID `json:"node"`
-	VRF     VRFName      `json:"vrf"`
-	Entries []FIBEntry   `json:"entries"`
+	Node    model.NodeID            `json:"node"`
+	VRF     model.NetworkInstanceID `json:"vrf"`
+	Entries []FIBEntry              `json:"entries"`
 }
 
 type FIBEntry struct {
@@ -103,14 +103,15 @@ func FilterFIBEntries(entries []FIBEntry, pred func(FIBEntry) bool) []FIBEntry {
 	return out
 }
 
-func FIBFromRouteRecords(node model.NodeID, vrf VRFName, routes []FIBEntry) FIB {
-	out := FIB{Node: node, VRF: vrf}
+func FIBFromRouteRecords(node model.NodeID, vrf model.NetworkInstanceID, routes []FIBEntry) FIB {
+	requestedVRF := vrf
+	out := FIB{Node: node, VRF: model.NormalizeNetworkInstance(string(vrf))}
 	for _, route := range routes {
 		if node == "" {
 			out.Node = model.NodeID(route.Node)
 		}
-		if vrf == "" {
-			out.VRF = VRFName(route.VRF)
+		if requestedVRF == "" {
+			out.VRF = model.NormalizeNetworkInstance(route.VRF)
 		}
 		out.Entries = append(out.Entries, FIBEntryFromRouteRecord(route))
 	}
@@ -122,7 +123,7 @@ func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 	byKey := map[string]*FIB{}
 	for _, route := range routes {
 		node := model.NodeID(route.Node)
-		vrf := VRFName(route.VRF)
+		vrf := model.NormalizeNetworkInstance(route.VRF)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {
 			byKey[key] = &FIB{Node: node, VRF: vrf}

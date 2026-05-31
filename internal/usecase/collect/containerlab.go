@@ -45,20 +45,21 @@ func (c ContainerlabCollector) Nodes(context.Context) ([]model.NodeID, error) {
 	return out, nil
 }
 
-func (c ContainerlabCollector) VRFs(_ context.Context, node model.NodeID) ([]observation.VRFName, error) {
+func (c ContainerlabCollector) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkInstanceID, error) {
 	n, ok := c.node(node)
 	if !ok {
 		return nil, fmt.Errorf("containerlab node %q not found", node)
 	}
 	vrfs := model.NetworkInstancesForNode(n)
-	out := make([]observation.VRFName, 0, len(vrfs))
+	out := make([]model.NetworkInstanceID, 0, len(vrfs))
 	for _, vrf := range vrfs {
-		out = append(out, observation.VRFName(vrf))
+		out = append(out, model.NormalizeNetworkInstance(vrf))
 	}
 	return out, nil
 }
 
-func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
+func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := c.node(node)
 	if !ok {
 		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
@@ -79,7 +80,8 @@ func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.NodeID
 	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
-func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
+func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.FIB, error) {
+	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := c.node(node)
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)

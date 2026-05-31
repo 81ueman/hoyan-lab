@@ -24,15 +24,15 @@ type SnapshotComparison struct {
 }
 
 type SnapshotVRFKey struct {
-	Node model.NodeID `json:"node"`
-	VRF  VRFName      `json:"vrf"`
+	Node model.NodeID            `json:"node"`
+	VRF  model.NetworkInstanceID `json:"vrf"`
 }
 
 type SnapshotTableMismatch struct {
-	Node     model.NodeID `json:"node"`
-	VRF      VRFName      `json:"vrf"`
-	Expected string       `json:"expected"`
-	Actual   string       `json:"actual"`
+	Node     model.NodeID            `json:"node"`
+	VRF      model.NetworkInstanceID `json:"vrf"`
+	Expected string                  `json:"expected"`
+	Actual   string                  `json:"actual"`
 }
 
 func CompareCollectors(ctx context.Context, expected, actual Collector, collectOpts CollectOptions, compareOpts SnapshotCompareOptions) (SnapshotComparison, error) {
@@ -131,8 +131,8 @@ func snapshotNodesByID(snapshot NetworkSnapshot) map[model.NodeID]NodeSnapshot {
 	return out
 }
 
-func snapshotVRFsByName(node NodeSnapshot) map[VRFName]VRFSnapshot {
-	out := map[VRFName]VRFSnapshot{}
+func snapshotVRFsByName(node NodeSnapshot) map[model.NetworkInstanceID]VRFSnapshot {
+	out := map[model.NetworkInstanceID]VRFSnapshot{}
 	for _, vrf := range node.VRFs {
 		out[vrf.VRF] = vrf
 	}
@@ -155,19 +155,19 @@ func sortedNodeMapKeys(a, b map[model.NodeID]NodeSnapshot) []model.NodeID {
 	return out
 }
 
-func sortedVRFMapKeys(a, b map[VRFName]VRFSnapshot) []VRFName {
-	seen := map[VRFName]bool{}
+func sortedVRFMapKeys(a, b map[model.NetworkInstanceID]VRFSnapshot) []model.NetworkInstanceID {
+	seen := map[model.NetworkInstanceID]bool{}
 	for k := range a {
 		seen[k] = true
 	}
 	for k := range b {
 		seen[k] = true
 	}
-	out := make([]VRFName, 0, len(seen))
+	out := make([]model.NetworkInstanceID, 0, len(seen))
 	for k := range seen {
 		out = append(out, k)
 	}
-	sortVRFNames(out)
+	sortNetworkInstanceIDs(out)
 	return out
 }
 

@@ -6,7 +6,6 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-type VRFName string
 type AddressFamily string
 type RouteProtocol string
 

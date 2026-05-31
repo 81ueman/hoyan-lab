@@ -10,9 +10,9 @@ import (
 )
 
 type RIB struct {
-	Node   model.NodeID `json:"node"`
-	VRF    VRFName      `json:"vrf"`
-	Routes []RIBRoute   `json:"routes"`
+	Node   model.NodeID            `json:"node"`
+	VRF    model.NetworkInstanceID `json:"vrf"`
+	Routes []RIBRoute              `json:"routes"`
 }
 
 type RIBRoute struct {
@@ -198,15 +198,16 @@ func FilterRIBRoutes(routes []RIBRoute, pred func(RIBRoute) bool) []RIBRoute {
 	return out
 }
 
-func RIBFromRouteRecords(node model.NodeID, vrf VRFName, routes []RIBRoute) RIB {
-	out := RIB{Node: node, VRF: vrf}
+func RIBFromRouteRecords(node model.NodeID, vrf model.NetworkInstanceID, routes []RIBRoute) RIB {
+	requestedVRF := vrf
+	out := RIB{Node: node, VRF: model.NormalizeNetworkInstance(string(vrf))}
 	for _, route := range routes {
 		route = NormalizeRIBRouteRecord(route)
 		if node == "" {
 			out.Node = model.NodeID(route.Node)
 		}
-		if vrf == "" {
-			out.VRF = VRFName(route.NetworkInstance)
+		if requestedVRF == "" {
+			out.VRF = model.NormalizeNetworkInstance(route.NetworkInstance)
 		}
 		out.Routes = append(out.Routes, RIBRouteFromRouteRecord(route))
 	}
@@ -219,7 +220,7 @@ func RIBsFromRouteRecords(routes []RIBRoute) []RIB {
 	for _, route := range routes {
 		route = NormalizeRIBRouteRecord(route)
 		node := model.NodeID(route.Node)
-		vrf := VRFName(route.NetworkInstance)
+		vrf := model.NormalizeNetworkInstance(route.NetworkInstance)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {
 			byKey[key] = &RIB{Node: node, VRF: vrf}
