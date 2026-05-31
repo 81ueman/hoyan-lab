@@ -32,7 +32,7 @@ func TestBuildUsesInjectedMetadataProviders(t *testing.T) {
 	if !snap.CollectedAt.Equal(now) {
 		t.Fatalf("CollectedAt = %s, want %s", snap.CollectedAt, now)
 	}
-	if got := BGPRoutes(snap); len(got) != 1 || got[0].Prefix != "10.0.0.0/24" {
+	if got := BGPRoutes(snap); len(got) != 1 || got[0].Common.Prefix != "10.0.0.0/24" {
 		t.Fatalf("BGPRoutes() = %#v", got)
 	}
 }
@@ -56,11 +56,8 @@ type fakeRIBCollector struct{}
 
 func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
 	return []observation.RIBRoute{{
-		Node:            "r1",
-		NetworkInstance: "default",
-		AFI:             "ipv4",
-		Prefix:          "10.0.0.0/24",
-		Protocol:        "bgp",
+		Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
+		BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
 	}}, nil
 }
 

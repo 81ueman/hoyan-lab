@@ -46,7 +46,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 		}
 		for vrf, table := range g.RIBTables(n.Name) {
 			for prefix, rib := range table {
-				pathsByProtocol := map[string][]observation.RIBPath{}
+				routesByProtocol := map[string][]sim.RIBEntry{}
 				for _, route := range rib {
 					route = route.Normalize()
 					if route.Condition == nil || !route.Condition.Eval(ctx) {
@@ -62,23 +62,15 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 						continue
 					}
 					protocol := expectedRouteProtocol(route)
-					pathsByProtocol[protocol] = append(pathsByProtocol[protocol], expectedPath(idx, n, route, ctx))
+					routesByProtocol[protocol] = append(routesByProtocol[protocol], route)
 				}
-				for _, protocol := range sortedProtocolKeys(pathsByProtocol) {
-					paths := pathsByProtocol[protocol]
-					if len(paths) == 0 {
+				for _, protocol := range sortedProtocolKeys(routesByProtocol) {
+					entries := routesByProtocol[protocol]
+					if len(entries) == 0 {
 						continue
 					}
-					observation.SortPaths(paths, observation.DefaultCompareOptions())
-					out = append(out, observation.RIBRoute{
-						Node:            n.Name,
-						NetworkInstance: vrf,
-						AFI:             "ipv4",
-						Prefix:          prefix,
-						Protocol:        protocol,
-						ConnectedClass:  connectedClassForProtocol(protocol, rib),
-						Paths:           paths,
-					})
+					_ = vrf
+					out = append(out, expectedRoute(idx, n, prefix, protocol, entries, ctx))
 				}
 			}
 		}
@@ -87,7 +79,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 	return out
 }
 
-func sortedProtocolKeys(m map[string][]observation.RIBPath) []string {
+func sortedProtocolKeys(m map[string][]sim.RIBEntry) []string {
 	order := []string{"bgp", "ospf", "connected", "static", "blackhole"}
 	var out []string
 	seen := map[string]bool{}
@@ -124,19 +116,6 @@ func expectedRouteProtocol(route sim.RIBEntry) string {
 	}
 }
 
-func connectedClassForProtocol(protocol string, routes []sim.RIBEntry) model.ConnectedRouteClass {
-	if protocol != "connected" {
-		return ""
-	}
-	for _, route := range routes {
-		route = route.Normalize()
-		if expectedRouteProtocol(route) == "connected" && route.RouteSource.ConnectedClass != "" {
-			return route.RouteSource.ConnectedClass
-		}
-	}
-	return ""
-}
-
 func routeComparableInLiveRIB(idx *model.TopologyIndex, node string, route sim.RIBEntry) bool {
 	route = route.Normalize()
 	switch route.SourceKind {
@@ -168,26 +147,95 @@ func comparableConnectedClass(class model.ConnectedRouteClass) bool {
 	}
 }
 
-func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry, ctx sim.FailureContext) observation.RIBPath {
-	route = route.Normalize()
-	if expectedRouteProtocol(route) != "bgp" {
-		return observation.RIBPath{
-			Best:      route.SelectedCond != nil && route.SelectedCond.Eval(ctx),
-			Valid:     expectedRouteValid(node, route),
-			NextHop:   routeNextHopAddress(idx, node.Name, route),
-			Origin:    "igp",
-			LocalPref: 100,
-		}
+func expectedRoute(idx *model.TopologyIndex, node model.Node, prefix, protocol string, entries []sim.RIBEntry, ctx sim.FailureContext) observation.RIBRoute {
+	routeProtocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(protocol))
+	common := observation.RIBRouteCommon{
+		AFI:      model.AFIIPv4,
+		Prefix:   prefix,
+		Protocol: routeProtocol,
+		Eligible: expectedEntriesHaveEligiblePath(node, entries),
+		Best:     expectedEntriesHaveBestPath(entries, ctx),
 	}
-	return observation.RIBPath{
+	route := observation.RIBRoute{
+		Common:    common,
+		ModelInfo: &observation.ModelRouteInfo{Provenance: observation.RouteProvenance{FromNode: model.NodeID(node.Name)}},
+	}
+	switch routeProtocol {
+	case model.RouteSourceBGP:
+		paths := make([]observation.BGPPath, 0, len(entries))
+		for _, entry := range entries {
+			paths = append(paths, expectedBGPPath(idx, node, entry, ctx))
+		}
+		observation.SortBGPPaths(paths, observation.DefaultCompareOptions())
+		route.BGP = &observation.BGPRIBRoute{Paths: paths}
+	case model.RouteSourceOSPF:
+		paths := make([]observation.OSPFPath, 0, len(entries))
+		for _, entry := range entries {
+			paths = append(paths, expectedOSPFPath(idx, node, entry))
+		}
+		observation.SortOSPFPaths(paths, observation.DefaultCompareOptions())
+		route.OSPF = &observation.OSPFRIBRoute{RouteType: expectedOSPFRouteType(protocol), Paths: paths}
+	case model.RouteSourceStatic:
+		route.Static = &observation.StaticRIBRoute{NextHops: expectedNextHops(idx, node, entries)}
+	case model.RouteSourceConnected:
+		route.Connected = &observation.ConnectedRIBRoute{}
+	case model.RouteSourceBlackhole:
+		route.Blackhole = &observation.BlackholeRIBRoute{}
+	}
+	return route
+}
+
+func expectedBGPPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry, ctx sim.FailureContext) observation.BGPPath {
+	route = route.Normalize()
+	return observation.BGPPath{
 		Best:      route.SelectedCond != nil && route.SelectedCond.Eval(ctx),
-		Valid:     expectedRouteValid(node, route),
-		NextHop:   routeNextHopAddress(idx, node.Name, route),
+		Eligible:  expectedRouteValid(node, route),
+		NextHop:   observation.NextHop{Address: routeNextHopAddress(idx, node.Name, route)},
 		ASPath:    append([]uint32(nil), route.Attrs.ASPath...),
 		Origin:    expectedRouteOrigin(route),
 		LocalPref: observation.DefaultLocalPref(route.Attrs.LocalPref),
 		MED:       route.Attrs.MED,
 	}
+}
+
+func expectedOSPFPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry) observation.OSPFPath {
+	route = route.Normalize()
+	return observation.OSPFPath{NextHop: observation.NextHop{Address: routeNextHopAddress(idx, node.Name, route)}, Cost: route.Attrs.MED}
+}
+
+func expectedNextHops(idx *model.TopologyIndex, node model.Node, entries []sim.RIBEntry) []observation.NextHop {
+	out := make([]observation.NextHop, 0, len(entries))
+	for _, entry := range entries {
+		if nh := routeNextHopAddress(idx, node.Name, entry); nh != "" {
+			out = append(out, observation.NextHop{Address: nh})
+		}
+	}
+	return out
+}
+
+func expectedEntriesHaveEligiblePath(node model.Node, entries []sim.RIBEntry) bool {
+	for _, entry := range entries {
+		if expectedRouteValid(node, entry) {
+			return true
+		}
+	}
+	return len(entries) == 0
+}
+
+func expectedEntriesHaveBestPath(entries []sim.RIBEntry, ctx sim.FailureContext) bool {
+	for _, entry := range entries {
+		if entry.SelectedCond != nil && entry.SelectedCond.Eval(ctx) {
+			return true
+		}
+	}
+	return false
+}
+
+func expectedOSPFRouteType(protocol string) observation.OSPFRouteType {
+	if protocol == "ospf-ia" {
+		return observation.OSPFRouteTypeInterArea
+	}
+	return observation.OSPFRouteTypeIntraArea
 }
 
 func expectedRouteOrigin(route sim.RIBEntry) model.BGPOriginCode {

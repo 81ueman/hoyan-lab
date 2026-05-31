@@ -368,7 +368,7 @@ func collectExpectedRIBSources(ctx context.Context, collector RIBCollector, node
 
 func expectedHasNonBGP(routes []observation.RIBRoute) bool {
 	for _, route := range routes {
-		protocol := strings.ToLower(strings.TrimSpace(route.Protocol))
+		protocol := strings.ToLower(strings.TrimSpace(string(route.Common.Protocol)))
 		if protocol != "" && protocol != "bgp" {
 			return true
 		}
@@ -412,19 +412,12 @@ func CountExpectedRoutes(expected []observation.RIBRoute, actual []observation.R
 }
 
 func ribRouteSourceKey(route observation.RIBRoute) string {
-	ni := route.NetworkInstance
-	if ni == "" {
-		ni = "default"
-	}
-	afi := route.AFI
-	if afi == "" {
-		afi = "ipv4"
-	}
-	protocol := strings.ToLower(strings.TrimSpace(route.Protocol))
+	afi := string(route.Common.AFI)
+	protocol := strings.ToLower(strings.TrimSpace(string(route.Common.Protocol)))
 	if protocol == "" {
 		protocol = "bgp"
 	}
-	return route.Node + "|" + ni + "|" + afi + "|" + protocol + "|" + route.Prefix
+	return afi + "|" + protocol + "|" + route.Common.Prefix
 }
 
 func countDiffs(result observation.CompareResult) int {

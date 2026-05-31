@@ -47,11 +47,3 @@ func defaultLocalPref(v int) int {
 func sortRoutes(routes []RIBRoute) {
 	observation.SortRoutes(routes)
 }
-
-func sortPaths(paths []RIBPath, opts CompareOptions) {
-	observation.SortPaths(paths, opts)
-}
-
-func normalizeRoute(route RIBRoute) RIBRoute {
-	return observation.NormalizeRIBRouteRecord(route)
-}

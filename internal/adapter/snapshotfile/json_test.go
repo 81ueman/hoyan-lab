@@ -21,11 +21,8 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 			"r1": {
 				Kind: model.KindFRR,
 				BGPRIB: []observation.RIBRoute{{
-					Node:            "r1",
-					NetworkInstance: "default",
-					AFI:             "ipv4",
-					Prefix:          "10.0.0.0/24",
-					Protocol:        "bgp",
+					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
+					BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
 				}},
 			},
 		},
@@ -40,7 +37,7 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 	if loaded.Version != snapshotdomain.Version || loaded.Lab != "unit" {
 		t.Fatalf("loaded snapshot = %#v", loaded)
 	}
-	if got := livesnapshot.BGPRoutes(loaded); len(got) != 1 || got[0].Prefix != "10.0.0.0/24" {
+	if got := livesnapshot.BGPRoutes(loaded); len(got) != 1 || got[0].Common.Prefix != "10.0.0.0/24" {
 		t.Fatalf("BGPRoutes() = %#v", got)
 	}
 }

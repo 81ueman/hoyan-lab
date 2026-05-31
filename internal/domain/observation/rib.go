@@ -1,6 +1,7 @@
 package observation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -15,15 +16,13 @@ type RIB struct {
 	Routes []RIBRoute              `json:"routes"`
 }
 
-type RIBRoute struct {
-	Node            string                    `json:"node,omitempty"`
-	NetworkInstance string                    `json:"network_instance,omitempty"`
-	AFI             string                    `json:"afi,omitempty"`
-	Prefix          string                    `json:"prefix,omitempty"`
-	Protocol        string                    `json:"protocol,omitempty"`
-	ConnectedClass  model.ConnectedRouteClass `json:"connected_class,omitempty"`
-	Paths           []RIBPath                 `json:"paths,omitempty"`
+type RIBCollector interface {
+	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+}
 
+type RIBRoute struct {
 	Common RIBRouteCommon `json:"common"`
 
 	BGP       *BGPRIBRoute       `json:"bgp,omitempty"`
@@ -196,132 +195,4 @@ func FilterRIBRoutes(routes []RIBRoute, pred func(RIBRoute) bool) []RIBRoute {
 		}
 	}
 	return out
-}
-
-func RIBFromRouteRecords(node model.NodeID, vrf model.NetworkInstanceID, routes []RIBRoute) RIB {
-	requestedVRF := vrf
-	out := RIB{Node: node, VRF: model.NormalizeNetworkInstance(string(vrf))}
-	for _, route := range routes {
-		route = NormalizeRIBRouteRecord(route)
-		if node == "" {
-			out.Node = model.NodeID(route.Node)
-		}
-		if requestedVRF == "" {
-			out.VRF = model.NormalizeNetworkInstance(route.NetworkInstance)
-		}
-		out.Routes = append(out.Routes, RIBRouteFromRouteRecord(route))
-	}
-	SortRIBRoutes(out.Routes)
-	return out
-}
-
-func RIBsFromRouteRecords(routes []RIBRoute) []RIB {
-	byKey := map[string]*RIB{}
-	for _, route := range routes {
-		route = NormalizeRIBRouteRecord(route)
-		node := model.NodeID(route.Node)
-		vrf := model.NormalizeNetworkInstance(route.NetworkInstance)
-		key := string(node) + "|" + string(vrf)
-		if byKey[key] == nil {
-			byKey[key] = &RIB{Node: node, VRF: vrf}
-		}
-		byKey[key].Routes = append(byKey[key].Routes, RIBRouteFromRouteRecord(route))
-	}
-	out := make([]RIB, 0, len(byKey))
-	for _, rib := range byKey {
-		SortRIBRoutes(rib.Routes)
-		out = append(out, *rib)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].Key() < out[j].Key()
-	})
-	return out
-}
-
-func RIBRouteFromRouteRecord(route RIBRoute) RIBRoute {
-	route = NormalizeRIBRouteRecord(route)
-	protocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(route.Protocol))
-	common := RIBRouteCommon{
-		AFI:      model.NormalizeAFI(model.AFI(route.AFI)),
-		Prefix:   route.Prefix,
-		Protocol: protocol,
-		Eligible: routeHasEligiblePath(route.Paths),
-		Best:     routeHasBestPath(route.Paths),
-	}
-	out := RIBRoute{Common: common}
-	switch protocol {
-	case model.RouteSourceBGP:
-		out.BGP = &BGPRIBRoute{Paths: bgpPathsFromRouteRecord(route.Paths)}
-	case model.RouteSourceOSPF:
-		out.OSPF = &OSPFRIBRoute{RouteType: OSPFRouteTypeUnknown, Paths: ospfPathsFromRouteRecord(route.Paths)}
-	case model.RouteSourceStatic:
-		out.Static = &StaticRIBRoute{NextHops: nextHopsFromRouteRecordRIBPaths(route.Paths)}
-	case model.RouteSourceConnected:
-		out.Connected = &ConnectedRIBRoute{}
-	case model.RouteSourceBlackhole:
-		out.Blackhole = &BlackholeRIBRoute{}
-	default:
-		out.Common.Protocol = model.RouteSourceUnknown
-	}
-	return out
-}
-
-func bgpPathsFromRouteRecord(paths []RIBPath) []BGPPath {
-	out := make([]BGPPath, 0, len(paths))
-	for _, path := range paths {
-		out = append(out, BGPPath{
-			NextHop:          NextHop{Address: path.NextHop, Weight: path.Weight},
-			ASPath:           append([]uint32(nil), path.ASPath...),
-			Origin:           path.Origin,
-			LocalPref:        path.LocalPref,
-			MED:              path.MED,
-			Weight:           path.Weight,
-			Communities:      append([]string(nil), path.Communities...),
-			LargeCommunities: append([]string(nil), path.LargeCommunities...),
-			OriginatorID:     path.OriginatorID,
-			ClusterList:      append([]string(nil), path.ClusterList...),
-			Peer:             path.Peer,
-			PeerAS:           path.PeerAS,
-			Eligible:         path.Valid,
-			Best:             path.Best,
-		})
-	}
-	return out
-}
-
-func ospfPathsFromRouteRecord(paths []RIBPath) []OSPFPath {
-	out := make([]OSPFPath, 0, len(paths))
-	for _, path := range paths {
-		out = append(out, OSPFPath{NextHop: NextHop{Address: path.NextHop}, Cost: path.MED})
-	}
-	return out
-}
-
-func nextHopsFromRouteRecordRIBPaths(paths []RIBPath) []NextHop {
-	out := make([]NextHop, 0, len(paths))
-	for _, path := range paths {
-		if path.NextHop == "" {
-			continue
-		}
-		out = append(out, NextHop{Address: path.NextHop, Weight: path.Weight})
-	}
-	return out
-}
-
-func routeHasEligiblePath(paths []RIBPath) bool {
-	for _, path := range paths {
-		if path.Valid {
-			return true
-		}
-	}
-	return len(paths) == 0
-}
-
-func routeHasBestPath(paths []RIBPath) bool {
-	for _, path := range paths {
-		if path.Best {
-			return true
-		}
-	}
-	return false
 }

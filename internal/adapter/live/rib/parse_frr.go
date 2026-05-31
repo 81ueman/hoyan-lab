@@ -3,6 +3,8 @@ package rib
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func ParseFRR(node string, data []byte) ([]RIBRoute, error) {
@@ -10,6 +12,7 @@ func ParseFRR(node string, data []byte) ([]RIBRoute, error) {
 }
 
 func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
+	_, _ = node, vrf
 	type frrPath struct {
 		Valid            bool     `json:"valid"`
 		Best             bool     `json:"bestpath"`
@@ -56,12 +59,12 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
 		if !strings.Contains(prefix, "/") {
 			continue
 		}
-		var paths []frrPath
-		if err := json.Unmarshal(payload, &paths); err != nil {
+		var rawPaths []frrPath
+		if err := json.Unmarshal(payload, &rawPaths); err != nil {
 			continue
 		}
-		route := RIBRoute{Node: node, NetworkInstance: vrf, AFI: "ipv4", Prefix: prefix}
-		for _, p := range paths {
+		var bgpPaths []observation.BGPPath
+		for _, p := range rawPaths {
 			nextHop := ""
 			if len(p.Nexthops) > 0 {
 				nextHop = p.Nexthops[0].IP
@@ -69,10 +72,10 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
 					nextHop = ""
 				}
 			}
-			route.Paths = append(route.Paths, RIBPath{
+			bgpPaths = append(bgpPaths, observation.BGPPath{
 				Best:             p.Best || p.Multipath,
-				Valid:            p.Valid,
-				NextHop:          nextHop,
+				Eligible:         p.Valid,
+				NextHop:          observation.NextHop{Address: nextHop, Weight: p.Weight},
 				ASPath:           parseASPath(p.Path),
 				Origin:           normalizeOrigin(p.Origin),
 				LocalPref:        defaultLocalPref(p.LocalPref),
@@ -83,9 +86,8 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
 				Peer:             p.Peer,
 			})
 		}
-		if len(route.Paths) > 0 {
-			sortPaths(route.Paths, DefaultCompareOptions())
-			out = append(out, route)
+		if len(bgpPaths) > 0 {
+			out = append(out, bgpRoute(prefix, bgpPaths))
 		}
 	}
 	sortRoutes(out)

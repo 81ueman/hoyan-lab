@@ -124,8 +124,8 @@ func (f fakeRIBCollector) routesFor(nodes []model.Node, bgp bool) []observation.
 	}
 	var out []observation.RIBRoute
 	for _, route := range f.routes {
-		route = observation.NormalizeRIBRouteRecord(route)
-		if allowed[route.Node] && ((route.Protocol == "bgp") == bgp) {
+		nodeOK := route.ModelInfo == nil || allowed[string(route.ModelInfo.Provenance.FromNode)]
+		if nodeOK && ((route.Common.Protocol == model.RouteSourceBGP) == bgp) {
 			out = append(out, route)
 		}
 	}

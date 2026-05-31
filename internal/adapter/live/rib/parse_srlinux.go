@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func ParseSRLinuxSummary(data []byte) ([]string, error) {
@@ -35,6 +37,7 @@ func ParseSRLinuxDetail(node, prefix string, data []byte) ([]RIBRoute, error) {
 }
 
 func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, data []byte) ([]RIBRoute, error) {
+	_, _ = node, networkInstance
 	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -46,7 +49,7 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 			routeMaps = append(routeMaps, m)
 		}
 	}
-	route := RIBRoute{Node: node, NetworkInstance: networkInstance, AFI: "ipv4", Prefix: prefix}
+	var paths []observation.BGPPath
 	for _, m := range routeMaps {
 		status := firstString(m, "status", "route status", "route-status")
 		asPath := parseASPath(firstString(m, "as path", "as-path", "asPath"))
@@ -55,10 +58,10 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 		if nextHop == "" && peer == "0.0.0.0" && len(asPath) == 0 {
 			continue
 		}
-		route.Paths = append(route.Paths, RIBPath{
+		paths = append(paths, observation.BGPPath{
 			Best:        strings.Contains(strings.ToLower(status), "best"),
-			Valid:       strings.Contains(strings.ToLower(status), "valid"),
-			NextHop:     nextHop,
+			Eligible:    strings.Contains(strings.ToLower(status), "valid"),
+			NextHop:     observation.NextHop{Address: nextHop},
 			ASPath:      asPath,
 			Origin:      normalizeOrigin(firstString(m, "origin")),
 			LocalPref:   defaultLocalPref(intValue(firstPresent(m, "local pref", "local-pref", "localPreference"))),
@@ -68,9 +71,8 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 			PeerAS:      uint32(intValue(firstPresent(m, "peer-as", "peer as", "peerAS"))),
 		})
 	}
-	if len(route.Paths) == 0 {
+	if len(paths) == 0 {
 		return nil, nil
 	}
-	sortPaths(route.Paths, DefaultCompareOptions())
-	return []RIBRoute{route}, nil
+	return []RIBRoute{bgpRoute(prefix, paths)}, nil
 }

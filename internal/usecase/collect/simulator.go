@@ -61,7 +61,8 @@ func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf model.Ne
 	}
 	routes := (ribusecase.ExpectedBuilder{}).BuildForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
 	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
+	observation.SortRIBRoutes(routes)
+	return observation.FilterRIB(observation.RIB{Node: node, VRF: vrf, Routes: routes}, opts), nil
 }
 
 func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.FIB, error) {

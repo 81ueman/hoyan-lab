@@ -148,14 +148,14 @@ func deps(runtime *fakeRuntime, rib *fakeRIBCollector) Dependencies {
 
 func TestHasExpectedRoutes(t *testing.T) {
 	expected := []observation.RIBRoute{
-		{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"},
-		{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"},
+		testRIBRoute("10.0.0.0/24", "", true),
+		testRIBRoute("10.1.0.0/24", "", true),
 	}
-	actual := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}}
+	actual := []observation.RIBRoute{testRIBRoute("10.0.0.0/24", "", true)}
 	if HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be incomplete")
 	}
-	actual = append(actual, observation.RIBRoute{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"})
+	actual = append(actual, testRIBRoute("10.1.0.0/24", "", true))
 	if !HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be complete")
 	}
@@ -209,7 +209,7 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	for _, node := range topo.Nodes {
 		ns := livesnapshot.NodeSnapshot{Kind: node.Kind}
 		for _, route := range expected {
-			if route.Node == node.Name {
+			if route.ModelInfo != nil && string(route.ModelInfo.Provenance.FromNode) == node.Name {
 				ns.BGPRIB = append(ns.BGPRIB, route)
 			}
 		}
@@ -250,11 +250,11 @@ func TestRunDataplaneChecksUsesInjectedProber(t *testing.T) {
 
 func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
 	rib := &fakeRIBCollector{routes: [][]observation.RIBRoute{
-		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
-		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
+		{testRIBRoute("10.0.0.0/24", "", true)},
+		{testRIBRoute("10.0.0.0/24", "", true)},
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
+	expected := []observation.RIBRoute{testRIBRoute("10.0.0.0/24", "", true), testRIBRoute("10.1.0.0/24", "", true)}
 	actual, err := WaitForExpectedRoutes(context.Background(), rib, nodes, expected, time.Millisecond, 2)
 	if err == nil {
 		t.Fatalf("WaitForExpectedRoutes() succeeded unexpectedly")
@@ -268,9 +268,9 @@ func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
 }
 
 func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
-	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
+	expected := []observation.RIBRoute{testRIBRoute("10.0.0.0/24", "198.51.100.1", true)}
 	rib := &fakeRIBCollector{routes: [][]observation.RIBRoute{
-		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}},
+		{testRIBRoute("10.0.0.0/24", "192.0.2.1", true)},
 		expected,
 	}}
 	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observation.DefaultCompareOptions())
@@ -286,10 +286,10 @@ func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
 }
 
 func TestWaitForMatchingRIBsClearsTransientCollectionError(t *testing.T) {
-	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
+	expected := []observation.RIBRoute{testRIBRoute("10.0.0.0/24", "192.0.2.1", true)}
 	rib := &fakeRIBCollector{
 		errs:   []error{errors.New("transient collector error"), nil},
-		routes: [][]observation.RIBRoute{nil, {{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: false, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}},
+		routes: [][]observation.RIBRoute{nil, {testRIBRoute("10.0.0.0/24", "192.0.2.1", false)}},
 	}
 	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observation.DefaultCompareOptions())
 	if err == nil {
@@ -389,5 +389,19 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	err = New(deps).Run(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "live FIB comparison found diff") {
 		t.Fatalf("Run() error = %v, want FIB diff from injected collector", err)
+	}
+}
+
+func testRIBRoute(prefix, nextHop string, best bool) observation.RIBRoute {
+	path := observation.BGPPath{
+		Best:      best,
+		Eligible:  true,
+		NextHop:   observation.NextHop{Address: nextHop},
+		Origin:    "igp",
+		LocalPref: 100,
+	}
+	return observation.RIBRoute{
+		Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: prefix, Protocol: model.RouteSourceBGP, Eligible: true, Best: best},
+		BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{path}},
 	}
 }
