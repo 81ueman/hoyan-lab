@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 )
 
 type DockerProber struct {
-	Runner observationrib.Runner
+	Runner observation.RIBRunner
 }
 
 func (p DockerProber) Probe(ctx context.Context, topo *model.Topology, check query.PacketCheck) (bool, error) {

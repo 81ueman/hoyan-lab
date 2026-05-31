@@ -447,7 +447,7 @@ func TestCollectSkipsBGPCommandsForNodesWithoutASN(t *testing.T) {
 	}
 }
 
-func routeByPrefix(routes []NormalizedRoute, prefix string) *NormalizedRoute {
+func routeByPrefix(routes []RIBRoute, prefix string) *RIBRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix {
 			return &routes[i]
@@ -456,7 +456,7 @@ func routeByPrefix(routes []NormalizedRoute, prefix string) *NormalizedRoute {
 	return nil
 }
 
-func routeByPrefixProtocol(routes []NormalizedRoute, prefix, protocol string) *NormalizedRoute {
+func routeByPrefixProtocol(routes []RIBRoute, prefix, protocol string) *RIBRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
 			return &routes[i]
@@ -465,7 +465,7 @@ func routeByPrefixProtocol(routes []NormalizedRoute, prefix, protocol string) *N
 	return nil
 }
 
-func routeByVRFPrefixProtocol(routes []NormalizedRoute, vrf, prefix, protocol string) *NormalizedRoute {
+func routeByVRFPrefixProtocol(routes []RIBRoute, vrf, prefix, protocol string) *RIBRoute {
 	for i := range routes {
 		if routes[i].NetworkInstance == vrf && routes[i].Prefix == prefix && normalizeRoute(routes[i]).Protocol == protocol {
 			return &routes[i]
@@ -474,7 +474,7 @@ func routeByVRFPrefixProtocol(routes []NormalizedRoute, vrf, prefix, protocol st
 	return nil
 }
 
-func pathByNextHop(paths []NormalizedPath, nextHop string) *NormalizedPath {
+func pathByNextHop(paths []RIBPath, nextHop string) *RIBPath {
 	for i := range paths {
 		if paths[i].NextHop == nextHop {
 			return &paths[i]

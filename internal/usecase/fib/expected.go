@@ -4,7 +4,7 @@ import (
 	"net/netip"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
 	"github.com/81ueman/hoyan-lab/internal/engine/dataplane"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
@@ -19,16 +19,16 @@ func NewExpectedBuilder() ExpectedBuilder {
 }
 
 // Expected builds modeled FIB routes for all topology nodes.
-func (b ExpectedBuilder) Expected(topo *model.Topology) []observationfib.NormalizedFIBRoute {
+func (b ExpectedBuilder) Expected(topo *model.Topology) []observation.FIBEntry {
 	return b.ExpectedForNodes(topo, topo.Nodes)
 }
 
 // ExpectedForNodes builds modeled FIB routes for the selected topology nodes.
-func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observationfib.NormalizedFIBRoute {
+func (ExpectedBuilder) ExpectedForNodes(topo *model.Topology, nodes []model.Node) []observation.FIBEntry {
 	return ExpectedBuilder{}.ExpectedForNodesWithFailureSet(topo, nodes, sim.NoFailures())
 }
 
-func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observationfib.NormalizedFIBRoute {
+func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observation.FIBEntry {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true
@@ -39,7 +39,7 @@ func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, node
 	}
 	graph := sim.NewGraph(topo)
 	ctx := graph.FailureContext(failures)
-	byRoute := map[string]observationfib.NormalizedFIBRoute{}
+	byRoute := map[string]observation.FIBEntry{}
 	for _, n := range topo.Nodes {
 		if !allowed[n.Name] || ctx.NodeFailed(model.NodeID(n.Name)) {
 			continue
@@ -83,12 +83,12 @@ func (ExpectedBuilder) ExpectedForNodesWithFailureSet(topo *model.Topology, node
 			}
 		}
 	}
-	out := make([]observationfib.NormalizedFIBRoute, 0, len(byRoute))
+	out := make([]observation.FIBEntry, 0, len(byRoute))
 	for _, route := range byRoute {
 		route.NextHops = dedupeNextHops(route.NextHops)
 		out = append(out, route)
 	}
-	observationfib.SortRoutes(out)
+	observation.SortFIBEntriesForCompare(out)
 	return out
 }
 
@@ -106,8 +106,8 @@ func bgpSuppressedByNonBGPFIB(entries []dataplane.FIBEntry, ctx sim.FailureConte
 	return out
 }
 
-func addExpectedRoute(byRoute map[string]observationfib.NormalizedFIBRoute, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, vrf, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
-	route := observationfib.NormalizedFIBRoute{
+func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, vrf, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
+	route := observation.FIBEntry{
 		Node:           node,
 		VRF:            string(model.NormalizeNetworkInstance(vrf)),
 		AFI:            "ipv4",
@@ -118,11 +118,11 @@ func addExpectedRoute(byRoute map[string]observationfib.NormalizedFIBRoute, idx 
 		Installed:      true,
 	}
 	if nextHop != "" {
-		route.NextHops = []observationfib.NormalizedFIBNextHop{expectedNextHop(idx, fib, ctx, node, prefix, nextHop)}
+		route.NextHops = []observation.NextHop{expectedNextHop(idx, fib, ctx, node, prefix, nextHop)}
 	} else if iface != "" && source != model.RouteSourceBlackhole {
-		route.NextHops = []observationfib.NormalizedFIBNextHop{{Interface: iface}}
+		route.NextHops = []observation.NextHop{{Interface: iface}}
 	}
-	key := observationfib.RouteKey(route)
+	key := observation.RouteKey(route)
 	existing := byRoute[key]
 	if existing.Node == "" {
 		byRoute[key] = route
@@ -157,11 +157,11 @@ func forwardingNextHop(entry sim.RIBEntry) string {
 	return entry.ForwardingNextHop.Addr
 }
 
-func expectedNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, routePrefix, nextHop string) observationfib.NormalizedFIBNextHop {
+func expectedNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, routePrefix, nextHop string) observation.NextHop {
 	if resolved, ok := resolveRecursiveNextHop(idx, fib, ctx, node, routePrefix, nextHop); ok {
 		return resolved
 	}
-	out := observationfib.NormalizedFIBNextHop{}
+	out := observation.NextHop{}
 	if ref, ok := idx.InterfaceToPeer(node, nextHop); ok {
 		out.Interface = ref.ConfigName
 	}
@@ -173,10 +173,10 @@ func expectedNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim
 	return out
 }
 
-func resolveRecursiveNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, routePrefix, nextHop string) (observationfib.NormalizedFIBNextHop, bool) {
+func resolveRecursiveNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, routePrefix, nextHop string) (observation.NextHop, bool) {
 	addr, err := netip.ParseAddr(nextHop)
 	if err != nil {
-		return observationfib.NormalizedFIBNextHop{}, false
+		return observation.NextHop{}, false
 	}
 	for _, entry := range fib {
 		if entry.Prefix.String() == routePrefix || !entry.Prefix.Contains(addr) {
@@ -187,12 +187,12 @@ func resolveRecursiveNextHop(idx *model.TopologyIndex, fib []dataplane.FIBEntry,
 		}
 		return expectedNextHop(idx, nil, ctx, node, entry.Prefix.String(), entry.NextHop), true
 	}
-	return observationfib.NormalizedFIBNextHop{}, false
+	return observation.NextHop{}, false
 }
 
-func dedupeNextHops(in []observationfib.NormalizedFIBNextHop) []observationfib.NormalizedFIBNextHop {
+func dedupeNextHops(in []observation.NextHop) []observation.NextHop {
 	seen := map[string]bool{}
-	var out []observationfib.NormalizedFIBNextHop
+	var out []observation.NextHop
 	for _, hop := range in {
 		key := hop.Address + "|" + hop.Interface
 		if seen[key] {
@@ -201,6 +201,6 @@ func dedupeNextHops(in []observationfib.NormalizedFIBNextHop) []observationfib.N
 		seen[key] = true
 		out = append(out, hop)
 	}
-	observationfib.SortNextHops(out)
+	observation.SortNextHops(out)
 	return out
 }

@@ -28,7 +28,7 @@ func TestParseLinuxIPRoute(t *testing.T) {
 	if ecmp == nil || len(ecmp.NextHops) != 2 {
 		t.Fatalf("ecmp route = %#v", ecmp)
 	}
-	if got, want := ecmp.NextHops[0], (NormalizedFIBNextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}); got != want {
+	if got, want := ecmp.NextHops[0], (NextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}); got != want {
 		t.Fatalf("first next-hop = %#v, want %#v", got, want)
 	}
 	if def := routeByPrefix(routes, "0.0.0.0/0"); def == nil || def.Protocol != "static" || def.Metric != 100 {
@@ -91,7 +91,7 @@ func TestParseCEOSRoutes(t *testing.T) {
 	if route.Protocol != "bgp" || route.Preference != 200 || route.Metric != 10 {
 		t.Fatalf("route attrs = %#v", route)
 	}
-	if got, want := route.NextHops, []NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "Ethernet1"}}; !reflect.DeepEqual(got, want) {
+	if got, want := route.NextHops, []NextHop{{Address: "192.0.2.1", Interface: "Ethernet1"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("next-hops = %#v, want %#v", got, want)
 	}
 	connected := routeByPrefix(routes, "198.51.100.0/31")
@@ -164,7 +164,7 @@ func TestParseSRLinuxRoutes(t *testing.T) {
 	if route.Protocol != "bgp" || route.Preference != 170 {
 		t.Fatalf("route attrs = %#v", route)
 	}
-	if got, want := route.NextHops, []NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}; !reflect.DeepEqual(got, want) {
+	if got, want := route.NextHops, []NextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("next-hops = %#v, want %#v", got, want)
 	}
 	connected := routeByPrefix(routes, "198.51.100.0/31")
@@ -216,13 +216,13 @@ func TestParseSRLinuxRouteDetailsNormalizesPeerGateway(t *testing.T) {
 	if route.Protocol != "bgp" || route.Preference != 170 {
 		t.Fatalf("route attrs = %#v", route)
 	}
-	want := []NormalizedFIBNextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
+	want := []NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
 	if !reflect.DeepEqual(route.NextHops, want) {
 		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
 	}
 }
 
-func routeByPrefix(routes []NormalizedFIBRoute, prefix string) *NormalizedFIBRoute {
+func routeByPrefix(routes []FIBEntry, prefix string) *FIBEntry {
 	for i := range routes {
 		if routes[i].Prefix == prefix {
 			return &routes[i]
@@ -231,7 +231,7 @@ func routeByPrefix(routes []NormalizedFIBRoute, prefix string) *NormalizedFIBRou
 	return nil
 }
 
-func routeByVRFPrefix(routes []NormalizedFIBRoute, vrf, prefix string) *NormalizedFIBRoute {
+func routeByVRFPrefix(routes []FIBEntry, vrf, prefix string) *FIBEntry {
 	for i := range routes {
 		if routes[i].VRF == vrf && routes[i].Prefix == prefix {
 			return &routes[i]

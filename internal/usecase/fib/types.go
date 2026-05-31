@@ -4,19 +4,19 @@ import (
 	"context"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 type Usecase struct {
-	collector observationfib.Collector
+	collector observation.FIBCollector
 }
 
 // New returns the preferred entry point for collector-backed live FIB collection.
-func New(collector observationfib.Collector) Usecase {
+func New(collector observation.FIBCollector) Usecase {
 	return Usecase{collector: collector}
 }
 
-func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error) {
+func (u Usecase) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error) {
 	return u.collector.Collect(ctx, nodes, opts)
 }
 

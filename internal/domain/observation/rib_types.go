@@ -1,4 +1,4 @@
-package rib
+package observation
 
 import (
 	"context"
@@ -6,17 +6,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-type NormalizedRoute struct {
-	Node            string
-	NetworkInstance string
-	AFI             string
-	Prefix          string
-	Protocol        string
-	ConnectedClass  model.ConnectedRouteClass
-	Paths           []NormalizedPath
-}
-
-type NormalizedPath struct {
+type RIBPath struct {
 	Best             bool
 	Valid            bool
 	NextHop          string
@@ -33,19 +23,19 @@ type NormalizedPath struct {
 	PeerAS           uint32
 }
 
-type Collector interface {
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error)
-	CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error)
-	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error)
+type RIBCollector interface {
+	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
 }
 
-type Parser interface {
-	Parse(node string, data []byte) ([]NormalizedRoute, error)
+type RIBParser interface {
+	Parse(node string, data []byte) ([]RIBRoute, error)
 }
 
-type ParserFunc func(node string, data []byte) ([]NormalizedRoute, error)
+type RIBParserFunc func(node string, data []byte) ([]RIBRoute, error)
 
-func (f ParserFunc) Parse(node string, data []byte) ([]NormalizedRoute, error) {
+func (f RIBParserFunc) Parse(node string, data []byte) ([]RIBRoute, error) {
 	return f(node, data)
 }
 
@@ -85,7 +75,7 @@ type DuplicatePathConflict struct {
 	RouteKey string
 	PathKey  string
 	Side     string
-	Paths    []NormalizedPath
+	Paths    []RIBPath
 }
 
 type CompareResult struct {
@@ -98,7 +88,7 @@ type CompareResult struct {
 	DuplicatePathConflicts []DuplicatePathConflict
 }
 
-type Runner interface {
+type RIBRunner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 

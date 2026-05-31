@@ -9,16 +9,16 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-func ParseLinuxIPRoute(node string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseLinuxIPRoute(node string, data []byte) ([]FIBEntry, error) {
 	return ParseLinuxIPRouteVRF(node, "default", data)
 }
 
-func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]FIBEntry, error) {
 	var raw []map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedFIBRoute
+	var out []FIBEntry
 	for i, item := range raw {
 		prefix, ok, err := routePrefix(item)
 		if err != nil {
@@ -33,7 +33,7 @@ func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]NormalizedFIBRoute, 
 			protocol = "blackhole"
 			nextHops = nil
 		}
-		route := NormalizedFIBRoute{
+		route := FIBEntry{
 			Node:       node,
 			VRF:        string(model.NormalizeNetworkInstance(vrf)),
 			AFI:        "ipv4",
@@ -61,7 +61,7 @@ func linuxRouteProtocol(item map[string]any) string {
 	return canonicalProtocol(stringValue(item["type"]))
 }
 
-func discardLinuxRoute(item map[string]any, hops []NormalizedFIBNextHop) bool {
+func discardLinuxRoute(item map[string]any, hops []NextHop) bool {
 	if canonicalProtocol(stringValue(item["type"])) == "blackhole" {
 		return true
 	}
@@ -92,7 +92,7 @@ func routePrefix(item map[string]any) (string, bool, error) {
 	return pfx.Masked().String(), true, nil
 }
 
-func discardNextHops(hops []NormalizedFIBNextHop) bool {
+func discardNextHops(hops []NextHop) bool {
 	if len(hops) == 0 {
 		return false
 	}
@@ -104,7 +104,7 @@ func discardNextHops(hops []NormalizedFIBNextHop) bool {
 	return true
 }
 
-func discardNextHop(hop NormalizedFIBNextHop) bool {
+func discardNextHop(hop NextHop) bool {
 	if hop.Address != "" && !discardToken(hop.Address) {
 		return false
 	}
@@ -120,15 +120,15 @@ func discardToken(raw string) bool {
 	}
 }
 
-func routeNextHops(item map[string]any) []NormalizedFIBNextHop {
+func routeNextHops(item map[string]any) []NextHop {
 	if raw, ok := item["nexthops"].([]any); ok {
-		out := make([]NormalizedFIBNextHop, 0, len(raw))
+		out := make([]NextHop, 0, len(raw))
 		for _, elem := range raw {
 			m, ok := elem.(map[string]any)
 			if !ok {
 				continue
 			}
-			out = append(out, NormalizedFIBNextHop{
+			out = append(out, NextHop{
 				Address:   stringValue(m["gateway"]),
 				Interface: stringValue(m["dev"]),
 				Weight:    intValue(m["weight"]),
@@ -137,7 +137,7 @@ func routeNextHops(item map[string]any) []NormalizedFIBNextHop {
 		return out
 	}
 	if gateway := stringValue(item["gateway"]); gateway != "" || stringValue(item["dev"]) != "" {
-		return []NormalizedFIBNextHop{{
+		return []NextHop{{
 			Address:   gateway,
 			Interface: stringValue(item["dev"]),
 			Weight:    intValue(item["weight"]),

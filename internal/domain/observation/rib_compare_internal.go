@@ -1,4 +1,4 @@
-package rib
+package observation
 
 import "reflect"
 
@@ -12,7 +12,7 @@ func fillCompareDefaults(opts CompareOptions) CompareOptions {
 	return opts
 }
 
-func comparePaths(routeKey string, expected, actual []NormalizedPath, opts CompareOptions, result *CompareResult) {
+func comparePaths(routeKey string, expected, actual []RIBPath, opts CompareOptions, result *CompareResult) {
 	exp, expConflicts := buildPathIndex(routeKey, "expected", expected, opts)
 	act, actConflicts := buildPathIndex(routeKey, "actual", actual, opts)
 	result.DuplicatePathConflicts = append(result.DuplicatePathConflicts, expConflicts...)
@@ -35,19 +35,19 @@ func comparePaths(routeKey string, expected, actual []NormalizedPath, opts Compa
 }
 
 type pathIndexEntry struct {
-	path       NormalizedPath
-	paths      []NormalizedPath
+	path       RIBPath
+	paths      []RIBPath
 	conflicted bool
 }
 
-func buildPathIndex(routeKey, side string, paths []NormalizedPath, opts CompareOptions) (map[string]NormalizedPath, []DuplicatePathConflict) {
+func buildPathIndex(routeKey, side string, paths []RIBPath, opts CompareOptions) (map[string]RIBPath, []DuplicatePathConflict) {
 	entries := map[string]pathIndexEntry{}
 	for _, p := range paths {
 		p = normalizePath(p)
 		key := pathKey(p, opts)
 		entry, ok := entries[key]
 		if !ok {
-			entries[key] = pathIndexEntry{path: p, paths: []NormalizedPath{p}}
+			entries[key] = pathIndexEntry{path: p, paths: []RIBPath{p}}
 			continue
 		}
 		if !samePathAttributes(entry.path, p) {
@@ -62,7 +62,7 @@ func buildPathIndex(routeKey, side string, paths []NormalizedPath, opts CompareO
 		entries[key] = entry
 	}
 
-	index := map[string]NormalizedPath{}
+	index := map[string]RIBPath{}
 	var conflicts []DuplicatePathConflict
 	for key, entry := range entries {
 		if entry.conflicted {
@@ -79,7 +79,7 @@ func buildPathIndex(routeKey, side string, paths []NormalizedPath, opts CompareO
 	return index, conflicts
 }
 
-func samePathAttributes(a, b NormalizedPath) bool {
+func samePathAttributes(a, b RIBPath) bool {
 	a.Best = false
 	a.Valid = false
 	b.Best = false
@@ -87,7 +87,7 @@ func samePathAttributes(a, b NormalizedPath) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-func appendMismatches(routeKey, pathKey string, e, a NormalizedPath, opts CompareOptions, result *CompareResult) {
+func appendMismatches(routeKey, pathKey string, e, a RIBPath, opts CompareOptions, result *CompareResult) {
 	check := func(enabled bool, field string, expected, actual any) {
 		if enabled && !reflect.DeepEqual(expected, actual) {
 			result.Mismatched = append(result.Mismatched, AttributeMismatch{RouteKey: routeKey, PathKey: pathKey, Field: field, Expected: expected, Actual: actual})

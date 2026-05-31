@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
@@ -365,90 +365,90 @@ func TestExpectedReflectsRouteMapAttributes(t *testing.T) {
 }
 
 func TestCompareRoutes(t *testing.T) {
-	base := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	base := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 		path(false, true, "192.0.2.2", []uint32{65002}, 100, 0),
 	)}
 	tests := []struct {
 		name string
-		exp  []observationrib.NormalizedRoute
-		act  []observationrib.NormalizedRoute
-		want func(observationrib.CompareResult) bool
+		exp  []observation.RIBRoute
+		act  []observation.RIBRoute
+		want func(observation.CompareResult) bool
 	}{
-		{"exact", base, base, func(r observationrib.CompareResult) bool { return r.OK }},
-		{"missing prefix", base, nil, func(r observationrib.CompareResult) bool { return len(r.MissingPrefixes) == 1 }},
-		{"unexpected prefix", nil, base, func(r observationrib.CompareResult) bool { return len(r.UnexpectedPrefixes) == 1 }},
-		{"missing path", base, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, func(r observationrib.CompareResult) bool { return len(r.MissingPaths) == 1 }},
-		{"unexpected path", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, base, func(r observationrib.CompareResult) bool { return len(r.UnexpectedPaths) == 1 }},
-		{"as path mismatch", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65009}, 100, 0))}, func(r observationrib.CompareResult) bool {
+		{"exact", base, base, func(r observation.CompareResult) bool { return r.OK }},
+		{"missing prefix", base, nil, func(r observation.CompareResult) bool { return len(r.MissingPrefixes) == 1 }},
+		{"unexpected prefix", nil, base, func(r observation.CompareResult) bool { return len(r.UnexpectedPrefixes) == 1 }},
+		{"missing path", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, func(r observation.CompareResult) bool { return len(r.MissingPaths) == 1 }},
+		{"unexpected path", []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[0])}, base, func(r observation.CompareResult) bool { return len(r.UnexpectedPaths) == 1 }},
+		{"as path mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65009}, 100, 0))}, func(r observation.CompareResult) bool {
 			return len(r.MissingPaths) == 1 && len(r.UnexpectedPaths) == 1
 		}},
-		{"local-pref mismatch", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 200, 0))}, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("local_pref")},
-		{"med mismatch", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 10))}, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 20))}, mismatch("med")},
-		{"best mismatch", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(false, true, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("best")},
-		{"valid mismatch", []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", path(true, false, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("valid")},
-		{"path order ignored", base, []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24", base[0].Paths[1], base[0].Paths[0])}, func(r observationrib.CompareResult) bool { return r.OK }},
+		{"local-pref mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 200, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("local_pref")},
+		{"med mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 10))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 20))}, mismatch("med")},
+		{"best mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(false, true, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("best")},
+		{"valid mismatch", []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, true, "192.0.2.1", []uint32{65001}, 100, 0))}, []observation.RIBRoute{route("r1", "10.0.0.0/24", path(true, false, "192.0.2.1", []uint32{65001}, 100, 0))}, mismatch("valid")},
+		{"path order ignored", base, []observation.RIBRoute{route("r1", "10.0.0.0/24", base[0].Paths[1], base[0].Paths[0])}, func(r observation.CompareResult) bool { return r.OK }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := observationrib.Compare(tt.exp, tt.act); !tt.want(got) {
-				t.Fatalf("observationrib.Compare() = %#v", got)
+			if got := observation.Compare(tt.exp, tt.act); !tt.want(got) {
+				t.Fatalf("observation.Compare() = %#v", got)
 			}
 		})
 	}
 }
 
 func TestDefaultCompareRejectsBestPathMismatch(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(false, true, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
+	result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions())
 	if result.OK || len(result.Mismatched) != 1 || result.Mismatched[0].Field != "best" {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want best mismatch", result)
+		t.Fatalf("observation.CompareRoutes() = %#v, want best mismatch", result)
 	}
 }
 
 func TestDefaultCompareRejectsUnexpectedExtraPath(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 		path(false, true, "192.0.2.2", []uint32{65002}, 100, 0),
 	)}
-	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
+	result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions())
 	if result.OK || len(result.UnexpectedPaths) != 1 {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want unexpected path", result)
+		t.Fatalf("observation.CompareRoutes() = %#v, want unexpected path", result)
 	}
 }
 
 func TestCompareAllowsIdenticalDuplicatePaths(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	if result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions()); !result.OK {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want identical duplicate paths accepted", result)
+	if result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions()); !result.OK {
+		t.Fatalf("observation.CompareRoutes() = %#v, want identical duplicate paths accepted", result)
 	}
 }
 
 func TestCompareReportsDuplicatePathConflictForAttributeDifference(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 10),
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 20),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 10),
 	)}
-	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
+	result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions())
 	if result.OK || len(result.DuplicatePathConflicts) != 1 {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want duplicate path conflict", result)
+		t.Fatalf("observation.CompareRoutes() = %#v, want duplicate path conflict", result)
 	}
 	conflict := result.DuplicatePathConflicts[0]
 	if conflict.RouteKey != "r1|default|ipv4|10.0.0.0/24" || conflict.PathKey != "nh=192.0.2.1|as=65001" || conflict.Side != "expected" || len(conflict.Paths) != 2 {
@@ -457,73 +457,73 @@ func TestCompareReportsDuplicatePathConflictForAttributeDifference(t *testing.T)
 }
 
 func TestCompareDuplicateBestValidDoesNotHideDiff(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 		path(false, false, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(false, false, "192.0.2.1", []uint32{65001}, 100, 0),
 	)}
-	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
+	result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions())
 	if result.OK || len(result.Mismatched) != 2 || result.Mismatched[0].Field != "best" || result.Mismatched[1].Field != "valid" || len(result.DuplicatePathConflicts) != 0 {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want merged best/valid duplicate to expose mismatches", result)
+		t.Fatalf("observation.CompareRoutes() = %#v, want merged best/valid duplicate to expose mismatches", result)
 	}
 }
 
 func TestComparePeerOptionSeparatesDuplicateIdentity(t *testing.T) {
-	opts := observationrib.DefaultCompareOptions()
+	opts := observation.DefaultCompareOptions()
 	opts.ComparePeer = true
-	expected := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		pathWithPeer(path(true, true, "192.0.2.1", []uint32{65001}, 100, 10), "192.0.2.10"),
 		pathWithPeer(path(true, true, "192.0.2.1", []uint32{65001}, 100, 20), "192.0.2.20"),
 	)}
-	actual := []observationrib.NormalizedRoute{route("r1", "10.0.0.0/24",
+	actual := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		pathWithPeer(path(true, true, "192.0.2.1", []uint32{65001}, 100, 10), "192.0.2.10"),
 		pathWithPeer(path(true, true, "192.0.2.1", []uint32{65001}, 100, 20), "192.0.2.20"),
 	)}
-	result := observationrib.CompareRoutes(expected, actual, opts)
+	result := observation.CompareRoutes(expected, actual, opts)
 	if !result.OK {
-		t.Fatalf("observationrib.CompareRoutes() = %#v, want peer to distinguish path identity", result)
+		t.Fatalf("observation.CompareRoutes() = %#v, want peer to distinguish path identity", result)
 	}
 }
 
 func TestFormatDiffsIncludesDuplicatePathConflict(t *testing.T) {
-	result := observationrib.CompareResult{DuplicatePathConflicts: []observationrib.DuplicatePathConflict{{
+	result := observation.CompareResult{DuplicatePathConflicts: []observation.DuplicatePathConflict{{
 		RouteKey: "r1|default|ipv4|10.0.0.0/24",
 		PathKey:  "nh=192.0.2.1|as=65001",
 		Side:     "actual",
-		Paths: []observationrib.NormalizedPath{
+		Paths: []observation.RIBPath{
 			path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
 			path(false, true, "192.0.2.1", []uint32{65001}, 100, 0),
 		},
 	}}}
-	lines := observationrib.FormatDiffs(result)
+	lines := observation.FormatDiffs(result)
 	want := "[DIFF] r1|default|ipv4|10.0.0.0/24 path nh=192.0.2.1|as=65001 duplicate path conflict side=actual paths=2"
 	if len(lines) != 1 || lines[0] != want {
-		t.Fatalf("observationrib.FormatDiffs() = %#v, want %#v", lines, want)
+		t.Fatalf("observation.FormatDiffs() = %#v, want %#v", lines, want)
 	}
 }
 
-func mismatch(field string) func(observationrib.CompareResult) bool {
-	return func(r observationrib.CompareResult) bool {
+func mismatch(field string) func(observation.CompareResult) bool {
+	return func(r observation.CompareResult) bool {
 		return len(r.Mismatched) == 1 && r.Mismatched[0].Field == field
 	}
 }
 
-func route(node, prefix string, paths ...observationrib.NormalizedPath) observationrib.NormalizedRoute {
-	return observationrib.NormalizedRoute{Node: node, NetworkInstance: "default", AFI: "ipv4", Prefix: prefix, Paths: paths}
+func route(node, prefix string, paths ...observation.RIBPath) observation.RIBRoute {
+	return observation.RIBRoute{Node: node, NetworkInstance: "default", AFI: "ipv4", Prefix: prefix, Paths: paths}
 }
 
-func path(best, valid bool, nextHop string, asPath []uint32, localPref, med int) observationrib.NormalizedPath {
-	return observationrib.NormalizedPath{Best: best, Valid: valid, NextHop: nextHop, ASPath: asPath, Origin: "igp", LocalPref: localPref, MED: med}
+func path(best, valid bool, nextHop string, asPath []uint32, localPref, med int) observation.RIBPath {
+	return observation.RIBPath{Best: best, Valid: valid, NextHop: nextHop, ASPath: asPath, Origin: "igp", LocalPref: localPref, MED: med}
 }
 
-func pathWithPeer(p observationrib.NormalizedPath, peer string) observationrib.NormalizedPath {
+func pathWithPeer(p observation.RIBPath, peer string) observation.RIBPath {
 	p.Peer = peer
 	return p
 }
 
-func routeByPrefix(routes []observationrib.NormalizedRoute, prefix string) *observationrib.NormalizedRoute {
+func routeByPrefix(routes []observation.RIBRoute, prefix string) *observation.RIBRoute {
 	for i := range routes {
 		if routes[i].Prefix == prefix {
 			return &routes[i]
@@ -532,18 +532,18 @@ func routeByPrefix(routes []observationrib.NormalizedRoute, prefix string) *obse
 	return nil
 }
 
-func routeByPrefixProtocol(routes []observationrib.NormalizedRoute, prefix, protocol string) *observationrib.NormalizedRoute {
+func routeByPrefixProtocol(routes []observation.RIBRoute, prefix, protocol string) *observation.RIBRoute {
 	for i := range routes {
-		if routes[i].Prefix == prefix && observationrib.NormalizeRoute(routes[i]).Protocol == protocol {
+		if routes[i].Prefix == prefix && observation.NormalizeRIBRouteRecord(routes[i]).Protocol == protocol {
 			return &routes[i]
 		}
 	}
 	return nil
 }
 
-func routeByNodePrefixProtocol(routes []observationrib.NormalizedRoute, node, prefix, protocol string) *observationrib.NormalizedRoute {
+func routeByNodePrefixProtocol(routes []observation.RIBRoute, node, prefix, protocol string) *observation.RIBRoute {
 	for i := range routes {
-		if routes[i].Node == node && routes[i].Prefix == prefix && observationrib.NormalizeRoute(routes[i]).Protocol == protocol {
+		if routes[i].Node == node && routes[i].Prefix == prefix && observation.NormalizeRIBRouteRecord(routes[i]).Protocol == protocol {
 			return &routes[i]
 		}
 	}

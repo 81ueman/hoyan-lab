@@ -14,8 +14,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
@@ -85,7 +84,7 @@ func (f fakeQueryLoader) Load(path string) (*query.Queries, error) {
 
 type fakeRIBCollector struct {
 	supported []model.Node
-	routes    [][]observationrib.NormalizedRoute
+	routes    [][]observation.RIBRoute
 	errs      []error
 	polls     int
 }
@@ -97,15 +96,15 @@ func (f *fakeRIBCollector) SupportedNodes(nodes []model.Node) []model.Node {
 	return nodes
 }
 
-func (f *fakeRIBCollector) Collect(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (f *fakeRIBCollector) Collect(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return f.next()
 }
 
-func (f *fakeRIBCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (f *fakeRIBCollector) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return f.next()
 }
 
-func (f *fakeRIBCollector) next() ([]observationrib.NormalizedRoute, error) {
+func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
 	i := f.polls
 	f.polls++
 	if i < len(f.errs) && f.errs[i] != nil {
@@ -121,11 +120,11 @@ func (f *fakeRIBCollector) next() ([]observationrib.NormalizedRoute, error) {
 }
 
 type fakeFIBCollector struct {
-	routes []observationfib.NormalizedFIBRoute
+	routes []observation.FIBEntry
 }
 
 func (f fakeFIBCollector) SupportedNodes(nodes []model.Node) []model.Node { return nodes }
-func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error) {
+func (f fakeFIBCollector) Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error) {
 	return f.routes, nil
 }
 
@@ -148,15 +147,15 @@ func deps(runtime *fakeRuntime, rib *fakeRIBCollector) Dependencies {
 }
 
 func TestHasExpectedRoutes(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{
+	expected := []observation.RIBRoute{
 		{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"},
 		{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"},
 	}
-	actual := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}}
+	actual := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}}
 	if HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be incomplete")
 	}
-	actual = append(actual, observationrib.NormalizedRoute{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"})
+	actual = append(actual, observation.RIBRoute{Node: "r2", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"})
 	if !HasExpectedRoutes(expected, actual) {
 		t.Fatalf("routes should be complete")
 	}
@@ -173,7 +172,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 	}
 	nodes := topo.Nodes
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
-	rib := &fakeRIBCollector{supported: nodes, routes: [][]observationrib.NormalizedRoute{expected}}
+	rib := &fakeRIBCollector{supported: nodes, routes: [][]observation.RIBRoute{expected}}
 	opts := Options{
 		Topology:     "testdata/live.clab.yml",
 		Timeout:      time.Second,
@@ -250,12 +249,12 @@ func TestRunDataplaneChecksUsesInjectedProber(t *testing.T) {
 }
 
 func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
-	rib := &fakeRIBCollector{routes: [][]observationrib.NormalizedRoute{
+	rib := &fakeRIBCollector{routes: [][]observation.RIBRoute{
 		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
 		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}},
 	}}
 	nodes := []model.Node{{Name: "r1", Kind: "frr"}}
-	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
+	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24"}, {Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.1.0.0/24"}}
 	actual, err := WaitForExpectedRoutes(context.Background(), rib, nodes, expected, time.Millisecond, 2)
 	if err == nil {
 		t.Fatalf("WaitForExpectedRoutes() succeeded unexpectedly")
@@ -269,12 +268,12 @@ func TestWaitForExpectedRoutesStopsAfterMaxPolls(t *testing.T) {
 }
 
 func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
-	rib := &fakeRIBCollector{routes: [][]observationrib.NormalizedRoute{
-		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}},
+	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "198.51.100.1", Origin: "igp", LocalPref: 100}}}}
+	rib := &fakeRIBCollector{routes: [][]observation.RIBRoute{
+		{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}},
 		expected,
 	}}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observation.DefaultCompareOptions())
 	if err != nil {
 		t.Fatalf("WaitForMatchingRIBs() error = %v", err)
 	}
@@ -287,12 +286,12 @@ func TestWaitForMatchingRIBsPollsUntilDiffsClear(t *testing.T) {
 }
 
 func TestWaitForMatchingRIBsClearsTransientCollectionError(t *testing.T) {
-	expected := []observationrib.NormalizedRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
+	expected := []observation.RIBRoute{{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}
 	rib := &fakeRIBCollector{
 		errs:   []error{errors.New("transient collector error"), nil},
-		routes: [][]observationrib.NormalizedRoute{nil, {{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observationrib.NormalizedPath{{Best: false, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}},
+		routes: [][]observation.RIBRoute{nil, {{Node: "r1", NetworkInstance: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Paths: []observation.RIBPath{{Best: false, Valid: true, NextHop: "192.0.2.1", Origin: "igp", LocalPref: 100}}}}},
 	}
-	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observationrib.DefaultCompareOptions())
+	_, diffs, err := WaitForMatchingRIBs(context.Background(), rib, []model.Node{{Name: "r1", Kind: "frr"}}, expected, time.Millisecond, 2, observation.DefaultCompareOptions())
 	if err == nil {
 		t.Fatalf("WaitForMatchingRIBs() succeeded unexpectedly")
 	}
@@ -361,7 +360,7 @@ func TestCompareRIBsWithFailuresUsesFailureAwareExpectedRoutes(t *testing.T) {
 	}}
 	active := []model.Node{{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")}}
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, active, sim.NodeFailures("r1"))
-	rib := &fakeRIBCollector{supported: active, routes: [][]observationrib.NormalizedRoute{expected}}
+	rib := &fakeRIBCollector{supported: active, routes: [][]observation.RIBRoute{expected}}
 	err := CompareRIBsWithFailures(context.Background(), &fakeRuntime{}, rib, topo, RIBFailureScenario{
 		Name:        "node-r1",
 		Failures:    sim.NodeFailures("r1"),
@@ -383,10 +382,10 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 		t.Fatalf("LoadTopology() error = %v", err)
 	}
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
-	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observationrib.NormalizedRoute{expected}}
+	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observation.RIBRoute{expected}}
 	deps := deps(rt, rib)
-	deps.FIBCollector = fakeFIBCollector{routes: []observationfib.NormalizedFIBRoute{{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.255.1.1/32", Protocol: "connected", Installed: true}}}
-	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observationfib.Options{UnresolvedPolicy: observationfib.UnresolvedPolicyIgnore}, Out: &out}
+	deps.FIBCollector = fakeFIBCollector{routes: []observation.FIBEntry{{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.255.1.1/32", Protocol: "connected", Installed: true}}}
+	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observation.Options{UnresolvedPolicy: observation.UnresolvedPolicyIgnore}, Out: &out}
 	err = New(deps).Run(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "live FIB comparison found diff") {
 		t.Fatalf("Run() error = %v, want FIB diff from injected collector", err)

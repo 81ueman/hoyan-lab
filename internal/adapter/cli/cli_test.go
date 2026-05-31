@@ -294,7 +294,7 @@ func TestLiveCheckRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-func TestLiveCheckFIBCompareDefaultsOn(t *testing.T) {
+func TestLiveCheckCompareFIBEntriesDefaultsOn(t *testing.T) {
 	cmd := NewLiveCheckCommand()
 	flag := cmd.Flags().Lookup("check-fib")
 	if flag == nil || flag.DefValue != "true" {
@@ -309,8 +309,8 @@ func TestLiveCheckFIBCompareDefaultsOn(t *testing.T) {
 	}
 }
 
-func TestFIBCompareUnresolvedPolicyFlagDefault(t *testing.T) {
-	cmd := NewFIBCompareCommand()
+func TestCompareFIBEntriesUnresolvedPolicyFlagDefault(t *testing.T) {
+	cmd := NewCompareFIBEntriesCommand()
 	flag := cmd.Flags().Lookup("unresolved-policy")
 	if flag == nil || flag.DefValue != "warn" {
 		t.Fatalf("--unresolved-policy default = %v, want warn", flag)

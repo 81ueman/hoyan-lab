@@ -4,18 +4,18 @@ import (
 	"context"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 type Usecase struct {
-	collector observationrib.Collector
+	collector observation.RIBCollector
 }
 
-func New(collector observationrib.Collector) Usecase {
+func New(collector observation.RIBCollector) Usecase {
 	return Usecase{collector: collector}
 }
 
-func (u Usecase) Collect(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (u Usecase) Collect(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	if u.collector == nil {
 		return nil, nil
 	}
@@ -28,18 +28,18 @@ func (u Usecase) Collect(ctx context.Context, nodes []model.Node) ([]observation
 		return nil, err
 	}
 	out = append(out, nonBGP...)
-	observationrib.SortRoutes(out)
+	observation.SortRoutes(out)
 	return out, nil
 }
 
-func (u Usecase) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (u Usecase) CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return u.collector.CollectBGPRoutes(ctx, nodes)
 }
 
-func (u Usecase) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (u Usecase) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return u.collector.CollectOSPFRoutes(ctx, nodes)
 }
 
-func (u Usecase) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (u Usecase) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return u.collector.CollectRouteTableRoutes(ctx, nodes)
 }

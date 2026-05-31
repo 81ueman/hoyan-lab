@@ -10,11 +10,11 @@ import (
 
 var srlinuxDetailNextHopRE = regexp.MustCompile(`(?m)(?:^|\s)(?:via\s+)?([0-9A-Fa-f:.]+)\s+\([^)]*\)\s+via\s+\[([^\]]+)\]`)
 
-func ParseSRLinuxRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseSRLinuxRoutes(node string, data []byte) ([]FIBEntry, error) {
 	return ParseSRLinuxRoutesNetworkInstance(node, "default", data)
 }
 
-func ParseSRLinuxRoutesNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseSRLinuxRoutesNetworkInstance(node, networkInstance string, data []byte) ([]FIBEntry, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func ParseSRLinuxRoutesNetworkInstance(node, networkInstance string, data []byte
 	if err := json.Unmarshal(cleaned, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedFIBRoute
+	var out []FIBEntry
 	for _, inst := range sliceValue(raw["instance"]) {
 		m := mapValue(inst)
 		for _, item := range sliceValue(m["ip route"]) {
@@ -37,11 +37,11 @@ func ParseSRLinuxRoutesNetworkInstance(node, networkInstance string, data []byte
 	return out, nil
 }
 
-func ParseSRLinuxRouteDetails(node string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseSRLinuxRouteDetails(node string, data []byte) ([]FIBEntry, error) {
 	return ParseSRLinuxRouteDetailsNetworkInstance(node, "default", data)
 }
 
-func ParseSRLinuxRouteDetailsNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseSRLinuxRouteDetailsNetworkInstance(node, networkInstance string, data []byte) ([]FIBEntry, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func ParseSRLinuxRouteDetailsNetworkInstance(node, networkInstance string, data 
 	if err := json.Unmarshal(cleaned, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedFIBRoute
+	var out []FIBEntry
 	for _, inst := range sliceValue(raw["instance"]) {
 		m := mapValue(inst)
 		for _, item := range sliceValue(m["ip route"]) {
@@ -74,16 +74,16 @@ func jsonPayload(data []byte) ([]byte, error) {
 	return []byte(s[start : end+1]), nil
 }
 
-func srlinuxRoute(node, networkInstance string, m map[string]any) (NormalizedFIBRoute, bool) {
+func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, bool) {
 	if !boolString(m["Active"]) {
-		return NormalizedFIBRoute{}, false
+		return FIBEntry{}, false
 	}
 	prefix := stringValue(m["Prefix"])
 	if prefix == "" {
-		return NormalizedFIBRoute{}, false
+		return FIBEntry{}, false
 	}
 	protocol := canonicalProtocol(stringValue(m["Route Type"]))
-	route := NormalizedFIBRoute{
+	route := FIBEntry{
 		Node:       node,
 		VRF:        networkInstance,
 		AFI:        "ipv4",
@@ -93,14 +93,14 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (NormalizedFIB
 		Metric:     intValue(m["Metric"]),
 		Installed:  true,
 	}
-	hop := NormalizedFIBNextHop{
+	hop := NextHop{
 		Address:   srlinuxNextHopAddress(stringValue(m["Next-hop (Type)"])),
 		Interface: strings.TrimSpace(stringValue(m["Next-hop Interface"])),
 	}
 	if hop.Address != "" || hop.Interface != "" {
 		route.NextHops = append(route.NextHops, hop)
 	}
-	backupHop := NormalizedFIBNextHop{
+	backupHop := NextHop{
 		Address:   srlinuxNextHopAddress(stringValue(m["Backup Next-hop (Type)"])),
 		Interface: strings.TrimSpace(stringValue(m["Backup Next-hop Interface"])),
 	}
@@ -115,18 +115,18 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (NormalizedFIB
 	return route, true
 }
 
-func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (NormalizedFIBRoute, bool) {
+func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (FIBEntry, bool) {
 	if !boolValue(m["Active"]) {
-		return NormalizedFIBRoute{}, false
+		return FIBEntry{}, false
 	}
 	prefix := stringValue(m["Destination"])
 	if prefix == "" {
 		prefix = stringValue(m["Prefix"])
 	}
 	if prefix == "" {
-		return NormalizedFIBRoute{}, false
+		return FIBEntry{}, false
 	}
-	route := NormalizedFIBRoute{
+	route := FIBEntry{
 		Node:       node,
 		VRF:        networkInstance,
 		AFI:        "ipv4",
@@ -142,20 +142,20 @@ func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (Normali
 	return route, true
 }
 
-func srlinuxDetailNextHops(m map[string]any, key string) []NormalizedFIBNextHop {
+func srlinuxDetailNextHops(m map[string]any, key string) []NextHop {
 	raw := stringValue(m[key])
 	if raw == "" {
 		return nil
 	}
 	matches := srlinuxDetailNextHopRE.FindAllStringSubmatch(raw, -1)
-	out := make([]NormalizedFIBNextHop, 0, len(matches))
+	out := make([]NextHop, 0, len(matches))
 	for _, match := range matches {
 		addr := srlinuxNextHopAddress(match[1])
 		iface := strings.TrimSpace(match[2])
 		if addr == "" && iface == "" {
 			continue
 		}
-		out = append(out, NormalizedFIBNextHop{Address: addr, Interface: iface})
+		out = append(out, NextHop{Address: addr, Interface: iface})
 	}
 	return out
 }

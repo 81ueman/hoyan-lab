@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 type fakeRunner struct {
@@ -23,7 +23,7 @@ func (f fakeRunner) Run(ctx context.Context, name string, args ...string) ([]byt
 }
 
 func TestCollectRejectsUnsupportedNodes(t *testing.T) {
-	_, err := Collect(context.Background(), fakeRunner{}, []model.Node{{Name: "unknown1", Kind: model.DeviceKind("unknown")}}, observationfib.Options{})
+	_, err := Collect(context.Background(), fakeRunner{}, []model.Node{{Name: "unknown1", Kind: model.DeviceKind("unknown")}}, observation.Options{})
 	if err == nil || !strings.Contains(err.Error(), "unsupported live FIB collector") {
 		t.Fatalf("Collect() error = %v", err)
 	}
@@ -43,7 +43,7 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 			return nil, errors.New("unexpected command: " + got)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "r1", Kind: model.KindFRR, ContainerName: "clab-test-r1"}}, observationfib.Options{})
+	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "r1", Kind: model.KindFRR, ContainerName: "clab-test-r1"}}, observation.Options{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
@@ -76,7 +76,7 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 		{Name: "frr", Kind: model.KindFRR, ContainerName: "frr1"},
 		{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"},
 		{Name: "srl", Kind: model.KindSRLinux, ContainerName: "srl1"},
-	}, observationfib.Options{})
+	}, observation.Options{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
@@ -102,7 +102,7 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observationfib.Options{})
+	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observation.Options{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}
@@ -110,7 +110,7 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 	if route == nil {
 		t.Fatalf("routes = %#v", routes)
 	}
-	want := []observationfib.NormalizedFIBNextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
+	want := []observation.NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
 	if !reflect.DeepEqual(route.NextHops, want) {
 		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
 	}
@@ -128,7 +128,7 @@ func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observationfib.Options{})
+	routes, err := Collect(context.Background(), runner, []model.Node{{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}}, observation.Options{})
 	if err != nil {
 		t.Fatalf("Collect() error = %v", err)
 	}

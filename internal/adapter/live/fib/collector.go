@@ -18,12 +18,12 @@ func NewCollector(runner Runner) LiveCollector {
 	return LiveCollector{runner: runner}
 }
 
-func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]NormalizedFIBRoute, error) {
+func Collect(ctx context.Context, runner Runner, nodes []model.Node, opts Options) ([]FIBEntry, error) {
 	return NewCollector(runner).Collect(ctx, nodes, opts)
 }
 
-func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node, opts Options) ([]NormalizedFIBRoute, error) {
-	var out []NormalizedFIBRoute
+func (c LiveCollector) Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIBEntry, error) {
+	var out []FIBEntry
 	unsupported := unsupportedNodes(nodes)
 	if len(unsupported) > 0 && !opts.AllowUnsupported {
 		return nil, UnsupportedNodesError{Nodes: unsupported}
@@ -96,7 +96,7 @@ type ceosCollector struct{}
 type srlinuxCollector struct{}
 
 type collector interface {
-	Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedFIBRoute, error)
+	Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error)
 }
 
 func fibCollectorsByID() map[model.LiveCollectorID]collector {
@@ -107,8 +107,8 @@ func fibCollectorsByID() map[model.LiveCollectorID]collector {
 	}
 }
 
-func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedFIBRoute, error) {
-	var out []NormalizedFIBRoute
+func (frrCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
+	var out []FIBEntry
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		vrfs, err := collectLinuxVRFs(ctx, runner, containerName)
@@ -162,8 +162,8 @@ func collectLinuxVRFs(ctx context.Context, runner Runner, containerName string) 
 	return out, nil
 }
 
-func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedFIBRoute, error) {
-	var out []NormalizedFIBRoute
+func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
+	var out []FIBEntry
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
@@ -180,8 +180,8 @@ func (ceosCollector) Collect(ctx context.Context, runner Runner, nodes []model.N
 	return out, nil
 }
 
-func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]NormalizedFIBRoute, error) {
-	var out []NormalizedFIBRoute
+func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []model.Node) ([]FIBEntry, error) {
+	var out []FIBEntry
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
@@ -216,7 +216,7 @@ func (srlinuxCollector) Collect(ctx context.Context, runner Runner, nodes []mode
 	return out, nil
 }
 
-func srlinuxNeedsRouteDetail(route NormalizedFIBRoute) bool {
+func srlinuxNeedsRouteDetail(route FIBEntry) bool {
 	switch CanonicalProtocol(route.Protocol) {
 	case "bgp", "static":
 		return true
@@ -225,11 +225,11 @@ func srlinuxNeedsRouteDetail(route NormalizedFIBRoute) bool {
 	}
 }
 
-func srlinuxRouteDetailFor(summary NormalizedFIBRoute, details []NormalizedFIBRoute) (NormalizedFIBRoute, bool) {
+func srlinuxRouteDetailFor(summary FIBEntry, details []FIBEntry) (FIBEntry, bool) {
 	for _, detail := range details {
 		if detail.Node == summary.Node && detail.VRF == summary.VRF && detail.AFI == summary.AFI && detail.Prefix == summary.Prefix && CanonicalProtocol(detail.Protocol) == CanonicalProtocol(summary.Protocol) {
 			return detail, true
 		}
 	}
-	return NormalizedFIBRoute{}, false
+	return FIBEntry{}, false
 }

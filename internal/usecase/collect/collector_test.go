@@ -6,8 +6,6 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 	fibusecase "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	ribusecase "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 )
@@ -69,9 +67,9 @@ func TestSimulatorAndContainerlabStyleCollectorsUseSameInterface(t *testing.T) {
 	simulator := NewSimulator(topo)
 	containerlab := NewContainerlabCollector(
 		topo.Nodes,
-		fakeLegacyRIBCollector{routes: (ribusecase.ExpectedBuilder{}).Build(topo)},
-		fakeLegacyFIBCollector{routes: fibusecase.NewExpectedBuilder().Expected(topo)},
-		observationfib.Options{},
+		fakeRIBCollector{routes: (ribusecase.ExpectedBuilder{}).Build(topo)},
+		fakeFIBCollector{routes: fibusecase.NewExpectedBuilder().Expected(topo)},
+		observation.Options{},
 	)
 
 	var _ observation.Collector = simulator
@@ -107,49 +105,49 @@ func testTopology() *model.Topology {
 	}
 }
 
-type fakeLegacyRIBCollector struct {
-	routes []observationrib.NormalizedRoute
+type fakeRIBCollector struct {
+	routes []observation.RIBRoute
 }
 
-func (f fakeLegacyRIBCollector) CollectBGPRoutes(_ context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (f fakeRIBCollector) CollectBGPRoutes(_ context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return f.routesFor(nodes, true), nil
 }
 
-func (f fakeLegacyRIBCollector) CollectRouteTableRoutes(_ context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (f fakeRIBCollector) CollectRouteTableRoutes(_ context.Context, nodes []model.Node) ([]observation.RIBRoute, error) {
 	return f.routesFor(nodes, false), nil
 }
 
-func (f fakeLegacyRIBCollector) routesFor(nodes []model.Node, bgp bool) []observationrib.NormalizedRoute {
+func (f fakeRIBCollector) routesFor(nodes []model.Node, bgp bool) []observation.RIBRoute {
 	allowed := map[string]bool{}
 	for _, node := range nodes {
 		allowed[node.Name] = true
 	}
-	var out []observationrib.NormalizedRoute
+	var out []observation.RIBRoute
 	for _, route := range f.routes {
-		route = observationrib.NormalizeRoute(route)
+		route = observation.NormalizeRIBRouteRecord(route)
 		if allowed[route.Node] && ((route.Protocol == "bgp") == bgp) {
 			out = append(out, route)
 		}
 	}
-	observationrib.SortRoutes(out)
+	observation.SortRoutes(out)
 	return out
 }
 
-type fakeLegacyFIBCollector struct {
-	routes []observationfib.NormalizedFIBRoute
+type fakeFIBCollector struct {
+	routes []observation.FIBEntry
 }
 
-func (f fakeLegacyFIBCollector) Collect(_ context.Context, nodes []model.Node, _ observationfib.Options) ([]observationfib.NormalizedFIBRoute, error) {
+func (f fakeFIBCollector) Collect(_ context.Context, nodes []model.Node, _ observation.Options) ([]observation.FIBEntry, error) {
 	allowed := map[string]bool{}
 	for _, node := range nodes {
 		allowed[node.Name] = true
 	}
-	var out []observationfib.NormalizedFIBRoute
+	var out []observation.FIBEntry
 	for _, route := range f.routes {
 		if allowed[route.Node] {
 			out = append(out, route)
 		}
 	}
-	observationfib.SortRoutes(out)
+	observation.SortFIBEntriesForCompare(out)
 	return out, nil
 }

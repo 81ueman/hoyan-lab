@@ -1,35 +1,35 @@
-package fib
+package observation
 
 import "sort"
 
-func sortRoutes(routes []NormalizedFIBRoute) {
+func sortFIBEntriesForCompare(routes []FIBEntry) {
 	sort.SliceStable(routes, func(i, j int) bool {
-		return routeKey(routes[i]) < routeKey(routes[j])
+		return fibRouteKey(routes[i]) < fibRouteKey(routes[j])
 	})
 	for i := range routes {
 		sortNextHops(routes[i].NextHops)
 	}
 }
 
-func SortRoutes(routes []NormalizedFIBRoute) {
-	sortRoutes(routes)
+func SortFIBEntriesForCompare(routes []FIBEntry) {
+	sortFIBEntriesForCompare(routes)
 }
 
-func sortNextHops(hops []NormalizedFIBNextHop) {
+func sortNextHops(hops []NextHop) {
 	sort.SliceStable(hops, func(i, j int) bool {
-		return nextHopKey(hops[i]) < nextHopKey(hops[j])
+		return fibNextHopKey(hops[i]) < fibNextHopKey(hops[j])
 	})
 }
 
-func SortNextHops(hops []NormalizedFIBNextHop) {
+func SortNextHops(hops []NextHop) {
 	sortNextHops(hops)
 }
 
-func dedupeNextHops(in []NormalizedFIBNextHop) []NormalizedFIBNextHop {
+func dedupeFIBNextHops(in []NextHop) []NextHop {
 	seen := map[string]bool{}
-	var out []NormalizedFIBNextHop
+	var out []NextHop
 	for _, hop := range in {
-		key := nextHopKey(hop)
+		key := fibNextHopKey(hop)
 		if seen[key] {
 			continue
 		}
@@ -40,19 +40,19 @@ func dedupeNextHops(in []NormalizedFIBNextHop) []NormalizedFIBNextHop {
 	return out
 }
 
-func routeKey(r NormalizedFIBRoute) string {
+func fibRouteKey(r FIBEntry) string {
 	protocol := canonicalProtocol(r.Protocol)
 	if protocol != "" && protocol != "bgp" {
-		return r.Node + "|" + r.VRF + "|" + r.AFI + "|" + protocol + "|" + r.Prefix
+		return r.Node + "|" + r.VRF + "|" + string(r.AFI) + "|" + protocol + "|" + r.Prefix
 	}
-	return r.Node + "|" + r.VRF + "|" + r.AFI + "|" + r.Prefix
+	return r.Node + "|" + r.VRF + "|" + string(r.AFI) + "|" + r.Prefix
 }
 
-func RouteKey(r NormalizedFIBRoute) string {
-	return routeKey(r)
+func RouteKey(r FIBEntry) string {
+	return fibRouteKey(r)
 }
 
-func nextHopKey(h NormalizedFIBNextHop) string {
+func fibNextHopKey(h NextHop) string {
 	return h.Address + "|" + h.Interface
 }
 

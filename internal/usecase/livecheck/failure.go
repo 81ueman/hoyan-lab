@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 )
@@ -23,7 +23,7 @@ type RIBFailureScenario struct {
 type RIBFailureCheckOptions struct {
 	Interval       time.Duration
 	MaxPolls       int
-	CompareOptions observationrib.CompareOptions
+	CompareOptions observation.CompareOptions
 	Out            io.Writer
 }
 
@@ -39,7 +39,7 @@ func CompareRIBsWithFailures(ctx context.Context, runtime FailureRuntime, collec
 	}
 	compareOptions := opts.CompareOptions
 	if isZeroCompareOptions(compareOptions) {
-		compareOptions = observationrib.DefaultCompareOptions()
+		compareOptions = observation.DefaultCompareOptions()
 	}
 	activeNodes := scenario.ActiveNodes
 	if activeNodes == nil {
@@ -153,18 +153,18 @@ func findLink(topo *model.Topology, name string) (model.Link, bool) {
 	return model.Link{}, false
 }
 
-func printRIBDiffs(out io.Writer, expected []observationrib.NormalizedRoute, actual []observationrib.NormalizedRoute, compareOptions observationrib.CompareOptions) {
+func printRIBDiffs(out io.Writer, expected []observation.RIBRoute, actual []observation.RIBRoute, compareOptions observation.CompareOptions) {
 	if out == nil {
 		return
 	}
-	printDiffs(out, observationrib.CompareRoutes(expected, actual, compareOptions))
+	printDiffs(out, observation.CompareRoutes(expected, actual, compareOptions))
 }
 
-func printDiffs(out io.Writer, diffs observationrib.CompareResult) {
+func printDiffs(out io.Writer, diffs observation.CompareResult) {
 	if out == nil {
 		return
 	}
-	for _, line := range observationrib.FormatDiffs(diffs) {
+	for _, line := range observation.FormatDiffs(diffs) {
 		fmt.Fprintln(out, line)
 	}
 }

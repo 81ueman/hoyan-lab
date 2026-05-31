@@ -12,8 +12,7 @@ import (
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
@@ -28,7 +27,7 @@ func NewCompareCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(NewRIBCompareCommand(), NewFIBCompareCommand())
+	cmd.AddCommand(NewRIBCompareCommand(), NewCompareFIBEntriesCommand())
 	return cmd
 }
 
@@ -78,8 +77,8 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	}
 	nodes := liverib.SupportedNodes(topo.Nodes)
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
-	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observationrib.FormatSourceSummary(observationrib.SourceSummary(expected)))
-	var actual []observationrib.NormalizedRoute
+	fmt.Fprintf(out, "comparing RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expected)))
+	var actual []observation.RIBRoute
 	if opts.snapshotPath != "" {
 		snap, err := snapshotfile.Load(opts.snapshotPath)
 		if err != nil {
@@ -95,8 +94,8 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 			return ExitError{Code: 2, Err: err}
 		}
 	}
-	result := observationrib.CompareRoutes(expected, actual, observationrib.DefaultCompareOptions())
-	for _, line := range observationrib.FormatDiffs(result) {
+	result := observation.CompareRoutes(expected, actual, observation.DefaultCompareOptions())
+	for _, line := range observation.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {
@@ -106,7 +105,7 @@ func runRIBCompare(ctx context.Context, opts ribCompareOptions, out io.Writer) e
 	return nil
 }
 
-func NewFIBCompareCommand() *cobra.Command {
+func NewCompareFIBEntriesCommand() *cobra.Command {
 	var opts fibCompareOptions
 	cmd := &cobra.Command{
 		Use:           "fib",
@@ -120,14 +119,14 @@ func NewFIBCompareCommand() *cobra.Command {
 			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
 				return err
 			}
-			return runFIBCompare(cmd.Context(), opts, cmd.OutOrStdout())
+			return runCompareFIBEntries(cmd.Context(), opts, cmd.OutOrStdout())
 		},
 	}
 	addLabFlag(cmd, &opts.labPath)
 	addTopologyFlag(cmd, &opts.topologyPath, "containerlab topology YAML")
 	cmd.Flags().BoolVar(&opts.strictConfig, "strict-config", false, "fail on unsupported config parser statements")
 	cmd.Flags().BoolVar(&opts.allowUnsupported, "allow-unsupported", false, "skip nodes without a live FIB collector")
-	cmd.Flags().StringVar(&opts.unresolvedPolicy, "unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.unresolvedPolicy, "unresolved-policy", string(observation.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	cmd.Flags().StringVar(&opts.snapshotPath, "snapshot", "", "live snapshot JSON to use instead of collecting from devices")
 	cmd.Flags().StringVar(&opts.snapshotHashPolicy, "snapshot-hash-policy", string(livesnapshot.HashPolicyWarn), "handling for snapshot topology/config hash mismatch: warn, fail, or ignore")
 	return cmd
@@ -143,7 +142,7 @@ type fibCompareOptions struct {
 	snapshotHashPolicy string
 }
 
-func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) error {
+func runCompareFIBEntries(ctx context.Context, opts fibCompareOptions, out io.Writer) error {
 	if err := validateFIBUnresolvedPolicy(opts.unresolvedPolicy); err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
@@ -158,9 +157,9 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 	if opts.allowUnsupported {
 		nodes = livefib.NewCollector(nil).SupportedNodes(nodes)
 	}
-	fibOpts := observationfib.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.unresolvedPolicy)}
-	expected := observationfib.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, nodes), fibOpts)
-	var actualFiltered observationfib.FilterResult
+	fibOpts := observation.Options{AllowUnsupported: opts.allowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.unresolvedPolicy)}
+	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedForNodes(topo, nodes), fibOpts)
+	var actualFiltered observation.FilterResult
 	if opts.snapshotPath != "" {
 		snap, err := snapshotfile.Load(opts.snapshotPath)
 		if err != nil {
@@ -169,19 +168,19 @@ func runFIBCompare(ctx context.Context, opts fibCompareOptions, out io.Writer) e
 		if err := checkSnapshotHashes(opts.topologyPath, snap, opts.snapshotHashPolicy, out); err != nil {
 			return err
 		}
-		actualFiltered = observationfib.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), fibOpts)
+		actualFiltered = observation.AnalyzeComparableRoutes(topo, livesnapshot.FIBRoutes(snap), fibOpts)
 	} else {
 		actual, err := fibcompare.New(livefib.NewCollector(liveexec.ExecRunner{})).Collect(ctx, nodes, fibOpts)
 		if err != nil {
 			return ExitError{Code: 2, Err: err}
 		}
-		actualFiltered = observationfib.AnalyzeComparableRoutes(topo, actual, fibOpts)
+		actualFiltered = observation.AnalyzeComparableRoutes(topo, actual, fibOpts)
 	}
-	for _, line := range observationfib.FormatWarnings(observationfib.WarningDiagnostics(actualFiltered, fibOpts)) {
+	for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actualFiltered, fibOpts)) {
 		fmt.Fprintln(out, line)
 	}
-	result := observationfib.CompareFilterResults(expected, actualFiltered, fibOpts)
-	for _, line := range observationfib.FormatDiffs(result) {
+	result := observation.CompareFilterResults(expected, actualFiltered, fibOpts)
+	for _, line := range observation.FormatFIBDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
 	if !result.OK {

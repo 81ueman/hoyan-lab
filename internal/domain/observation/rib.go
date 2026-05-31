@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	normalizedrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type RIB struct {
@@ -16,6 +16,14 @@ type RIB struct {
 }
 
 type RIBRoute struct {
+	Node            string                    `json:"node,omitempty"`
+	NetworkInstance string                    `json:"network_instance,omitempty"`
+	AFI             string                    `json:"afi,omitempty"`
+	Prefix          string                    `json:"prefix,omitempty"`
+	Protocol        string                    `json:"protocol,omitempty"`
+	ConnectedClass  model.ConnectedRouteClass `json:"connected_class,omitempty"`
+	Paths           []RIBPath                 `json:"paths,omitempty"`
+
 	Common RIBRouteCommon `json:"common"`
 
 	BGP       *BGPRIBRoute       `json:"bgp,omitempty"`
@@ -190,33 +198,33 @@ func FilterRIBRoutes(routes []RIBRoute, pred func(RIBRoute) bool) []RIBRoute {
 	return out
 }
 
-func RIBFromNormalizedRoutes(node NodeID, vrf VRFName, routes []normalizedrib.NormalizedRoute) RIB {
+func RIBFromRouteRecords(node NodeID, vrf VRFName, routes []RIBRoute) RIB {
 	out := RIB{Node: node, VRF: vrf}
 	for _, route := range routes {
-		route = normalizedrib.NormalizeRoute(route)
+		route = NormalizeRIBRouteRecord(route)
 		if node == "" {
 			out.Node = NodeID(route.Node)
 		}
 		if vrf == "" {
 			out.VRF = VRFName(route.NetworkInstance)
 		}
-		out.Routes = append(out.Routes, RIBRouteFromNormalizedRoute(route))
+		out.Routes = append(out.Routes, RIBRouteFromRouteRecord(route))
 	}
 	SortRIBRoutes(out.Routes)
 	return out
 }
 
-func RIBsFromNormalizedRoutes(routes []normalizedrib.NormalizedRoute) []RIB {
+func RIBsFromRouteRecords(routes []RIBRoute) []RIB {
 	byKey := map[string]*RIB{}
 	for _, route := range routes {
-		route = normalizedrib.NormalizeRoute(route)
+		route = NormalizeRIBRouteRecord(route)
 		node := NodeID(route.Node)
 		vrf := VRFName(route.NetworkInstance)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {
 			byKey[key] = &RIB{Node: node, VRF: vrf}
 		}
-		byKey[key].Routes = append(byKey[key].Routes, RIBRouteFromNormalizedRoute(route))
+		byKey[key].Routes = append(byKey[key].Routes, RIBRouteFromRouteRecord(route))
 	}
 	out := make([]RIB, 0, len(byKey))
 	for _, rib := range byKey {
@@ -229,8 +237,8 @@ func RIBsFromNormalizedRoutes(routes []normalizedrib.NormalizedRoute) []RIB {
 	return out
 }
 
-func RIBRouteFromNormalizedRoute(route normalizedrib.NormalizedRoute) RIBRoute {
-	route = normalizedrib.NormalizeRoute(route)
+func RIBRouteFromRouteRecord(route RIBRoute) RIBRoute {
+	route = NormalizeRIBRouteRecord(route)
 	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
 	common := RIBRouteCommon{
 		AFI:      NormalizeAddressFamily(AddressFamily(route.AFI)),
@@ -242,11 +250,11 @@ func RIBRouteFromNormalizedRoute(route normalizedrib.NormalizedRoute) RIBRoute {
 	out := RIBRoute{Common: common}
 	switch protocol {
 	case ProtocolBGP:
-		out.BGP = &BGPRIBRoute{Paths: bgpPathsFromNormalized(route.Paths)}
+		out.BGP = &BGPRIBRoute{Paths: bgpPathsFromRouteRecord(route.Paths)}
 	case ProtocolOSPF:
-		out.OSPF = &OSPFRIBRoute{RouteType: OSPFRouteTypeUnknown, Paths: ospfPathsFromNormalized(route.Paths)}
+		out.OSPF = &OSPFRIBRoute{RouteType: OSPFRouteTypeUnknown, Paths: ospfPathsFromRouteRecord(route.Paths)}
 	case ProtocolStatic:
-		out.Static = &StaticRIBRoute{NextHops: nextHopsFromNormalizedRIBPaths(route.Paths)}
+		out.Static = &StaticRIBRoute{NextHops: nextHopsFromRouteRecordRIBPaths(route.Paths)}
 	case ProtocolConnected:
 		out.Connected = &ConnectedRIBRoute{}
 	case ProtocolBlackhole:
@@ -257,7 +265,7 @@ func RIBRouteFromNormalizedRoute(route normalizedrib.NormalizedRoute) RIBRoute {
 	return out
 }
 
-func bgpPathsFromNormalized(paths []normalizedrib.NormalizedPath) []BGPPath {
+func bgpPathsFromRouteRecord(paths []RIBPath) []BGPPath {
 	out := make([]BGPPath, 0, len(paths))
 	for _, path := range paths {
 		out = append(out, BGPPath{
@@ -280,7 +288,7 @@ func bgpPathsFromNormalized(paths []normalizedrib.NormalizedPath) []BGPPath {
 	return out
 }
 
-func ospfPathsFromNormalized(paths []normalizedrib.NormalizedPath) []OSPFPath {
+func ospfPathsFromRouteRecord(paths []RIBPath) []OSPFPath {
 	out := make([]OSPFPath, 0, len(paths))
 	for _, path := range paths {
 		out = append(out, OSPFPath{NextHop: NextHop{Address: path.NextHop}, Cost: path.MED})
@@ -288,7 +296,7 @@ func ospfPathsFromNormalized(paths []normalizedrib.NormalizedPath) []OSPFPath {
 	return out
 }
 
-func nextHopsFromNormalizedRIBPaths(paths []normalizedrib.NormalizedPath) []NextHop {
+func nextHopsFromRouteRecordRIBPaths(paths []RIBPath) []NextHop {
 	out := make([]NextHop, 0, len(paths))
 	for _, path := range paths {
 		if path.NextHop == "" {
@@ -299,7 +307,7 @@ func nextHopsFromNormalizedRIBPaths(paths []normalizedrib.NormalizedPath) []Next
 	return out
 }
 
-func routeHasEligiblePath(paths []normalizedrib.NormalizedPath) bool {
+func routeHasEligiblePath(paths []RIBPath) bool {
 	for _, path := range paths {
 		if path.Valid {
 			return true
@@ -308,7 +316,7 @@ func routeHasEligiblePath(paths []normalizedrib.NormalizedPath) bool {
 	return len(paths) == 0
 }
 
-func routeHasBestPath(paths []normalizedrib.NormalizedPath) bool {
+func routeHasBestPath(paths []RIBPath) bool {
 	for _, path := range paths {
 		if path.Best {
 			return true

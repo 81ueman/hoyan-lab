@@ -12,13 +12,13 @@ import (
 
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 const containerNftablesConfig = "/etc/hoyan/nftables.conf"
 
 type Runtime struct {
-	Runner observationrib.Runner
+	Runner observation.RIBRunner
 }
 
 func (r Runtime) BuildLocalImages(ctx context.Context, topologyPath string, out io.Writer) error {

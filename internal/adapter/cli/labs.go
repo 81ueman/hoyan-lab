@@ -16,8 +16,7 @@ import (
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -109,7 +108,7 @@ func NewLabsCheckCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.checkFIB, "check-fib", true, "compare modeled FIB with live installed FIB after BGP convergence")
 	cmd.Flags().BoolVar(&opts.noCheckFIB, "no-check-fib", false, "skip modeled-vs-live installed FIB comparison")
 	cmd.Flags().BoolVar(&opts.fibAllowUnsupported, "fib-allow-unsupported", false, "skip nodes without a live FIB collector when FIB comparison is enabled")
-	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observation.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	cmd.Flags().BoolVar(&opts.continueOnError, "continue-on-error", false, "continue running later labs after a lab fails")
 	return cmd
 }
@@ -137,7 +136,7 @@ func (o labsLiveCheckOptions) validate() error {
 	}.validate()
 }
 
-func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner observationrib.Runner) error {
+func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOptions, out io.Writer, runner observation.RIBRunner) error {
 	labs, err := selectedLabDescriptors(args)
 	if err != nil {
 		return err
@@ -166,7 +165,7 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			KeepOnFailure: opts.keepOnFailure,
 			SkipDestroy:   opts.skipDestroy,
 			CheckFIB:      opts.checkFIB && !opts.noCheckFIB,
-			FIBOptions:    observationfib.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
+			FIBOptions:    observation.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
 			Out:           out,
 		})
 		if err != nil {
