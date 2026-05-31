@@ -4,14 +4,16 @@ import (
 	"context"
 	"net/netip"
 	"sort"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type Collector interface {
-	Nodes(ctx context.Context) ([]NodeID, error)
-	VRFs(ctx context.Context, node NodeID) ([]VRFName, error)
+	Nodes(ctx context.Context) ([]model.NodeID, error)
+	VRFs(ctx context.Context, node model.NodeID) ([]VRFName, error)
 
-	CollectRIB(ctx context.Context, node NodeID, vrf VRFName, opts CollectOptions) (RIB, error)
-	CollectFIB(ctx context.Context, node NodeID, vrf VRFName, opts CollectOptions) (FIB, error)
+	CollectRIB(ctx context.Context, node model.NodeID, vrf VRFName, opts CollectOptions) (RIB, error)
+	CollectFIB(ctx context.Context, node model.NodeID, vrf VRFName, opts CollectOptions) (FIB, error)
 }
 
 type CollectOptions struct {
@@ -139,19 +141,19 @@ func collectOptionsMatchRoute(opts CollectOptions, afi AddressFamily, protocol R
 	return true
 }
 
-func normalizeRIBForSnapshot(node NodeID, vrf VRFName, rib RIB, opts CollectOptions) RIB {
+func normalizeRIBForSnapshot(node model.NodeID, vrf VRFName, rib RIB, opts CollectOptions) RIB {
 	rib.Node = node
 	rib.VRF = vrf
 	return FilterRIB(rib, opts)
 }
 
-func normalizeFIBForSnapshot(node NodeID, vrf VRFName, fib FIB, opts CollectOptions) FIB {
+func normalizeFIBForSnapshot(node model.NodeID, vrf VRFName, fib FIB, opts CollectOptions) FIB {
 	fib.Node = node
 	fib.VRF = vrf
 	return FilterFIB(fib, opts)
 }
 
-func sortNodeIDs(nodes []NodeID) {
+func sortNodeIDs(nodes []model.NodeID) {
 	sort.SliceStable(nodes, func(i, j int) bool {
 		return nodes[i] < nodes[j]
 	})

@@ -10,9 +10,9 @@ import (
 )
 
 type RIB struct {
-	Node   NodeID     `json:"node"`
-	VRF    VRFName    `json:"vrf"`
-	Routes []RIBRoute `json:"routes"`
+	Node   model.NodeID `json:"node"`
+	VRF    VRFName      `json:"vrf"`
+	Routes []RIBRoute   `json:"routes"`
 }
 
 type RIBRoute struct {
@@ -198,12 +198,12 @@ func FilterRIBRoutes(routes []RIBRoute, pred func(RIBRoute) bool) []RIBRoute {
 	return out
 }
 
-func RIBFromRouteRecords(node NodeID, vrf VRFName, routes []RIBRoute) RIB {
+func RIBFromRouteRecords(node model.NodeID, vrf VRFName, routes []RIBRoute) RIB {
 	out := RIB{Node: node, VRF: vrf}
 	for _, route := range routes {
 		route = NormalizeRIBRouteRecord(route)
 		if node == "" {
-			out.Node = NodeID(route.Node)
+			out.Node = model.NodeID(route.Node)
 		}
 		if vrf == "" {
 			out.VRF = VRFName(route.NetworkInstance)
@@ -218,7 +218,7 @@ func RIBsFromRouteRecords(routes []RIBRoute) []RIB {
 	byKey := map[string]*RIB{}
 	for _, route := range routes {
 		route = NormalizeRIBRouteRecord(route)
-		node := NodeID(route.Node)
+		node := model.NodeID(route.Node)
 		vrf := VRFName(route.NetworkInstance)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {

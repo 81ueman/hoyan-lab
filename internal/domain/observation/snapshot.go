@@ -1,5 +1,7 @@
 package observation
 
+import "github.com/81ueman/hoyan-lab/internal/domain/model"
+
 type NetworkSnapshot struct {
 	Metadata SnapshotMetadata `json:"metadata"`
 	Nodes    []NodeSnapshot   `json:"nodes"`
@@ -13,7 +15,7 @@ type SnapshotMetadata struct {
 }
 
 type NodeSnapshot struct {
-	Node NodeID        `json:"node"`
+	Node model.NodeID  `json:"node"`
 	VRFs []VRFSnapshot `json:"vrfs"`
 }
 

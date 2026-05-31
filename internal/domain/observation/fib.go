@@ -10,9 +10,9 @@ import (
 )
 
 type FIB struct {
-	Node    NodeID     `json:"node"`
-	VRF     VRFName    `json:"vrf"`
-	Entries []FIBEntry `json:"entries"`
+	Node    model.NodeID `json:"node"`
+	VRF     VRFName      `json:"vrf"`
+	Entries []FIBEntry   `json:"entries"`
 }
 
 type FIBEntry struct {
@@ -103,11 +103,11 @@ func FilterFIBEntries(entries []FIBEntry, pred func(FIBEntry) bool) []FIBEntry {
 	return out
 }
 
-func FIBFromRouteRecords(node NodeID, vrf VRFName, routes []FIBEntry) FIB {
+func FIBFromRouteRecords(node model.NodeID, vrf VRFName, routes []FIBEntry) FIB {
 	out := FIB{Node: node, VRF: vrf}
 	for _, route := range routes {
 		if node == "" {
-			out.Node = NodeID(route.Node)
+			out.Node = model.NodeID(route.Node)
 		}
 		if vrf == "" {
 			out.VRF = VRFName(route.VRF)
@@ -121,7 +121,7 @@ func FIBFromRouteRecords(node NodeID, vrf VRFName, routes []FIBEntry) FIB {
 func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 	byKey := map[string]*FIB{}
 	for _, route := range routes {
-		node := NodeID(route.Node)
+		node := model.NodeID(route.Node)
 		vrf := VRFName(route.VRF)
 		key := string(node) + "|" + string(vrf)
 		if byKey[key] == nil {

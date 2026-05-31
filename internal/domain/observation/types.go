@@ -1,8 +1,11 @@
 package observation
 
-import "strings"
+import (
+	"strings"
 
-type NodeID string
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
+)
+
 type VRFName string
 type AddressFamily string
 type RouteProtocol string
@@ -28,10 +31,10 @@ type RouteSource struct {
 }
 
 type NextHop struct {
-	Address   string `json:"address,omitempty"`
-	Interface string `json:"interface,omitempty"`
-	Node      NodeID `json:"node,omitempty"`
-	Weight    int    `json:"weight,omitempty"`
+	Address   string       `json:"address,omitempty"`
+	Interface string       `json:"interface,omitempty"`
+	Node      model.NodeID `json:"node,omitempty"`
+	Weight    int          `json:"weight,omitempty"`
 
 	Resolution *NextHopResolution `json:"resolution,omitempty"`
 }
@@ -56,12 +59,12 @@ type ModelConditions struct {
 }
 
 type RouteProvenance struct {
-	OriginNode NodeID   `json:"origin_node,omitempty"`
-	FromNode   NodeID   `json:"from_node,omitempty"`
-	PathNodes  []NodeID `json:"path_nodes,omitempty"`
-	PathLinks  []string `json:"path_links,omitempty"`
-	Source     string   `json:"source,omitempty"`
-	Inputs     []string `json:"inputs,omitempty"`
+	OriginNode model.NodeID   `json:"origin_node,omitempty"`
+	FromNode   model.NodeID   `json:"from_node,omitempty"`
+	PathNodes  []model.NodeID `json:"path_nodes,omitempty"`
+	PathLinks  []string       `json:"path_links,omitempty"`
+	Source     string         `json:"source,omitempty"`
+	Inputs     []string       `json:"inputs,omitempty"`
 }
 
 type DecisionInfo struct {
