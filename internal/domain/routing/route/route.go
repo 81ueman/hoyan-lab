@@ -39,6 +39,9 @@ type Provenance struct {
 	PathLinks  []string
 }
 
+// NextHop is the control-plane forwarding next-hop selected for a modeled route.
+// It identifies either a topology node or a resolved address; observed interface,
+// weight, and resolution metadata belong to observation.NextHop.
 type NextHop struct {
 	Node string
 	Addr string
