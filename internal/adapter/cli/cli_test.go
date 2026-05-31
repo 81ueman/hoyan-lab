@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	domainintent "github.com/81ueman/hoyan-lab/internal/domain/intent"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func TestRootHelpListsSubcommands(t *testing.T) {
@@ -22,7 +24,7 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	help := out.String()
-	for _, want := range []string{"live", "compare", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
@@ -38,7 +40,7 @@ func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
 		}
 		names[child.Name()] = true
 	}
-	for _, want := range []string{"live", "compare", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
 		if !names[want] {
 			t.Fatalf("root command missing %q; got %v", want, names)
 		}
@@ -233,7 +235,7 @@ func TestLabsHelpListsCheck(t *testing.T) {
 	}
 }
 
-func TestCompareHelpListsRIBAndFIB(t *testing.T) {
+func TestCompareHelpListsTargetFlags(t *testing.T) {
 	var out bytes.Buffer
 	cmd := NewCompareCommand()
 	cmd.SetOut(&out)
@@ -244,10 +246,91 @@ func TestCompareHelpListsRIBAndFIB(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	help := out.String()
-	for _, want := range []string{"rib", "fib"} {
+	for _, want := range []string{"--left-type", "--right-type", "--check", "--save-snapshots"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
+	}
+}
+
+func TestTargetTypeParsingAndInference(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		rawType string
+		want    TargetType
+		wantErr bool
+	}{
+		{name: "explicit clab", path: "lab.yml", rawType: "clab", want: TargetClab},
+		{name: "json snapshot", path: "snapshots/latest.json", want: TargetSnapshot},
+		{name: "clab yml model", path: "labs/base-wan/hoyan.clab.yml", want: TargetModel},
+		{name: "yaml model", path: "inventory/prod.yaml", want: TargetModel},
+		{name: "unknown", path: "target.txt", wantErr: true},
+		{name: "bad explicit type", path: "target.json", rawType: "uri", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := newCollectorTarget(tt.path, tt.rawType)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("newCollectorTarget() error = nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("newCollectorTarget() error = %v", err)
+			}
+			if got.Type != tt.want {
+				t.Fatalf("target type = %q, want %q", got.Type, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompareSnapshotWithSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	snapshotPath := filepath.Join(dir, "snapshot.json")
+	if err := snapshotfile.SaveObservation(snapshotPath, minimalObservationSnapshot()); err != nil {
+		t.Fatalf("SaveObservation() error = %v", err)
+	}
+
+	var out bytes.Buffer
+	cmd := NewCompareCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(ioDiscard{})
+	cmd.SetArgs([]string{snapshotPath, snapshotPath})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "snapshots match") {
+		t.Fatalf("output missing success line:\n%s", out.String())
+	}
+}
+
+func TestCompareModelWithSnapshot(t *testing.T) {
+	topologyPath := filepath.Join("..", "..", "..", "labs", "ospf-basic", "hoyan.clab.yml")
+	collector, err := resolveCollector(t.Context(), CollectorTarget{Type: TargetModel, Path: topologyPath})
+	if err != nil {
+		t.Fatalf("resolveCollector(model) error = %v", err)
+	}
+	snap, err := observation.CollectSnapshot(t.Context(), collector, observation.CollectOptions{})
+	if err != nil {
+		t.Fatalf("CollectSnapshot(model) error = %v", err)
+	}
+	snapshotPath := filepath.Join(t.TempDir(), "expected.json")
+	if err := snapshotfile.SaveObservation(snapshotPath, snap); err != nil {
+		t.Fatalf("SaveObservation() error = %v", err)
+	}
+
+	var out bytes.Buffer
+	cmd := NewCompareCommand()
+	cmd.SetOut(&out)
+	cmd.SetErr(ioDiscard{})
+	cmd.SetArgs([]string{topologyPath, snapshotPath, "--left-type", "model", "--right-type", "snapshot"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
 	}
 }
 
@@ -263,57 +346,6 @@ func TestTopologyHelpListsRender(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "render") {
 		t.Fatalf("help output missing render:\n%s", out.String())
-	}
-}
-
-func TestLiveCheckRejectsInvalidValues(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want string
-	}{
-		{name: "timeout", args: []string{"--timeout", "0s"}, want: "--timeout must be greater than zero"},
-		{name: "poll interval", args: []string{"--poll-interval", "0s"}, want: "--poll-interval must be greater than zero"},
-		{name: "max polls", args: []string{"--max-polls", "0"}, want: "--max-polls must be greater than zero"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := NewLiveCheckCommand()
-			cmd.SetOut(ioDiscard{})
-			cmd.SetErr(ioDiscard{})
-			cmd.SetArgs(tt.args)
-
-			err := cmd.Execute()
-			if err == nil {
-				t.Fatalf("Execute() error = nil")
-			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %q, want substring %q", err.Error(), tt.want)
-			}
-		})
-	}
-}
-
-func TestLiveCheckCompareFIBEntriesDefaultsOn(t *testing.T) {
-	cmd := NewLiveCheckCommand()
-	flag := cmd.Flags().Lookup("check-fib")
-	if flag == nil || flag.DefValue != "true" {
-		t.Fatalf("--check-fib default = %v, want true", flag)
-	}
-	if cmd.Flags().Lookup("no-check-fib") == nil {
-		t.Fatalf("--no-check-fib flag missing")
-	}
-	unresolved := cmd.Flags().Lookup("fib-unresolved-policy")
-	if unresolved == nil || unresolved.DefValue != "warn" {
-		t.Fatalf("--fib-unresolved-policy default = %v, want warn", unresolved)
-	}
-}
-
-func TestCompareFIBEntriesUnresolvedPolicyFlagDefault(t *testing.T) {
-	cmd := NewCompareFIBEntriesCommand()
-	flag := cmd.Flags().Lookup("unresolved-policy")
-	if flag == nil || flag.DefValue != "warn" {
-		t.Fatalf("--unresolved-policy default = %v, want warn", flag)
 	}
 }
 
@@ -367,22 +399,6 @@ func TestVerifyStrictConfigRejectsUnsupportedStatements(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error missing %q:\n%s", want, err.Error())
 		}
-	}
-}
-
-func TestLiveCheckStrictConfigRejectsUnsupportedStatementsBeforeDeploy(t *testing.T) {
-	topologyPath, _ := writeUnsupportedConfigLab(t)
-	cmd := NewLiveCheckCommand()
-	cmd.SetOut(ioDiscard{})
-	cmd.SetErr(ioDiscard{})
-	cmd.SetArgs([]string{"--topology", topologyPath, "--strict-config"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatalf("Execute() error = nil")
-	}
-	if !strings.Contains(err.Error(), "unsupported config statements") || !strings.Contains(err.Error(), "vendor=frr") {
-		t.Fatalf("error = %v, want strict config error", err)
 	}
 }
 
@@ -1166,6 +1182,19 @@ func TestModelSymbolicRouteCommandShowsConditionsWhenRequested(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func minimalObservationSnapshot() observation.NetworkSnapshot {
+	return observation.NetworkSnapshot{
+		Nodes: []observation.NodeSnapshot{{
+			Node: "r1",
+			VRFs: []observation.VRFSnapshot{{
+				VRF: "default",
+				RIB: observation.RIB{Node: "r1", VRF: "default"},
+				FIB: observation.FIB{Node: "r1", VRF: "default"},
+			}},
+		}},
 	}
 }
 

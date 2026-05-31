@@ -28,8 +28,8 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(
-		NewLiveCommand(),
 		NewCompareCommand(),
+		NewCollectCommand(),
 		NewTopologyCommand(),
 		NewLabsCommand(),
 		NewModelCommand(),
