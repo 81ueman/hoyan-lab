@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type SnapshotBackedCollector struct {
@@ -21,8 +23,8 @@ func (c SnapshotBackedCollector) Metadata(context.Context) CollectorMetadata {
 	}
 }
 
-func (c SnapshotBackedCollector) Nodes(context.Context) ([]NodeID, error) {
-	out := make([]NodeID, 0, len(c.snapshot.Nodes))
+func (c SnapshotBackedCollector) Nodes(context.Context) ([]model.NodeID, error) {
+	out := make([]model.NodeID, 0, len(c.snapshot.Nodes))
 	for _, node := range c.snapshot.Nodes {
 		out = append(out, node.Node)
 	}
@@ -30,7 +32,7 @@ func (c SnapshotBackedCollector) Nodes(context.Context) ([]NodeID, error) {
 	return out, nil
 }
 
-func (c SnapshotBackedCollector) VRFs(_ context.Context, node NodeID) ([]VRFName, error) {
+func (c SnapshotBackedCollector) VRFs(_ context.Context, node model.NodeID) ([]VRFName, error) {
 	ns, ok := c.node(node)
 	if !ok {
 		return nil, fmt.Errorf("snapshot node %q not found", node)
@@ -43,7 +45,7 @@ func (c SnapshotBackedCollector) VRFs(_ context.Context, node NodeID) ([]VRFName
 	return out, nil
 }
 
-func (c SnapshotBackedCollector) CollectRIB(_ context.Context, node NodeID, vrf VRFName, opts CollectOptions) (RIB, error) {
+func (c SnapshotBackedCollector) CollectRIB(_ context.Context, node model.NodeID, vrf VRFName, opts CollectOptions) (RIB, error) {
 	vs, ok := c.vrf(node, vrf)
 	if !ok {
 		return RIB{}, fmt.Errorf("snapshot RIB %q/%q not found", node, vrf)
@@ -51,7 +53,7 @@ func (c SnapshotBackedCollector) CollectRIB(_ context.Context, node NodeID, vrf 
 	return normalizeRIBForSnapshot(node, vrf, vs.RIB, opts), nil
 }
 
-func (c SnapshotBackedCollector) CollectFIB(_ context.Context, node NodeID, vrf VRFName, opts CollectOptions) (FIB, error) {
+func (c SnapshotBackedCollector) CollectFIB(_ context.Context, node model.NodeID, vrf VRFName, opts CollectOptions) (FIB, error) {
 	vs, ok := c.vrf(node, vrf)
 	if !ok {
 		return FIB{}, fmt.Errorf("snapshot FIB %q/%q not found", node, vrf)
@@ -59,7 +61,7 @@ func (c SnapshotBackedCollector) CollectFIB(_ context.Context, node NodeID, vrf 
 	return normalizeFIBForSnapshot(node, vrf, vs.FIB, opts), nil
 }
 
-func (c SnapshotBackedCollector) node(node NodeID) (NodeSnapshot, bool) {
+func (c SnapshotBackedCollector) node(node model.NodeID) (NodeSnapshot, bool) {
 	for _, ns := range c.snapshot.Nodes {
 		if ns.Node == node {
 			return ns, true
@@ -68,7 +70,7 @@ func (c SnapshotBackedCollector) node(node NodeID) (NodeSnapshot, bool) {
 	return NodeSnapshot{}, false
 }
 
-func (c SnapshotBackedCollector) vrf(node NodeID, vrf VRFName) (VRFSnapshot, bool) {
+func (c SnapshotBackedCollector) vrf(node model.NodeID, vrf VRFName) (VRFSnapshot, bool) {
 	ns, ok := c.node(node)
 	if !ok {
 		return VRFSnapshot{}, false

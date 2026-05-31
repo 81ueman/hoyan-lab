@@ -37,15 +37,15 @@ func (c ContainerlabCollector) Metadata(context.Context) observation.CollectorMe
 	return observation.CollectorMetadata{Source: "containerlab"}
 }
 
-func (c ContainerlabCollector) Nodes(context.Context) ([]observation.NodeID, error) {
-	out := make([]observation.NodeID, 0, len(c.nodes))
+func (c ContainerlabCollector) Nodes(context.Context) ([]model.NodeID, error) {
+	out := make([]model.NodeID, 0, len(c.nodes))
 	for _, node := range c.nodes {
-		out = append(out, observation.NodeID(node.Name))
+		out = append(out, model.NodeID(node.Name))
 	}
 	return out, nil
 }
 
-func (c ContainerlabCollector) VRFs(_ context.Context, node observation.NodeID) ([]observation.VRFName, error) {
+func (c ContainerlabCollector) VRFs(_ context.Context, node model.NodeID) ([]observation.VRFName, error) {
 	n, ok := c.node(node)
 	if !ok {
 		return nil, fmt.Errorf("containerlab node %q not found", node)
@@ -58,7 +58,7 @@ func (c ContainerlabCollector) VRFs(_ context.Context, node observation.NodeID) 
 	return out, nil
 }
 
-func (c ContainerlabCollector) CollectRIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
+func (c ContainerlabCollector) CollectRIB(ctx context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.RIB, error) {
 	n, ok := c.node(node)
 	if !ok {
 		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
@@ -79,7 +79,7 @@ func (c ContainerlabCollector) CollectRIB(ctx context.Context, node observation.
 	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
-func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
+func (c ContainerlabCollector) CollectFIB(ctx context.Context, node model.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
 	n, ok := c.node(node)
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)
@@ -97,7 +97,7 @@ func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.
 	return observation.FilterFIB(observation.FIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
-func (c ContainerlabCollector) node(node observation.NodeID) (model.Node, bool) {
+func (c ContainerlabCollector) node(node model.NodeID) (model.Node, bool) {
 	for _, n := range c.nodes {
 		if n.Name == string(node) {
 			return n, true
