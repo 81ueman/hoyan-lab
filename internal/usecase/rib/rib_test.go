@@ -415,6 +415,23 @@ func TestCompareRIBUsesTableScopedRouteKeys(t *testing.T) {
 	}
 }
 
+func TestCompareRIBReportsTableIdentityMismatch(t *testing.T) {
+	expected := ribFromRecords([]observation.RIBRoute{route("r1", "10.0.0.0/24",
+		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),
+	)})
+	actual := expected
+	actual.Node = "r2"
+	actual.VRF = "blue"
+
+	result := observation.CompareRIB(expected, actual, observation.DefaultCompareOptions())
+	if result.OK || len(result.Mismatched) != 2 {
+		t.Fatalf("observation.CompareRIB() = %#v, want node and vrf mismatches", result)
+	}
+	if result.Mismatched[0].Field != "node" || result.Mismatched[1].Field != "vrf" {
+		t.Fatalf("mismatches = %#v, want node then vrf", result.Mismatched)
+	}
+}
+
 func TestDefaultCompareRejectsBestPathMismatch(t *testing.T) {
 	expected := []observation.RIBRoute{route("r1", "10.0.0.0/24",
 		path(true, true, "192.0.2.1", []uint32{65001}, 100, 0),

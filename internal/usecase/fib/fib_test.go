@@ -217,6 +217,24 @@ func TestCompareFIBUsesTableScopedRouteKeys(t *testing.T) {
 	}
 }
 
+func TestCompareFIBReportsTableIdentityMismatch(t *testing.T) {
+	expected := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
+		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
+	}})
+	actual := expected
+	actual.Node = "r2"
+	actual.VRF = "blue"
+
+	result := observation.CompareFIB(expected, actual)
+	if result.OK || len(result.Mismatched) != 2 {
+		t.Fatalf("observation.CompareFIB() = %#v, want node and vrf mismatches", result)
+	}
+	if result.Mismatched[0].Field != "node" || result.Mismatched[1].Field != "vrf" {
+		t.Fatalf("mismatches = %#v, want node then vrf", result.Mismatched)
+	}
+}
+
 func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
 	expected := observation.FIB{
 		Node: "r1",
