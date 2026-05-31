@@ -12,7 +12,7 @@ import (
 	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 	"github.com/spf13/cobra"
 )
@@ -42,7 +42,7 @@ func NewLiveSnapshotCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.outputPath, "output", "o", "live-state.json", "snapshot JSON output path, or - for stdout")
 	cmd.Flags().StringVar(&opts.rawDir, "raw-dir", "", "optional directory for raw vendor command output")
 	cmd.Flags().BoolVar(&opts.fibAllowUnsupported, "fib-allow-unsupported", true, "skip nodes without a live FIB collector")
-	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observationfib.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
+	cmd.Flags().StringVar(&opts.fibUnresolvedPolicy, "fib-unresolved-policy", string(observation.UnresolvedPolicyWarn), "handling for unresolved live BGP FIB routes: warn, fail, or ignore")
 	return cmd
 }
 
@@ -68,9 +68,9 @@ func runLiveSnapshot(ctx context.Context, opts liveSnapshotOptions, out io.Write
 		livefib.NewCollector(runner),
 		livesnapshot.WithHashProvider(inputhash.NewProvider()),
 		livesnapshot.WithCommitProvider(gitmeta.NewProvider()),
-	).Build(ctx, opts.topologyPath, opts.labPath, observationfib.Options{
+	).Build(ctx, opts.topologyPath, opts.labPath, observation.Options{
 		AllowUnsupported: opts.fibAllowUnsupported,
-		UnresolvedPolicy: observationfib.UnresolvedPolicy(opts.fibUnresolvedPolicy),
+		UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy),
 	})
 	if err != nil {
 		return ExitError{Code: 2, Err: err}

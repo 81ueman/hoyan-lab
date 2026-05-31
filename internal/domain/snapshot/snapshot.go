@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 const Version = "hoyan.live_snapshot.v1"
@@ -25,12 +24,12 @@ type Snapshot struct {
 }
 
 type NodeSnapshot struct {
-	Kind          model.DeviceKind                    `json:"kind"`
-	BGPRIB        []observationrib.NormalizedRoute    `json:"bgp_rib,omitempty"`
-	RouteTable    []observationrib.NormalizedRoute    `json:"route_table,omitempty"`
-	FIB           []observationfib.NormalizedFIBRoute `json:"fib,omitempty"`
-	UnresolvedFIB []observationfib.UnresolvedRoute    `json:"unresolved_fib,omitempty"`
-	Raw           map[string]json.RawMessage          `json:"raw,omitempty"`
+	Kind          model.DeviceKind              `json:"kind"`
+	BGPRIB        []observation.RIBRoute        `json:"bgp_rib,omitempty"`
+	RouteTable    []observation.RIBRoute        `json:"route_table,omitempty"`
+	FIB           []observation.FIBEntry        `json:"fib,omitempty"`
+	UnresolvedFIB []observation.UnresolvedRoute `json:"unresolved_fib,omitempty"`
+	Raw           map[string]json.RawMessage    `json:"raw,omitempty"`
 }
 
 type HashPolicy string

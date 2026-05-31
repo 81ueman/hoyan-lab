@@ -1,12 +1,12 @@
-package fib
+package observation
 
 import "sort"
 
-func Compare(expected, actual []NormalizedFIBRoute) Result {
+func CompareFIBEntries(expected, actual []FIBEntry) Result {
 	expected, expConflicts := normalizeRoutesForSide("expected", expected)
 	actual, actConflicts := normalizeRoutesForSide("actual", actual)
-	exp := map[string]NormalizedFIBRoute{}
-	act := map[string]NormalizedFIBRoute{}
+	exp := map[string]FIBEntry{}
+	act := map[string]FIBEntry{}
 	conflictedKeys := map[string]bool{}
 	var result Result
 	result.DuplicateRouteConflicts = append(result.DuplicateRouteConflicts, expConflicts...)
@@ -15,10 +15,10 @@ func Compare(expected, actual []NormalizedFIBRoute) Result {
 		conflictedKeys[conflict.RouteKey] = true
 	}
 	for _, route := range expected {
-		exp[routeKey(route)] = route
+		exp[fibRouteKey(route)] = route
 	}
 	for _, route := range actual {
-		act[routeKey(route)] = route
+		act[fibRouteKey(route)] = route
 	}
 	keys := sortedUnion(exp, act)
 	for _, key := range keys {
@@ -37,7 +37,7 @@ func Compare(expected, actual []NormalizedFIBRoute) Result {
 		}
 		compareNextHops(key, e.NextHops, a.NextHops, &result)
 		if e.Preference != 0 && a.Preference != 0 && e.Preference != a.Preference {
-			result.Mismatched = append(result.Mismatched, AttributeMismatch{RouteKey: key, Field: "preference", Expected: e.Preference, Actual: a.Preference})
+			result.Mismatched = append(result.Mismatched, FIBAttributeMismatch{RouteKey: key, Field: "preference", Expected: e.Preference, Actual: a.Preference})
 		}
 	}
 	sort.Strings(result.MissingRoutes)
@@ -59,14 +59,14 @@ func Compare(expected, actual []NormalizedFIBRoute) Result {
 	return result
 }
 
-func compareNextHops(routeKey string, expected, actual []NormalizedFIBNextHop, result *Result) {
+func compareNextHops(routeKey string, expected, actual []NextHop, result *Result) {
 	exp := map[string]bool{}
 	act := map[string]bool{}
 	for _, hop := range expected {
-		exp[nextHopKey(hop)] = true
+		exp[fibNextHopKey(hop)] = true
 	}
 	for _, hop := range actual {
-		act[nextHopKey(hop)] = true
+		act[fibNextHopKey(hop)] = true
 	}
 	for _, key := range sortedBoolUnion(exp, act) {
 		switch {
@@ -78,7 +78,7 @@ func compareNextHops(routeKey string, expected, actual []NormalizedFIBNextHop, r
 	}
 }
 
-func sortedUnion(a, b map[string]NormalizedFIBRoute) []string {
+func sortedUnion(a, b map[string]FIBEntry) []string {
 	seen := map[string]bool{}
 	for k := range a {
 		seen[k] = true

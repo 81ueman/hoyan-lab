@@ -1,18 +1,18 @@
-package fib
+package observation
 
-func NormalizeRoutes(routes []NormalizedFIBRoute) ([]NormalizedFIBRoute, []DuplicateRouteConflict) {
+func NormalizeFIBEntries(routes []FIBEntry) ([]FIBEntry, []DuplicateRouteConflict) {
 	return normalizeRoutesForSide("", routes)
 }
 
-func normalizeRoutesForSide(side string, routes []NormalizedFIBRoute) ([]NormalizedFIBRoute, []DuplicateRouteConflict) {
+func normalizeRoutesForSide(side string, routes []FIBEntry) ([]FIBEntry, []DuplicateRouteConflict) {
 	entries := map[string]routeIndexEntry{}
 	for _, route := range routes {
 		route.Protocol = canonicalProtocol(route.Protocol)
-		route.NextHops = dedupeNextHops(route.NextHops)
-		key := routeKey(route)
+		route.NextHops = dedupeFIBNextHops(route.NextHops)
+		key := fibRouteKey(route)
 		entry, ok := entries[key]
 		if !ok {
-			entries[key] = routeIndexEntry{route: route, routes: []NormalizedFIBRoute{route}}
+			entries[key] = routeIndexEntry{route: route, routes: []FIBEntry{route}}
 			continue
 		}
 		merged, reason, ok := mergeDuplicateRoute(entry.route, route)
@@ -28,7 +28,7 @@ func normalizeRoutesForSide(side string, routes []NormalizedFIBRoute) ([]Normali
 		entries[key] = entry
 	}
 
-	out := make([]NormalizedFIBRoute, 0, len(entries))
+	out := make([]FIBEntry, 0, len(entries))
 	var conflicts []DuplicateRouteConflict
 	for key, entry := range entries {
 		if entry.conflicted {
@@ -42,21 +42,21 @@ func normalizeRoutesForSide(side string, routes []NormalizedFIBRoute) ([]Normali
 		}
 		out = append(out, entry.route)
 	}
-	sortRoutes(out)
+	sortFIBEntriesForCompare(out)
 	sortDuplicateRouteConflicts(conflicts)
 	return out, conflicts
 }
 
 type routeIndexEntry struct {
-	route      NormalizedFIBRoute
-	routes     []NormalizedFIBRoute
+	route      FIBEntry
+	routes     []FIBEntry
 	conflicted bool
 	reason     string
 }
 
-func mergeDuplicateRoute(a, b NormalizedFIBRoute) (NormalizedFIBRoute, string, bool) {
-	conflict := func(field string) (NormalizedFIBRoute, string, bool) {
-		return NormalizedFIBRoute{}, field + " mismatch", false
+func mergeDuplicateRoute(a, b FIBEntry) (FIBEntry, string, bool) {
+	conflict := func(field string) (FIBEntry, string, bool) {
+		return FIBEntry{}, field + " mismatch", false
 	}
 	if a.Node != b.Node {
 		return conflict("node")
@@ -100,9 +100,9 @@ func mergeDuplicateRoute(a, b NormalizedFIBRoute) (NormalizedFIBRoute, string, b
 	return merged, "", true
 }
 
-func unionNextHops(a, b []NormalizedFIBNextHop) []NormalizedFIBNextHop {
-	out := make([]NormalizedFIBNextHop, 0, len(a)+len(b))
+func unionNextHops(a, b []NextHop) []NextHop {
+	out := make([]NextHop, 0, len(a)+len(b))
 	out = append(out, a...)
 	out = append(out, b...)
-	return dedupeNextHops(out)
+	return dedupeFIBNextHops(out)
 }

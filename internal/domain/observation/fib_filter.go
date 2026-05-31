@@ -1,17 +1,17 @@
-package fib
+package observation
 
 import "github.com/81ueman/hoyan-lab/internal/domain/model"
 
-func ComparableRoutes(topo *model.Topology, routes []NormalizedFIBRoute, opts Options) []NormalizedFIBRoute {
+func ComparableRoutes(topo *model.Topology, routes []FIBEntry, opts Options) []FIBEntry {
 	return AnalyzeComparableRoutes(topo, routes, opts).Routes
 }
 
-func AnalyzeComparableRoutes(topo *model.Topology, routes []NormalizedFIBRoute, opts Options) FilterResult {
+func AnalyzeComparableRoutes(topo *model.Topology, routes []FIBEntry, opts Options) FilterResult {
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		panic(err)
 	}
-	var out []NormalizedFIBRoute
+	var out []FIBEntry
 	var unresolved []UnresolvedRoute
 	for _, route := range routes {
 		route.Protocol = canonicalProtocol(route.Protocol)
@@ -42,12 +42,12 @@ func AnalyzeComparableRoutes(topo *model.Topology, routes []NormalizedFIBRoute, 
 		}
 		out = append(out, filtered)
 	}
-	sortRoutes(out)
+	sortFIBEntriesForCompare(out)
 	sortUnresolvedRoutes(unresolved)
 	return FilterResult{Routes: out, Unresolved: unresolved}
 }
 
-func comparableProtocol(route NormalizedFIBRoute) bool {
+func comparableProtocol(route FIBEntry) bool {
 	switch route.Protocol {
 	case "bgp", "connected", "static", "blackhole":
 		return true
@@ -65,7 +65,7 @@ func comparableConnectedClass(class model.ConnectedRouteClass) bool {
 	}
 }
 
-func firstNextHopInterface(hops []NormalizedFIBNextHop) string {
+func firstNextHopInterface(hops []NextHop) string {
 	for _, hop := range hops {
 		if hop.Interface != "" {
 			return hop.Interface
@@ -74,12 +74,12 @@ func firstNextHopInterface(hops []NormalizedFIBNextHop) string {
 	return ""
 }
 
-func normalizeRouteNextHops(idx *model.TopologyIndex, route NormalizedFIBRoute) []NormalizedFIBNextHop {
+func normalizeRouteNextHops(idx *model.TopologyIndex, route FIBEntry) []NextHop {
 	node, ok := idx.Node(route.Node)
 	if !ok {
-		return dedupeNextHops(route.NextHops)
+		return dedupeFIBNextHops(route.NextHops)
 	}
-	out := make([]NormalizedFIBNextHop, 0, len(route.NextHops))
+	out := make([]NextHop, 0, len(route.NextHops))
 	for _, hop := range route.NextHops {
 		hop.Interface = model.ProfileFor(node.Kind).InterfaceProfile().CanonicalInterfaceName(hop.Interface)
 		if canonicalProtocol(route.Protocol) == "connected" {
@@ -87,11 +87,11 @@ func normalizeRouteNextHops(idx *model.TopologyIndex, route NormalizedFIBRoute) 
 		}
 		out = append(out, hop)
 	}
-	return dedupeNextHops(out)
+	return dedupeFIBNextHops(out)
 }
 
-func comparableNextHops(idx *model.TopologyIndex, node string, hops []NormalizedFIBNextHop, opts Options) ([]NormalizedFIBNextHop, []UnresolvedNextHop) {
-	var out []NormalizedFIBNextHop
+func comparableNextHops(idx *model.TopologyIndex, node string, hops []NextHop, opts Options) ([]NextHop, []UnresolvedNextHop) {
+	var out []NextHop
 	var unresolved []UnresolvedNextHop
 	for _, hop := range hops {
 		peer, ok := peerForNextHopInterface(idx, node, hop.Interface)
@@ -113,19 +113,19 @@ func comparableNextHops(idx *model.TopologyIndex, node string, hops []Normalized
 		}
 		out = append(out, hop)
 	}
-	return dedupeNextHops(out), dedupeUnresolvedNextHops(unresolved)
+	return dedupeFIBNextHops(out), dedupeUnresolvedNextHops(unresolved)
 }
 
-func unresolvedRoute(route NormalizedFIBRoute, hops []UnresolvedNextHop) UnresolvedRoute {
+func unresolvedRoute(route FIBEntry, hops []UnresolvedNextHop) UnresolvedRoute {
 	reason := "unresolved_or_mgmt_fallback"
 	if len(hops) == 1 && hops[0].Reason != "" {
 		reason = hops[0].Reason
 	}
 	return UnresolvedRoute{
-		RouteKey: routeKey(route),
+		RouteKey: fibRouteKey(route),
 		Node:     route.Node,
 		VRF:      route.VRF,
-		AFI:      route.AFI,
+		AFI:      string(route.AFI),
 		Prefix:   route.Prefix,
 		Protocol: route.Protocol,
 		NextHops: hops,
@@ -133,7 +133,7 @@ func unresolvedRoute(route NormalizedFIBRoute, hops []UnresolvedNextHop) Unresol
 	}
 }
 
-func unresolvedNextHop(idx *model.TopologyIndex, node string, hop NormalizedFIBNextHop) UnresolvedNextHop {
+func unresolvedNextHop(idx *model.TopologyIndex, node string, hop NextHop) UnresolvedNextHop {
 	reason := "topology_interface_missing"
 	if hop.Interface == "" {
 		reason = "unresolved_recursive_next_hop"

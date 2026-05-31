@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 )
 
@@ -20,7 +19,7 @@ func TestBuildUsesInjectedMetadataProviders(t *testing.T) {
 		WithCommitProvider(fakeCommitProvider{}),
 		WithClock(func() time.Time { return now }),
 	)
-	snap, err := u.Build(context.Background(), "../livecheck/testdata/live.clab.yml", "unit-lab", observationfib.Options{})
+	snap, err := u.Build(context.Background(), "../livecheck/testdata/live.clab.yml", "unit-lab", observation.Options{})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
@@ -55,8 +54,8 @@ func (fakeCommitProvider) Commit() string {
 
 type fakeRIBCollector struct{}
 
-func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]observationrib.NormalizedRoute, error) {
-	return []observationrib.NormalizedRoute{{
+func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
+	return []observation.RIBRoute{{
 		Node:            "r1",
 		NetworkInstance: "default",
 		AFI:             "ipv4",
@@ -65,17 +64,17 @@ func (fakeRIBCollector) CollectBGPRoutes(context.Context, []model.Node) ([]obser
 	}}, nil
 }
 
-func (fakeRIBCollector) CollectOSPFRoutes(context.Context, []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (fakeRIBCollector) CollectOSPFRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
 	return nil, nil
 }
 
-func (fakeRIBCollector) CollectRouteTableRoutes(context.Context, []model.Node) ([]observationrib.NormalizedRoute, error) {
+func (fakeRIBCollector) CollectRouteTableRoutes(context.Context, []model.Node) ([]observation.RIBRoute, error) {
 	return nil, nil
 }
 
 type fakeFIBCollector struct{}
 
-func (fakeFIBCollector) Collect(context.Context, []model.Node, observationfib.Options) ([]observationfib.NormalizedFIBRoute, error) {
+func (fakeFIBCollector) Collect(context.Context, []model.Node, observation.Options) ([]observation.FIBEntry, error) {
 	return nil, nil
 }
 

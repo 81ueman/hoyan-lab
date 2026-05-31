@@ -30,11 +30,11 @@ func ParseSRLinuxSummary(data []byte) ([]string, error) {
 	return out, nil
 }
 
-func ParseSRLinuxDetail(node, prefix string, data []byte) ([]NormalizedRoute, error) {
+func ParseSRLinuxDetail(node, prefix string, data []byte) ([]RIBRoute, error) {
 	return ParseSRLinuxDetailNetworkInstance(node, "default", prefix, data)
 }
 
-func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, data []byte) ([]NormalizedRoute, error) {
+func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, data []byte) ([]RIBRoute, error) {
 	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 			routeMaps = append(routeMaps, m)
 		}
 	}
-	route := NormalizedRoute{Node: node, NetworkInstance: networkInstance, AFI: "ipv4", Prefix: prefix}
+	route := RIBRoute{Node: node, NetworkInstance: networkInstance, AFI: "ipv4", Prefix: prefix}
 	for _, m := range routeMaps {
 		status := firstString(m, "status", "route status", "route-status")
 		asPath := parseASPath(firstString(m, "as path", "as-path", "asPath"))
@@ -55,7 +55,7 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 		if nextHop == "" && peer == "0.0.0.0" && len(asPath) == 0 {
 			continue
 		}
-		route.Paths = append(route.Paths, NormalizedPath{
+		route.Paths = append(route.Paths, RIBPath{
 			Best:        strings.Contains(strings.ToLower(status), "best"),
 			Valid:       strings.Contains(strings.ToLower(status), "valid"),
 			NextHop:     nextHop,
@@ -72,5 +72,5 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 		return nil, nil
 	}
 	sortPaths(route.Paths, DefaultCompareOptions())
-	return []NormalizedRoute{route}, nil
+	return []RIBRoute{route}, nil
 }

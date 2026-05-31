@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
@@ -41,14 +40,14 @@ type CommitProvider interface {
 type Option func(*Usecase)
 
 type Usecase struct {
-	ribCollector   observationrib.Collector
-	fibCollector   observationfib.Collector
+	ribCollector   observation.RIBCollector
+	fibCollector   observation.FIBCollector
 	hashProvider   HashProvider
 	commitProvider CommitProvider
 	now            func() time.Time
 }
 
-func New(ribCollector observationrib.Collector, fibCollector observationfib.Collector, opts ...Option) Usecase {
+func New(ribCollector observation.RIBCollector, fibCollector observation.FIBCollector, opts ...Option) Usecase {
 	u := Usecase{
 		ribCollector: ribCollector,
 		fibCollector: fibCollector,
@@ -82,7 +81,7 @@ func ParseHashPolicy(raw string) (HashPolicy, bool) {
 	return snapshotdomain.ParseHashPolicy(raw)
 }
 
-func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpts observationfib.Options) (*Snapshot, error) {
+func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpts observation.Options) (*Snapshot, error) {
 	topo, warnings, err := topology.LoadTopologyWithOptions(topologyPath, topology.LoadOptions{CollectWarnings: true})
 	if err != nil {
 		return nil, err
@@ -105,7 +104,7 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 	if err != nil {
 		return nil, err
 	}
-	fibResult := observationfib.AnalyzeComparableRoutes(topo, fib, fibOpts)
+	fibResult := observation.AnalyzeComparableRoutes(topo, fib, fibOpts)
 
 	hashes, err := u.inputHashes(topologyPath)
 	if err != nil {
@@ -125,11 +124,11 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 	for _, node := range topo.Nodes {
 		snap.Nodes[node.Name] = NodeSnapshot{Kind: node.Kind}
 	}
-	addRIBRoutes(snap.Nodes, bgp, func(ns NodeSnapshot, routes []observationrib.NormalizedRoute) NodeSnapshot {
+	addRIBRoutes(snap.Nodes, bgp, func(ns NodeSnapshot, routes []observation.RIBRoute) NodeSnapshot {
 		ns.BGPRIB = routes
 		return ns
 	})
-	addRIBRoutes(snap.Nodes, routes, func(ns NodeSnapshot, routes []observationrib.NormalizedRoute) NodeSnapshot {
+	addRIBRoutes(snap.Nodes, routes, func(ns NodeSnapshot, routes []observation.RIBRoute) NodeSnapshot {
 		ns.RouteTable = routes
 		return ns
 	})
@@ -138,16 +137,16 @@ func (u Usecase) Build(ctx context.Context, topologyPath, labName string, fibOpt
 	return snap, nil
 }
 
-func BGPRoutes(snap *Snapshot) []observationrib.NormalizedRoute {
-	var out []observationrib.NormalizedRoute
+func BGPRoutes(snap *Snapshot) []observation.RIBRoute {
+	var out []observation.RIBRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].BGPRIB...)
 	}
 	return out
 }
 
-func AllRIBRoutes(snap *Snapshot) []observationrib.NormalizedRoute {
-	var out []observationrib.NormalizedRoute
+func AllRIBRoutes(snap *Snapshot) []observation.RIBRoute {
+	var out []observation.RIBRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].BGPRIB...)
 		out = append(out, snap.Nodes[name].RouteTable...)
@@ -155,16 +154,16 @@ func AllRIBRoutes(snap *Snapshot) []observationrib.NormalizedRoute {
 	return out
 }
 
-func FIBRoutes(snap *Snapshot) []observationfib.NormalizedFIBRoute {
-	var out []observationfib.NormalizedFIBRoute
+func FIBRoutes(snap *Snapshot) []observation.FIBEntry {
+	var out []observation.FIBEntry
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].FIB...)
 	}
 	return out
 }
 
-func UnresolvedFIB(snap *Snapshot) []observationfib.UnresolvedRoute {
-	var out []observationfib.UnresolvedRoute
+func UnresolvedFIB(snap *Snapshot) []observation.UnresolvedRoute {
+	var out []observation.UnresolvedRoute
 	for _, name := range sortedNodeNames(snap.Nodes) {
 		out = append(out, snap.Nodes[name].UnresolvedFIB...)
 	}
@@ -185,8 +184,8 @@ func (u Usecase) commit() string {
 	return u.commitProvider.Commit()
 }
 
-func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observationrib.NormalizedRoute, update func(NodeSnapshot, []observationrib.NormalizedRoute) NodeSnapshot) {
-	byNode := map[string][]observationrib.NormalizedRoute{}
+func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observation.RIBRoute, update func(NodeSnapshot, []observation.RIBRoute) NodeSnapshot) {
+	byNode := map[string][]observation.RIBRoute{}
 	for _, route := range routes {
 		byNode[route.Node] = append(byNode[route.Node], route)
 	}
@@ -196,7 +195,7 @@ func addRIBRoutes(nodes map[string]NodeSnapshot, routes []observationrib.Normali
 	}
 }
 
-func addFIBRoutes(nodes map[string]NodeSnapshot, routes []observationfib.NormalizedFIBRoute) {
+func addFIBRoutes(nodes map[string]NodeSnapshot, routes []observation.FIBEntry) {
 	for _, route := range routes {
 		ns := nodes[route.Node]
 		ns.FIB = append(ns.FIB, route)
@@ -204,7 +203,7 @@ func addFIBRoutes(nodes map[string]NodeSnapshot, routes []observationfib.Normali
 	}
 }
 
-func addUnresolvedFIB(nodes map[string]NodeSnapshot, routes []observationfib.UnresolvedRoute) {
+func addUnresolvedFIB(nodes map[string]NodeSnapshot, routes []observation.UnresolvedRoute) {
 	for _, route := range routes {
 		ns := nodes[route.Node]
 		ns.UnresolvedFIB = append(ns.UnresolvedFIB, route)

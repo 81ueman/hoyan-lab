@@ -1,12 +1,12 @@
-package rib
+package observation
 
 import (
 	"fmt"
 	"strings"
 )
 
-func BGPOnly(routes []NormalizedRoute) []NormalizedRoute {
-	out := make([]NormalizedRoute, 0, len(routes))
+func BGPOnly(routes []RIBRoute) []RIBRoute {
+	out := make([]RIBRoute, 0, len(routes))
 	for _, route := range routes {
 		protocol := strings.ToLower(strings.TrimSpace(normalizeRoute(route).Protocol))
 		if protocol != "bgp" {
@@ -18,7 +18,7 @@ func BGPOnly(routes []NormalizedRoute) []NormalizedRoute {
 	return out
 }
 
-func SourceSummary(routes []NormalizedRoute) map[string]int {
+func SourceSummary(routes []RIBRoute) map[string]int {
 	out := map[string]int{}
 	for _, route := range routes {
 		protocol := strings.ToLower(strings.TrimSpace(normalizeRoute(route).Protocol))

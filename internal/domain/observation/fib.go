@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	normalizedfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 type FIB struct {
@@ -16,6 +16,12 @@ type FIB struct {
 }
 
 type FIBEntry struct {
+	Node           string                    `json:"node,omitempty"`
+	VRF            string                    `json:"vrf,omitempty"`
+	Protocol       string                    `json:"protocol,omitempty"`
+	ConnectedClass model.ConnectedRouteClass `json:"connected_class,omitempty"`
+	Installed      bool                      `json:"installed,omitempty"`
+
 	AFI    AddressFamily `json:"afi"`
 	Prefix string        `json:"prefix"`
 
@@ -97,7 +103,7 @@ func FilterFIBEntries(entries []FIBEntry, pred func(FIBEntry) bool) []FIBEntry {
 	return out
 }
 
-func FIBFromNormalizedRoutes(node NodeID, vrf VRFName, routes []normalizedfib.NormalizedFIBRoute) FIB {
+func FIBFromRouteRecords(node NodeID, vrf VRFName, routes []FIBEntry) FIB {
 	out := FIB{Node: node, VRF: vrf}
 	for _, route := range routes {
 		if node == "" {
@@ -106,13 +112,13 @@ func FIBFromNormalizedRoutes(node NodeID, vrf VRFName, routes []normalizedfib.No
 		if vrf == "" {
 			out.VRF = VRFName(route.VRF)
 		}
-		out.Entries = append(out.Entries, FIBEntryFromNormalizedRoute(route))
+		out.Entries = append(out.Entries, FIBEntryFromRouteRecord(route))
 	}
 	SortFIBEntries(out.Entries)
 	return out
 }
 
-func FIBsFromNormalizedRoutes(routes []normalizedfib.NormalizedFIBRoute) []FIB {
+func FIBsFromRouteRecords(routes []FIBEntry) []FIB {
 	byKey := map[string]*FIB{}
 	for _, route := range routes {
 		node := NodeID(route.Node)
@@ -121,7 +127,7 @@ func FIBsFromNormalizedRoutes(routes []normalizedfib.NormalizedFIBRoute) []FIB {
 		if byKey[key] == nil {
 			byKey[key] = &FIB{Node: node, VRF: vrf}
 		}
-		byKey[key].Entries = append(byKey[key].Entries, FIBEntryFromNormalizedRoute(route))
+		byKey[key].Entries = append(byKey[key].Entries, FIBEntryFromRouteRecord(route))
 	}
 	out := make([]FIB, 0, len(byKey))
 	for _, fib := range byKey {
@@ -134,7 +140,7 @@ func FIBsFromNormalizedRoutes(routes []normalizedfib.NormalizedFIBRoute) []FIB {
 	return out
 }
 
-func FIBEntryFromNormalizedRoute(route normalizedfib.NormalizedFIBRoute) FIBEntry {
+func FIBEntryFromRouteRecord(route FIBEntry) FIBEntry {
 	protocol := NormalizeRouteProtocol(RouteProtocol(route.Protocol))
 	action := ActionForward
 	if protocol == ProtocolBlackhole {
@@ -149,13 +155,13 @@ func FIBEntryFromNormalizedRoute(route normalizedfib.NormalizedFIBRoute) FIBEntr
 			Protocol: protocol,
 		},
 		Action:     action,
-		NextHops:   nextHopsFromNormalizedFIB(route.NextHops),
+		NextHops:   nextHopsFromRouteRecordFIB(route.NextHops),
 		Preference: route.Preference,
 		Metric:     route.Metric,
 	}
 }
 
-func nextHopsFromNormalizedFIB(hops []normalizedfib.NormalizedFIBNextHop) []NextHop {
+func nextHopsFromRouteRecordFIB(hops []NextHop) []NextHop {
 	out := make([]NextHop, 0, len(hops))
 	for _, hop := range hops {
 		out = append(out, NextHop{

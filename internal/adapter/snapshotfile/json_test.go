@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 )
@@ -20,7 +20,7 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 		Nodes: map[string]snapshotdomain.NodeSnapshot{
 			"r1": {
 				Kind: model.KindFRR,
-				BGPRIB: []observationrib.NormalizedRoute{{
+				BGPRIB: []observation.RIBRoute{{
 					Node:            "r1",
 					NetworkInstance: "default",
 					AFI:             "ipv4",

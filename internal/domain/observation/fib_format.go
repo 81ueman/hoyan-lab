@@ -1,8 +1,8 @@
-package fib
+package observation
 
 import "fmt"
 
-func FormatDiffs(result Result) []string {
+func FormatFIBDiffs(result Result) []string {
 	var out []string
 	for _, n := range result.UnsupportedNodes {
 		out = append(out, fmt.Sprintf("[DIFF] unsupported live FIB collector for %s", n))
@@ -31,7 +31,7 @@ func FormatDiffs(result Result) []string {
 	return out
 }
 
-func FormatWarnings(routes []UnresolvedRoute) []string {
+func FormatFIBWarnings(routes []UnresolvedRoute) []string {
 	var out []string
 	for _, route := range routes {
 		out = append(out, fmt.Sprintf("[WARN] %s unresolved live BGP route reason=%s next-hops=%s; route excluded from strict FIB comparison", route.RouteKey, route.Reason, formatUnresolvedNextHops(route.NextHops)))

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-func ParseCEOS(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
 	var root map[string]any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -13,19 +13,19 @@ func ParseCEOS(node string, data []byte) ([]NormalizedRoute, error) {
 	if len(vrfs) == 0 {
 		vrfs = map[string]any{"default": root}
 	}
-	var out []NormalizedRoute
+	var out []RIBRoute
 	for ni, rawVRF := range vrfs {
 		vrf := asMap(rawVRF)
 		entries := asMap(vrf["bgpRouteEntries"])
 		for prefix, rawEntry := range entries {
 			entry := asMap(rawEntry)
-			route := NormalizedRoute{Node: node, NetworkInstance: ni, AFI: "ipv4", Prefix: prefix}
+			route := RIBRoute{Node: node, NetworkInstance: ni, AFI: "ipv4", Prefix: prefix}
 			for _, rawPath := range asSlice(entry["bgpRoutePaths"]) {
 				p := asMap(rawPath)
 				routeType := asMap(p["routeType"])
 				peer := asMap(p["peerEntry"])
 				asPathEntry := asMap(p["asPathEntry"])
-				route.Paths = append(route.Paths, NormalizedPath{
+				route.Paths = append(route.Paths, RIBPath{
 					Best:      boolValue(routeType["active"]),
 					Valid:     boolValue(routeType["valid"]),
 					NextHop:   normalizeLocalNextHop(stringValue(p["nextHop"])),

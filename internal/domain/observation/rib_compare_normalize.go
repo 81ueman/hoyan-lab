@@ -1,11 +1,11 @@
-package rib
+package observation
 
 import (
 	"fmt"
 	"strings"
 )
 
-func normalizeRoute(r NormalizedRoute) NormalizedRoute {
+func normalizeRoute(r RIBRoute) RIBRoute {
 	if r.NetworkInstance == "" {
 		r.NetworkInstance = "default"
 	}
@@ -21,11 +21,11 @@ func normalizeRoute(r NormalizedRoute) NormalizedRoute {
 	return r
 }
 
-func NormalizeRoute(r NormalizedRoute) NormalizedRoute {
+func NormalizeRIBRouteRecord(r RIBRoute) RIBRoute {
 	return normalizeRoute(r)
 }
 
-func normalizePath(p NormalizedPath) NormalizedPath {
+func normalizePath(p RIBPath) RIBPath {
 	p.Origin = normalizeOrigin(p.Origin)
 	p.Communities = sortedStrings(p.Communities)
 	p.LargeCommunities = sortedStrings(p.LargeCommunities)
@@ -33,7 +33,7 @@ func normalizePath(p NormalizedPath) NormalizedPath {
 	return p
 }
 
-func routeKey(r NormalizedRoute) string {
+func routeKey(r RIBRoute) string {
 	r = normalizeRoute(r)
 	if r.Protocol != "" && r.Protocol != "bgp" {
 		return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Protocol + "|" + r.Prefix
@@ -41,7 +41,7 @@ func routeKey(r NormalizedRoute) string {
 	return r.Node + "|" + r.NetworkInstance + "|" + r.AFI + "|" + r.Prefix
 }
 
-func pathKey(p NormalizedPath, opts CompareOptions) string {
+func pathKey(p RIBPath, opts CompareOptions) string {
 	// Path identity is deliberately narrower than full path equality. The
 	// default identity is next-hop plus AS path; attributes such as best, valid,
 	// origin, local-pref, MED, weight, communities, originator ID, and cluster

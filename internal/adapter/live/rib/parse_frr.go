@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-func ParseFRR(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseFRR(node string, data []byte) ([]RIBRoute, error) {
 	return ParseFRRVRF(node, "default", data)
 }
 
-func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedRoute, error) {
+func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
 	type frrPath struct {
 		Valid            bool     `json:"valid"`
 		Best             bool     `json:"bestpath"`
@@ -40,7 +40,7 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedRoute, error) {
 		if err := json.Unmarshal(vrfs, &byVRF); err != nil {
 			return nil, err
 		}
-		var out []NormalizedRoute
+		var out []RIBRoute
 		for name, payload := range byVRF {
 			routes, err := ParseFRRVRF(node, name, payload)
 			if err != nil {
@@ -51,7 +51,7 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedRoute, error) {
 		sortRoutes(out)
 		return out, nil
 	}
-	var out []NormalizedRoute
+	var out []RIBRoute
 	for prefix, payload := range raw {
 		if !strings.Contains(prefix, "/") {
 			continue
@@ -60,7 +60,7 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedRoute, error) {
 		if err := json.Unmarshal(payload, &paths); err != nil {
 			continue
 		}
-		route := NormalizedRoute{Node: node, NetworkInstance: vrf, AFI: "ipv4", Prefix: prefix}
+		route := RIBRoute{Node: node, NetworkInstance: vrf, AFI: "ipv4", Prefix: prefix}
 		for _, p := range paths {
 			nextHop := ""
 			if len(p.Nexthops) > 0 {
@@ -69,7 +69,7 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]NormalizedRoute, error) {
 					nextHop = ""
 				}
 			}
-			route.Paths = append(route.Paths, NormalizedPath{
+			route.Paths = append(route.Paths, RIBPath{
 				Best:             p.Best || p.Multipath,
 				Valid:            p.Valid,
 				NextHop:          nextHop,

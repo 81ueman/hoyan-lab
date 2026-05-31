@@ -59,8 +59,8 @@ func (s Simulator) CollectRIB(_ context.Context, node observation.NodeID, vrf ob
 		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node)
 	}
 	routes := (ribusecase.ExpectedBuilder{}).BuildForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
-	routes = filterNormalizedRIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterRIB(observation.RIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
 func (s Simulator) CollectFIB(_ context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
@@ -69,8 +69,8 @@ func (s Simulator) CollectFIB(_ context.Context, node observation.NodeID, vrf ob
 		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
 	}
 	routes := fibusecase.NewExpectedBuilder().ExpectedForNodesWithFailureSet(s.topo, []model.Node{n}, s.failures)
-	routes = filterNormalizedFIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterFIB(observation.FIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+	routes = filterFIBEntrys(routes, string(node), string(vrf))
+	return observation.FilterFIB(observation.FIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
 func (s Simulator) node(node observation.NodeID) (model.Node, bool) {

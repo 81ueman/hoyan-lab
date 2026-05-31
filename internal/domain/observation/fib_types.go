@@ -1,4 +1,4 @@
-package fib
+package observation
 
 import (
 	"context"
@@ -8,41 +8,22 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-type NormalizedFIBRoute struct {
-	Node           string                    `json:"node"`
-	VRF            string                    `json:"vrf"`
-	AFI            string                    `json:"afi"`
-	Prefix         string                    `json:"prefix"`
-	NextHops       []NormalizedFIBNextHop    `json:"next_hops,omitempty"`
-	Protocol       string                    `json:"protocol,omitempty"`
-	ConnectedClass model.ConnectedRouteClass `json:"connected_class,omitempty"`
-	Preference     int                       `json:"preference,omitempty"`
-	Metric         int                       `json:"metric,omitempty"`
-	Installed      bool                      `json:"installed"`
-}
-
-type NormalizedFIBNextHop struct {
-	Address   string `json:"address,omitempty"`
-	Interface string `json:"interface,omitempty"`
-	Weight    int    `json:"weight,omitempty"`
-}
-
-type Collector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts Options) ([]NormalizedFIBRoute, error)
+type FIBCollector interface {
+	Collect(ctx context.Context, nodes []model.Node, opts Options) ([]FIBEntry, error)
 	SupportedNodes(nodes []model.Node) []model.Node
 }
 
-type Parser interface {
-	Parse(node string, data []byte) ([]NormalizedFIBRoute, error)
+type FIBParser interface {
+	Parse(node string, data []byte) ([]FIBEntry, error)
 }
 
-type ParserFunc func(node string, data []byte) ([]NormalizedFIBRoute, error)
+type FIBParserFunc func(node string, data []byte) ([]FIBEntry, error)
 
-func (f ParserFunc) Parse(node string, data []byte) ([]NormalizedFIBRoute, error) {
+func (f FIBParserFunc) Parse(node string, data []byte) ([]FIBEntry, error) {
 	return f(node, data)
 }
 
-type Runner interface {
+type FIBRunner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
@@ -83,7 +64,7 @@ func ParseUnresolvedPolicy(policy string) (UnresolvedPolicy, bool) {
 }
 
 type FilterResult struct {
-	Routes     []NormalizedFIBRoute
+	Routes     []FIBEntry
 	Unresolved []UnresolvedRoute
 }
 
@@ -113,7 +94,7 @@ type NextHopDiff struct {
 	NextHopKey string
 }
 
-type AttributeMismatch struct {
+type FIBAttributeMismatch struct {
 	RouteKey string
 	Field    string
 	Expected any
@@ -121,10 +102,10 @@ type AttributeMismatch struct {
 }
 
 type DuplicateRouteConflict struct {
-	RouteKey string               `json:"route_key"`
-	Side     string               `json:"side"`
-	Reason   string               `json:"reason"`
-	Routes   []NormalizedFIBRoute `json:"routes"`
+	RouteKey string     `json:"route_key"`
+	Side     string     `json:"side"`
+	Reason   string     `json:"reason"`
+	Routes   []FIBEntry `json:"routes"`
 }
 
 type Result struct {
@@ -136,7 +117,7 @@ type Result struct {
 	UnexpectedRoutes        []string
 	MissingNextHops         []NextHopDiff
 	UnexpectedNextHops      []NextHopDiff
-	Mismatched              []AttributeMismatch
+	Mismatched              []FIBAttributeMismatch
 }
 
 type UnsupportedNodesError struct {

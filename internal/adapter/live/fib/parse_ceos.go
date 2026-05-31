@@ -2,7 +2,7 @@ package fib
 
 import "encoding/json"
 
-func ParseCEOSRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
+func ParseCEOSRoutes(node string, data []byte) ([]FIBEntry, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -11,7 +11,7 @@ func ParseCEOSRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
 	if len(vrfs) == 0 {
 		vrfs = map[string]any{"default": raw}
 	}
-	var out []NormalizedFIBRoute
+	var out []FIBEntry
 	for ni, rawVRF := range vrfs {
 		routes := mapValue(mapValue(rawVRF)["routes"])
 		for prefix, value := range routes {
@@ -25,7 +25,7 @@ func ParseCEOSRoutes(node string, data []byte) ([]NormalizedFIBRoute, error) {
 				protocol = "blackhole"
 				nextHops = nil
 			}
-			route := NormalizedFIBRoute{
+			route := FIBEntry{
 				Node:       node,
 				VRF:        ni,
 				AFI:        "ipv4",
@@ -48,15 +48,15 @@ func ceosProtocol(routeType string) string {
 	return canonicalProtocol(routeType)
 }
 
-func ceosNextHops(raw any) []NormalizedFIBNextHop {
+func ceosNextHops(raw any) []NextHop {
 	items, ok := raw.([]any)
 	if !ok {
 		return nil
 	}
-	out := make([]NormalizedFIBNextHop, 0, len(items))
+	out := make([]NextHop, 0, len(items))
 	for _, item := range items {
 		m := mapValue(item)
-		out = append(out, NormalizedFIBNextHop{
+		out = append(out, NextHop{
 			Address:   stringValue(m["nexthopAddr"]),
 			Interface: stringValue(m["interface"]),
 			Weight:    intValue(m["weight"]),

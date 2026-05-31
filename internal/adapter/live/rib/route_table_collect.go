@@ -8,8 +8,8 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
-	var out []NormalizedRoute
+func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip route vrf all json")
@@ -32,8 +32,8 @@ func (c frrCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model
 	return out, nil
 }
 
-func (c ceosCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
-	var out []NormalizedRoute
+func (c ceosCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
@@ -50,8 +50,8 @@ func (c ceosCollector) CollectRouteTableRoutes(ctx context.Context, nodes []mode
 	return out, nil
 }
 
-func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
-	var out []NormalizedRoute
+func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
@@ -71,8 +71,8 @@ func (c srlinuxCollector) CollectRouteTableRoutes(ctx context.Context, nodes []m
 	return out, nil
 }
 
-func (c frrCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
-	var out []NormalizedRoute
+func (c frrCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip ospf route json")
@@ -92,7 +92,7 @@ func (c frrCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node)
 	return out, nil
 }
 
-func (c ceosCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
+func (c ceosCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	routes, err := c.CollectRouteTableRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (c ceosCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node
 	return ospfRoutes(routes), nil
 }
 
-func (c srlinuxCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]NormalizedRoute, error) {
+func (c srlinuxCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	routes, err := c.CollectRouteTableRoutes(ctx, nodes)
 	if err != nil {
 		return nil, err
@@ -108,8 +108,8 @@ func (c srlinuxCollector) CollectOSPFRoutes(ctx context.Context, nodes []model.N
 	return ospfRoutes(routes), nil
 }
 
-func ospfRoutes(routes []NormalizedRoute) []NormalizedRoute {
-	out := make([]NormalizedRoute, 0, len(routes))
+func ospfRoutes(routes []RIBRoute) []RIBRoute {
+	out := make([]RIBRoute, 0, len(routes))
 	for _, route := range routes {
 		switch route.Protocol {
 		case "ospf", "ospf-ia":
@@ -120,7 +120,7 @@ func ospfRoutes(routes []NormalizedRoute) []NormalizedRoute {
 	return out
 }
 
-func normalizeSRLinuxStaticRouteNextHops(node model.Node, routes []NormalizedRoute) {
+func normalizeSRLinuxStaticRouteNextHops(node model.Node, routes []RIBRoute) {
 	configured := map[string]string{}
 	for _, route := range node.Routes {
 		if route.Kind != model.RouteSourceStatic || route.NextHop == "" {

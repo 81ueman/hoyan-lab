@@ -12,17 +12,17 @@ type routeTableNextHop struct {
 	Interface string
 }
 
-func ParseFRRRouteTable(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseFRRRouteTable(node string, data []byte) ([]RIBRoute, error) {
 	return ParseFRRRouteTableWithOSPF(node, data, nil)
 }
 
-func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]NormalizedRoute, error) {
+func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]RIBRoute, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
 	if vrfs := asMap(raw["vrfs"]); len(vrfs) > 0 {
-		var out []NormalizedRoute
+		var out []RIBRoute
 		for vrf, value := range vrfs {
 			vrfMap := asMap(value)
 			routesMap := vrfMap
@@ -35,7 +35,7 @@ func ParseFRRRouteTableWithOSPF(node string, data, ospfData []byte) ([]Normalize
 		return out, nil
 	}
 	if looksLikeFRRVRFRouteMap(raw) {
-		var out []NormalizedRoute
+		var out []RIBRoute
 		for vrf, value := range raw {
 			routesMap := asMap(value)
 			if routesMap == nil {
@@ -74,8 +74,8 @@ func looksLikeFRRVRFRouteMap(raw map[string]any) bool {
 	return true
 }
 
-func parseFRRRouteTableMap(node, vrf string, routesMap map[string]any, ospfRouteTypes map[string]string) []NormalizedRoute {
-	var out []NormalizedRoute
+func parseFRRRouteTableMap(node, vrf string, routesMap map[string]any, ospfRouteTypes map[string]string) []RIBRoute {
+	var out []RIBRoute
 	for prefix, value := range routesMap {
 		if _, err := netip.ParsePrefix(prefix); err != nil {
 			continue
@@ -129,7 +129,7 @@ func parseFRROSPFRouteTypes(data []byte) (map[string]string, error) {
 	return out, nil
 }
 
-func ParseFRROSPFRouteTable(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseFRROSPFRouteTable(node string, data []byte) ([]RIBRoute, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
@@ -137,7 +137,7 @@ func ParseFRROSPFRouteTable(node string, data []byte) ([]NormalizedRoute, error)
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedRoute
+	var out []RIBRoute
 	for prefix, value := range raw {
 		if _, err := netip.ParsePrefix(prefix); err != nil {
 			continue
@@ -163,12 +163,12 @@ func ParseFRROSPFRouteTable(node string, data []byte) ([]NormalizedRoute, error)
 	return out, nil
 }
 
-func ParseCEOSRouteTable(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseCEOSRouteTable(node string, data []byte) ([]RIBRoute, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedRoute
+	var out []RIBRoute
 	vrfs := asMap(raw["vrfs"])
 	if len(vrfs) == 0 {
 		vrfs = map[string]any{"default": raw}
@@ -193,11 +193,11 @@ func ParseCEOSRouteTable(node string, data []byte) ([]NormalizedRoute, error) {
 	return out, nil
 }
 
-func ParseSRLinuxRouteTable(node string, data []byte) ([]NormalizedRoute, error) {
+func ParseSRLinuxRouteTable(node string, data []byte) ([]RIBRoute, error) {
 	return ParseSRLinuxRouteTableNetworkInstance(node, "default", data)
 }
 
-func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []byte) ([]NormalizedRoute, error) {
+func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []byte) ([]RIBRoute, error) {
 	cleaned, err := jsonPayload(data)
 	if err != nil {
 		return nil, err
@@ -206,7 +206,7 @@ func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []
 	if err := json.Unmarshal(cleaned, &raw); err != nil {
 		return nil, err
 	}
-	var out []NormalizedRoute
+	var out []RIBRoute
 	for _, inst := range asSlice(raw["instance"]) {
 		for _, item := range asSlice(asMap(inst)["ip route"]) {
 			m := asMap(item)
@@ -286,25 +286,25 @@ func frrRouteTableOSPFInterArea(m map[string]any) bool {
 	return false
 }
 
-func nonBGPRoute(node, ni, afi, prefix, protocol string, hops []routeTableNextHop) NormalizedRoute {
+func nonBGPRoute(node, ni, afi, prefix, protocol string, hops []routeTableNextHop) RIBRoute {
 	if ni == "" {
 		ni = "default"
 	}
 	if afi == "" {
 		afi = "ipv4"
 	}
-	return NormalizedRoute{
+	return RIBRoute{
 		Node:            node,
 		NetworkInstance: ni,
 		AFI:             afi,
 		Prefix:          prefix,
 		Protocol:        protocol,
-		Paths:           []NormalizedPath{nonBGPPath(protocol, hops)},
+		Paths:           []RIBPath{nonBGPPath(protocol, hops)},
 	}
 }
 
-func nonBGPPath(protocol string, hops []routeTableNextHop) NormalizedPath {
-	path := NormalizedPath{Best: true, Valid: true, Origin: "igp", LocalPref: 100}
+func nonBGPPath(protocol string, hops []routeTableNextHop) RIBPath {
+	path := RIBPath{Best: true, Valid: true, Origin: "igp", LocalPref: 100}
 	if protocol == "connected" || protocol == "blackhole" || len(hops) == 0 {
 		return path
 	}

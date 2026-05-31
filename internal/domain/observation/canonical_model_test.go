@@ -2,9 +2,6 @@ package observation
 
 import (
 	"testing"
-
-	normalizedfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	normalizedrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 )
 
 func TestRIBRouteValidateRequiresExactlyOneMatchingPayload(t *testing.T) {
@@ -36,13 +33,13 @@ func TestRIBRouteValidateRequiresExactlyOneMatchingPayload(t *testing.T) {
 	}
 }
 
-func TestRIBsFromNormalizedRoutesGroupsAndConvertsBGP(t *testing.T) {
-	routes := []normalizedrib.NormalizedRoute{
+func TestRIBsFromRouteRecordsGroupsAndConvertsBGP(t *testing.T) {
+	routes := []RIBRoute{
 		{
 			Node:            "r2",
 			NetworkInstance: "blue",
 			Prefix:          "10.2.0.0/24",
-			Paths:           []normalizedrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.2", ASPath: []uint32{65002}, LocalPref: 200}},
+			Paths:           []RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.2", ASPath: []uint32{65002}, LocalPref: 200}},
 		},
 		{
 			Node:            "r1",
@@ -50,11 +47,11 @@ func TestRIBsFromNormalizedRoutesGroupsAndConvertsBGP(t *testing.T) {
 			AFI:             "ipv4",
 			Prefix:          "10.1.0.0/24",
 			Protocol:        "bgp",
-			Paths:           []normalizedrib.NormalizedPath{{Best: true, Valid: true, NextHop: "192.0.2.1", ASPath: []uint32{65001}, LocalPref: 100}},
+			Paths:           []RIBPath{{Best: true, Valid: true, NextHop: "192.0.2.1", ASPath: []uint32{65001}, LocalPref: 100}},
 		},
 	}
 
-	got := RIBsFromNormalizedRoutes(routes)
+	got := RIBsFromRouteRecords(routes)
 	if len(got) != 2 {
 		t.Fatalf("RIB count = %d, want 2", len(got))
 	}
@@ -73,8 +70,8 @@ func TestRIBsFromNormalizedRoutesGroupsAndConvertsBGP(t *testing.T) {
 	}
 }
 
-func TestFIBEntryFromNormalizedRouteMapsForwardingAction(t *testing.T) {
-	blackhole := FIBEntryFromNormalizedRoute(normalizedfib.NormalizedFIBRoute{
+func TestFIBEntryFromRouteRecordMapsForwardingAction(t *testing.T) {
+	blackhole := FIBEntryFromRouteRecord(FIBEntry{
 		AFI:       "ipv4",
 		Prefix:    "203.0.113.0/24",
 		Protocol:  "blackhole",
@@ -84,7 +81,7 @@ func TestFIBEntryFromNormalizedRouteMapsForwardingAction(t *testing.T) {
 		t.Fatalf("blackhole conversion = %#v", blackhole)
 	}
 
-	connected := FIBEntryFromNormalizedRoute(normalizedfib.NormalizedFIBRoute{
+	connected := FIBEntryFromRouteRecord(FIBEntry{
 		AFI:       "ipv4",
 		Prefix:    "192.0.2.1/32",
 		Protocol:  "connected",
@@ -94,11 +91,11 @@ func TestFIBEntryFromNormalizedRouteMapsForwardingAction(t *testing.T) {
 		t.Fatalf("connected no-next-hop action = %q, want %q", connected.Action, ActionReceive)
 	}
 
-	forward := FIBEntryFromNormalizedRoute(normalizedfib.NormalizedFIBRoute{
+	forward := FIBEntryFromRouteRecord(FIBEntry{
 		AFI:      "ipv4",
 		Prefix:   "10.0.0.0/24",
 		Protocol: "bgp",
-		NextHops: []normalizedfib.NormalizedFIBNextHop{{Address: "192.0.2.1", Interface: "eth1", Weight: 1}},
+		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1", Weight: 1}},
 	})
 	if forward.Action != ActionForward || len(forward.NextHops) != 1 || forward.NextHops[0].Interface != "eth1" {
 		t.Fatalf("forward conversion = %#v", forward)

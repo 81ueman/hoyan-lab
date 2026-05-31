@@ -1,4 +1,4 @@
-package rib
+package observation
 
 import (
 	"fmt"

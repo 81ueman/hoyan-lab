@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
 func parseASPath(raw string) []uint32 {
@@ -43,14 +43,14 @@ func defaultLocalPref(v int) int {
 	return v
 }
 
-func sortRoutes(routes []NormalizedRoute) {
-	observationrib.SortRoutes(routes)
+func sortRoutes(routes []RIBRoute) {
+	observation.SortRoutes(routes)
 }
 
-func sortPaths(paths []NormalizedPath, opts CompareOptions) {
-	observationrib.SortPaths(paths, opts)
+func sortPaths(paths []RIBPath, opts CompareOptions) {
+	observation.SortPaths(paths, opts)
 }
 
-func normalizeRoute(route NormalizedRoute) NormalizedRoute {
-	return observationrib.NormalizeRoute(route)
+func normalizeRoute(route RIBRoute) RIBRoute {
+	return observation.NormalizeRIBRouteRecord(route)
 }

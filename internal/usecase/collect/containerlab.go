@@ -6,27 +6,25 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
 )
 
-type LegacyRIBCollector interface {
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
-	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
+type RIBCollector interface {
+	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
+	CollectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
 }
 
-type LegacyFIBCollector interface {
-	Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error)
+type FIBCollector interface {
+	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error)
 }
 
 type ContainerlabCollector struct {
 	nodes        []model.Node
-	ribCollector LegacyRIBCollector
-	fibCollector LegacyFIBCollector
-	fibOptions   observationfib.Options
+	ribCollector RIBCollector
+	fibCollector FIBCollector
+	fibOptions   observation.Options
 }
 
-func NewContainerlabCollector(nodes []model.Node, ribCollector LegacyRIBCollector, fibCollector LegacyFIBCollector, fibOptions observationfib.Options) ContainerlabCollector {
+func NewContainerlabCollector(nodes []model.Node, ribCollector RIBCollector, fibCollector FIBCollector, fibOptions observation.Options) ContainerlabCollector {
 	return ContainerlabCollector{
 		nodes:        append([]model.Node(nil), nodes...),
 		ribCollector: ribCollector,
@@ -77,8 +75,8 @@ func (c ContainerlabCollector) CollectRIB(ctx context.Context, node observation.
 		return observation.RIB{}, err
 	}
 	routes := append(bgp, routeTable...)
-	routes = filterNormalizedRIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterRIB(observation.RIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+	routes = filterObservationRIBRoutes(routes, string(node), string(vrf))
+	return observation.FilterRIB(observation.RIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
 func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.NodeID, vrf observation.VRFName, opts observation.CollectOptions) (observation.FIB, error) {
@@ -95,8 +93,8 @@ func (c ContainerlabCollector) CollectFIB(ctx context.Context, node observation.
 	if err != nil {
 		return observation.FIB{}, err
 	}
-	routes = filterNormalizedFIBRoutes(routes, string(node), string(vrf))
-	return observation.FilterFIB(observation.FIBFromNormalizedRoutes(node, vrf, routes), opts), nil
+	routes = filterFIBEntrys(routes, string(node), string(vrf))
+	return observation.FilterFIB(observation.FIBFromRouteRecords(node, vrf, routes), opts), nil
 }
 
 func (c ContainerlabCollector) node(node observation.NodeID) (model.Node, bool) {

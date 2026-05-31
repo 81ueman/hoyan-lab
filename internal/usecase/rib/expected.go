@@ -2,22 +2,22 @@ package rib
 
 import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
 // ExpectedBuilder builds modeled RIB observations. Its zero value is ready to use.
 type ExpectedBuilder struct{}
 
-func (ExpectedBuilder) Build(topo *model.Topology) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) Build(topo *model.Topology) []observation.RIBRoute {
 	return ExpectedBuilder{}.BuildWithFailureSet(topo, sim.NoFailures())
 }
 
-func (ExpectedBuilder) BuildForNodes(topo *model.Topology, nodes []model.Node) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) BuildForNodes(topo *model.Topology, nodes []model.Node) []observation.RIBRoute {
 	return ExpectedBuilder{}.BuildForNodesWithFailureSet(topo, nodes, sim.NoFailures())
 }
 
-func (ExpectedBuilder) BuildForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) BuildForNodesWithFailureSet(topo *model.Topology, nodes []model.Node, failures sim.FailureSet) []observation.RIBRoute {
 	allowed := map[string]bool{}
 	for _, n := range nodes {
 		allowed[n.Name] = true
@@ -25,18 +25,18 @@ func (ExpectedBuilder) BuildForNodesWithFailureSet(topo *model.Topology, nodes [
 	return expected(topo, allowed, failures)
 }
 
-func (ExpectedBuilder) BuildWithFailureSet(topo *model.Topology, failures sim.FailureSet) []observationrib.NormalizedRoute {
+func (ExpectedBuilder) BuildWithFailureSet(topo *model.Topology, failures sim.FailureSet) []observation.RIBRoute {
 	return expected(topo, nil, failures)
 }
 
-func expected(topo *model.Topology, allowed map[string]bool, failures sim.FailureSet) []observationrib.NormalizedRoute {
+func expected(topo *model.Topology, allowed map[string]bool, failures sim.FailureSet) []observation.RIBRoute {
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		panic(err)
 	}
 	g := sim.NewGraph(topo)
 	ctx := g.FailureContext(failures)
-	var out []observationrib.NormalizedRoute
+	var out []observation.RIBRoute
 	for _, n := range topo.Nodes {
 		if allowed != nil && !allowed[n.Name] {
 			continue
@@ -46,7 +46,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 		}
 		for vrf, table := range g.RIBTables(n.Name) {
 			for prefix, rib := range table {
-				pathsByProtocol := map[string][]observationrib.NormalizedPath{}
+				pathsByProtocol := map[string][]observation.RIBPath{}
 				for _, route := range rib {
 					route = route.Normalize()
 					if route.Condition == nil || !route.Condition.Eval(ctx) {
@@ -69,8 +69,8 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 					if len(paths) == 0 {
 						continue
 					}
-					observationrib.SortPaths(paths, observationrib.DefaultCompareOptions())
-					out = append(out, observationrib.NormalizedRoute{
+					observation.SortPaths(paths, observation.DefaultCompareOptions())
+					out = append(out, observation.RIBRoute{
 						Node:            n.Name,
 						NetworkInstance: vrf,
 						AFI:             "ipv4",
@@ -83,11 +83,11 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 			}
 		}
 	}
-	observationrib.SortRoutes(out)
+	observation.SortRoutes(out)
 	return out
 }
 
-func sortedProtocolKeys(m map[string][]observationrib.NormalizedPath) []string {
+func sortedProtocolKeys(m map[string][]observation.RIBPath) []string {
 	order := []string{"bgp", "ospf", "connected", "static", "blackhole"}
 	var out []string
 	seen := map[string]bool{}
@@ -168,10 +168,10 @@ func comparableConnectedClass(class model.ConnectedRouteClass) bool {
 	}
 }
 
-func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry, ctx sim.FailureContext) observationrib.NormalizedPath {
+func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry, ctx sim.FailureContext) observation.RIBPath {
 	route = route.Normalize()
 	if expectedRouteProtocol(route) != "bgp" {
-		return observationrib.NormalizedPath{
+		return observation.RIBPath{
 			Best:      route.SelectedCond != nil && route.SelectedCond.Eval(ctx),
 			Valid:     expectedRouteValid(node, route),
 			NextHop:   routeNextHopAddress(idx, node.Name, route),
@@ -179,13 +179,13 @@ func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry,
 			LocalPref: 100,
 		}
 	}
-	return observationrib.NormalizedPath{
+	return observation.RIBPath{
 		Best:      route.SelectedCond != nil && route.SelectedCond.Eval(ctx),
 		Valid:     expectedRouteValid(node, route),
 		NextHop:   routeNextHopAddress(idx, node.Name, route),
 		ASPath:    append([]uint32(nil), route.Attrs.ASPath...),
 		Origin:    expectedRouteOrigin(route),
-		LocalPref: observationrib.DefaultLocalPref(route.Attrs.LocalPref),
+		LocalPref: observation.DefaultLocalPref(route.Attrs.LocalPref),
 		MED:       route.Attrs.MED,
 	}
 }

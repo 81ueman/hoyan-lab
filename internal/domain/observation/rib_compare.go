@@ -1,13 +1,13 @@
-package rib
+package observation
 
 import (
 	"sort"
 )
 
-func CompareRoutes(expected []NormalizedRoute, actual []NormalizedRoute, opts CompareOptions) CompareResult {
+func CompareRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions) CompareResult {
 	opts = fillCompareDefaults(opts)
-	exp := map[string]NormalizedRoute{}
-	act := map[string]NormalizedRoute{}
+	exp := map[string]RIBRoute{}
+	act := map[string]RIBRoute{}
 	for _, r := range expected {
 		exp[routeKey(r)] = normalizeRoute(r)
 	}
@@ -51,6 +51,6 @@ func CompareRoutes(expected []NormalizedRoute, actual []NormalizedRoute, opts Co
 	return result
 }
 
-func Compare(expected []NormalizedRoute, actual []NormalizedRoute) CompareResult {
+func Compare(expected []RIBRoute, actual []RIBRoute) CompareResult {
 	return CompareRoutes(expected, actual, DefaultCompareOptions())
 }

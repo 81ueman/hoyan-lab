@@ -1,4 +1,4 @@
-package fib
+package observation
 
 func CompareFilterResults(expected, actual FilterResult, opts Options) Result {
 	policy := opts.UnresolvedPolicy.normalized()
@@ -8,7 +8,7 @@ func CompareFilterResults(expected, actual FilterResult, opts Options) Result {
 		expectedRoutes = removeRoutesByKey(expectedRoutes, unresolvedRouteKeys(actual.Unresolved))
 		actualRoutes = removeRoutesByKey(actualRoutes, unresolvedRouteKeys(actual.Unresolved))
 	}
-	result := Compare(expectedRoutes, actualRoutes)
+	result := CompareFIBEntries(expectedRoutes, actualRoutes)
 	if policy == UnresolvedPolicyFail {
 		result.UnresolvedRoutes = append(result.UnresolvedRoutes, actual.Unresolved...)
 		sortUnresolvedRoutes(result.UnresolvedRoutes)
@@ -24,13 +24,13 @@ func WarningDiagnostics(result FilterResult, opts Options) []UnresolvedRoute {
 	return result.Unresolved
 }
 
-func removeRoutesByKey(routes []NormalizedFIBRoute, keys map[string]bool) []NormalizedFIBRoute {
+func removeRoutesByKey(routes []FIBEntry, keys map[string]bool) []FIBEntry {
 	if len(keys) == 0 {
 		return routes
 	}
-	out := make([]NormalizedFIBRoute, 0, len(routes))
+	out := make([]FIBEntry, 0, len(routes))
 	for _, route := range routes {
-		if keys[routeKey(route)] {
+		if keys[fibRouteKey(route)] {
 			continue
 		}
 		out = append(out, route)

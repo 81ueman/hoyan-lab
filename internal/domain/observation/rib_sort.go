@@ -1,26 +1,26 @@
-package rib
+package observation
 
 import (
 	"sort"
 )
 
-func sortRoutes(routes []NormalizedRoute) {
+func sortRoutes(routes []RIBRoute) {
 	sort.Slice(routes, func(i, j int) bool {
 		return routeKey(routes[i]) < routeKey(routes[j])
 	})
 }
 
-func SortRoutes(routes []NormalizedRoute) {
+func SortRoutes(routes []RIBRoute) {
 	sortRoutes(routes)
 }
 
-func sortPaths(paths []NormalizedPath, opts CompareOptions) {
+func sortPaths(paths []RIBPath, opts CompareOptions) {
 	sort.Slice(paths, func(i, j int) bool {
 		return pathKey(paths[i], opts) < pathKey(paths[j], opts)
 	})
 }
 
-func SortPaths(paths []NormalizedPath, opts CompareOptions) {
+func SortPaths(paths []RIBPath, opts CompareOptions) {
 	sortPaths(paths, opts)
 }
 

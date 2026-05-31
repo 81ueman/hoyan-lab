@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	observationfib "github.com/81ueman/hoyan-lab/internal/domain/observation/fib"
-	observationrib "github.com/81ueman/hoyan-lab/internal/domain/observation/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 )
 
@@ -32,13 +31,13 @@ type QueryLoader interface {
 
 type RIBCollector interface {
 	SupportedNodes(nodes []model.Node) []model.Node
-	Collect(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
-	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observationrib.NormalizedRoute, error)
+	Collect(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
+	CollectBGPRoutes(ctx context.Context, nodes []model.Node) ([]observation.RIBRoute, error)
 }
 
 type FIBCollector interface {
 	SupportedNodes(nodes []model.Node) []model.Node
-	Collect(ctx context.Context, nodes []model.Node, opts observationfib.Options) ([]observationfib.NormalizedFIBRoute, error)
+	Collect(ctx context.Context, nodes []model.Node, opts observation.Options) ([]observation.FIBEntry, error)
 }
 
 type DataplaneProber interface {
