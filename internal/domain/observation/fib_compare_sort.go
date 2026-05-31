@@ -41,11 +41,17 @@ func dedupeFIBNextHops(in []NextHop) []NextHop {
 }
 
 func fibRouteKey(r FIBEntry) string {
+	r = normalizeFIBEntryForCompare(r)
 	protocol := canonicalProtocol(r.Protocol)
 	if protocol != "" && protocol != "bgp" {
 		return r.Node + "|" + r.VRF + "|" + string(r.AFI) + "|" + protocol + "|" + r.Prefix
 	}
 	return r.Node + "|" + r.VRF + "|" + string(r.AFI) + "|" + r.Prefix
+}
+
+func fibTableRouteKey(r FIBEntry) string {
+	r = normalizeFIBEntryForCompare(r)
+	return string(r.AFI) + "|" + canonicalProtocol(r.Protocol) + "|" + string(r.Action) + "|" + r.Prefix
 }
 
 func RouteKey(r FIBEntry) string {

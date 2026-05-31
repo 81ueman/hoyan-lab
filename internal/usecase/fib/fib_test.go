@@ -198,6 +198,57 @@ func TestCompareReportsRouteAndNextHopDiffs(t *testing.T) {
 	}
 }
 
+func TestCompareFIBUsesTableScopedRouteKeys(t *testing.T) {
+	expected := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
+		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+		NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
+	}})
+	actual := observation.FIBFromRouteRecords("r1", "default", []observation.FIBEntry{{
+		Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp",
+		NextHops: []observation.NextHop{{Address: "192.0.2.2", Interface: "eth1"}},
+	}})
+
+	result := observation.CompareFIB(expected, actual)
+	if result.OK || len(result.MissingNextHops) != 1 || len(result.UnexpectedNextHops) != 1 {
+		t.Fatalf("observation.CompareFIB() = %#v, want next-hop diffs", result)
+	}
+	if result.MissingNextHops[0].RouteKey != "ipv4|bgp|forward|10.0.0.0/24" {
+		t.Fatalf("route key = %q, want table-scoped key", result.MissingNextHops[0].RouteKey)
+	}
+}
+
+func TestCompareFIBSeparatesForwardingAction(t *testing.T) {
+	expected := observation.FIB{
+		Node: "r1",
+		VRF:  "default",
+		Entries: []observation.FIBEntry{{
+			AFI:    observation.AFIIPv4,
+			Prefix: "10.0.0.0/24",
+			Source: observation.RouteSource{
+				Protocol: observation.ProtocolBGP,
+			},
+			Action: observation.ActionForward,
+		}},
+	}
+	actual := observation.FIB{
+		Node: "r1",
+		VRF:  "default",
+		Entries: []observation.FIBEntry{{
+			AFI:    observation.AFIIPv4,
+			Prefix: "10.0.0.0/24",
+			Source: observation.RouteSource{
+				Protocol: observation.ProtocolBGP,
+			},
+			Action: observation.ActionDrop,
+		}},
+	}
+
+	result := observation.CompareFIB(expected, actual)
+	if result.OK || len(result.MissingRoutes) != 1 || len(result.UnexpectedRoutes) != 1 {
+		t.Fatalf("observation.CompareFIB() = %#v, want action to distinguish routes", result)
+	}
+}
+
 func TestNormalizeFIBEntriesMergesDuplicateNextHops(t *testing.T) {
 	routes, conflicts := observation.NormalizeFIBEntries([]observation.FIBEntry{
 		{Node: "r1", VRF: "default", AFI: "ipv4", Prefix: "10.0.0.0/24", Protocol: "bgp", Installed: true, Preference: 20, NextHops: []observation.NextHop{{Address: "192.0.2.1", Interface: "eth1"}}},

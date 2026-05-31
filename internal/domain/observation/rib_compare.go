@@ -5,14 +5,22 @@ import (
 )
 
 func CompareRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions) CompareResult {
+	return compareRIBRoutes(expected, actual, opts, routeKey)
+}
+
+func CompareRIB(expected RIB, actual RIB, opts CompareOptions) CompareResult {
+	return compareRIBRoutes(comparableRIBRoutes(expected.Routes), comparableRIBRoutes(actual.Routes), opts, ribTableRouteKey)
+}
+
+func compareRIBRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions, keyFunc func(RIBRoute) string) CompareResult {
 	opts = fillCompareDefaults(opts)
 	exp := map[string]RIBRoute{}
 	act := map[string]RIBRoute{}
 	for _, r := range expected {
-		exp[routeKey(r)] = normalizeRoute(r)
+		exp[keyFunc(r)] = normalizeRoute(r)
 	}
 	for _, r := range actual {
-		act[routeKey(r)] = normalizeRoute(r)
+		act[keyFunc(r)] = normalizeRoute(r)
 	}
 	keys := sortedUnionKeys(exp, act)
 	var result CompareResult
@@ -51,6 +59,6 @@ func CompareRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions) 
 	return result
 }
 
-func Compare(expected []RIBRoute, actual []RIBRoute) CompareResult {
-	return CompareRoutes(expected, actual, DefaultCompareOptions())
+func Compare(expected RIB, actual RIB) CompareResult {
+	return CompareRIB(expected, actual, DefaultCompareOptions())
 }
