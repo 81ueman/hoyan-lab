@@ -120,16 +120,16 @@ func formatASPath(path []uint32) string {
 	return strings.Join(parts, " ")
 }
 
-func normalizeOrigin(origin string) string {
-	switch strings.ToLower(strings.TrimSpace(origin)) {
+func normalizeOrigin(origin model.BGPOriginCode) model.BGPOriginCode {
+	switch strings.ToLower(strings.TrimSpace(string(origin))) {
 	case "", "i", "igp":
-		return "igp"
+		return model.BGPOriginIGP
 	case "e", "egp":
-		return "egp"
+		return model.BGPOriginEGP
 	case "?", "incomplete":
-		return "incomplete"
+		return model.BGPOriginIncomplete
 	default:
-		return strings.ToLower(strings.TrimSpace(origin))
+		return model.NormalizeBGPOriginCode(model.BGPOriginCode(origin))
 	}
 }
 

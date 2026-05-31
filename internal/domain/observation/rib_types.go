@@ -11,7 +11,7 @@ type RIBPath struct {
 	Valid            bool
 	NextHop          string
 	ASPath           []uint32
-	Origin           string
+	Origin           model.BGPOriginCode
 	LocalPref        int
 	MED              int
 	Weight           int

@@ -22,18 +22,10 @@ type NLRI struct {
 	Prefix model.Prefix
 }
 
-type BGPOriginCode string
-
-const (
-	BGPOriginIGP        BGPOriginCode = "igp"
-	BGPOriginEGP        BGPOriginCode = "egp"
-	BGPOriginIncomplete BGPOriginCode = "incomplete"
-)
-
 type BGPAttributes struct {
 	ASPath      []uint32
 	Communities []string
-	OriginCode  BGPOriginCode
+	OriginCode  model.BGPOriginCode
 	LocalPref   int
 	MED         int
 	LearnedIBGP bool
@@ -58,7 +50,9 @@ func (h NextHop) Valid() bool {
 
 func (r RIBEntry) Normalize() RIBEntry {
 	if r.Attrs.OriginCode == "" {
-		r.Attrs.OriginCode = BGPOriginIGP
+		r.Attrs.OriginCode = model.BGPOriginIGP
+	} else {
+		r.Attrs.OriginCode = model.NormalizeBGPOriginCode(r.Attrs.OriginCode)
 	}
 	if r.SourceKind == "" {
 		r.SourceKind = model.RouteSourceBGP

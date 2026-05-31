@@ -190,10 +190,10 @@ func expectedPath(idx *model.TopologyIndex, node model.Node, route sim.RIBEntry,
 	}
 }
 
-func expectedRouteOrigin(route sim.RIBEntry) string {
+func expectedRouteOrigin(route sim.RIBEntry) model.BGPOriginCode {
 	route = route.Normalize()
 	if route.Attrs.OriginCode != "" {
-		return string(route.Attrs.OriginCode)
+		return route.Attrs.OriginCode
 	}
-	return "igp"
+	return model.BGPOriginIGP
 }

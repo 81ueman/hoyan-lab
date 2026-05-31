@@ -58,7 +58,7 @@ func ApplyRoutePolicy(resolver PolicyNextHopResolver, node model.Node, peerName 
 			sort.Strings(out.Attrs.Communities)
 		}
 		if rule.SetOriginCode != "" {
-			out.Attrs.OriginCode = route.BGPOriginCode(rule.SetOriginCode)
+			out.Attrs.OriginCode = model.NormalizeBGPOriginCode(rule.SetOriginCode)
 		}
 		if rule.SetNextHopSelf {
 			out.ForwardingNextHop.Node = node.Name
