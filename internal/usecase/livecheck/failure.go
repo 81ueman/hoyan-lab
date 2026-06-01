@@ -9,7 +9,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
+	"github.com/81ueman/hoyan-lab/internal/usecase/collect"
 )
 
 type RIBFailureScenario struct {
@@ -45,7 +45,14 @@ func CompareRIBsWithFailures(ctx context.Context, runtime FailureRuntime, collec
 	if activeNodes == nil {
 		activeNodes = topo.Nodes
 	}
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, activeNodes, scenario.Failures)
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		return err
+	}
+	expected, err := collectRIBRoutes(ctx, simulator.CollectorFor(scenario.Failures), activeNodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		return err
+	}
 	if scenario.Inject != nil {
 		fmt.Fprintf(opts.Out, "injecting failure scenario %s\n", scenario.Name)
 		if err := scenario.Inject(ctx, runtime); err != nil {

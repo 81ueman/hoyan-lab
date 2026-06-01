@@ -10,7 +10,10 @@ import (
 
 func TestSimulatorCollectorCanCompareWithSnapshotBackedCollector(t *testing.T) {
 	ctx := context.Background()
-	simulator := NewSimulator(testTopology())
+	simulator, err := NewSimulator(testTopology())
+	if err != nil {
+		t.Fatalf("NewSimulator() error = %v", err)
+	}
 	snapshot, err := observation.CollectSnapshot(ctx, simulator, observation.CollectOptions{})
 	if err != nil {
 		t.Fatalf("CollectSnapshot(simulator) error = %v", err)
@@ -23,6 +26,12 @@ func TestSimulatorCollectorCanCompareWithSnapshotBackedCollector(t *testing.T) {
 	}
 	if !result.OK {
 		t.Fatalf("simulator vs snapshot mismatch: %#v", result)
+	}
+}
+
+func TestNewSimulatorRejectsNilTopology(t *testing.T) {
+	if _, err := NewSimulator(nil); err == nil {
+		t.Fatalf("NewSimulator(nil) succeeded unexpectedly")
 	}
 }
 

@@ -40,6 +40,14 @@ func NormalizeAFI(afi AFI) AFI {
 }
 
 func NetworkInstancesForNode(n Node) []string {
+	out := make([]string, 0)
+	for _, ni := range networkInstanceIDsForNode(n) {
+		out = append(out, string(ni))
+	}
+	return out
+}
+
+func networkInstanceIDsForNode(n Node) []NetworkInstanceID {
 	seen := map[string]bool{string(NetworkInstanceDefault): true}
 	for _, iface := range n.Interfaces {
 		seen[string(NormalizeNetworkInstance(string(iface.VRF)))] = true
@@ -47,10 +55,10 @@ func NetworkInstancesForNode(n Node) []string {
 	for _, route := range n.Routes {
 		seen[string(NormalizeNetworkInstance(string(route.NetworkInstance)))] = true
 	}
-	out := make([]string, 0, len(seen))
+	out := make([]NetworkInstanceID, 0, len(seen))
 	for ni := range seen {
-		out = append(out, ni)
+		out = append(out, NetworkInstanceID(ni))
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }

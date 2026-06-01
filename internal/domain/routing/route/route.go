@@ -7,6 +7,12 @@ import (
 
 type RIBTable map[model.NodeID]map[model.NetworkInstanceID]map[model.Prefix][]RIBEntry
 
+// RIBEntry is a simulated control-plane route candidate.
+//
+// It is not the observation model used for live RIB snapshots. A single
+// RIBEntry represents one candidate path with symbolic failure conditions;
+// observation.RIBRoute groups visible paths by prefix and protocol for
+// collection, snapshots, and comparison.
 type RIBEntry struct {
 	NLRI                  NLRI
 	Attrs                 BGPAttributes

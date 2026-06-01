@@ -66,6 +66,42 @@ func TestTopologyIndexAdjacencyOrderIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestTopologyIndexNetworkInstancesByNode(t *testing.T) {
+	idx, err := BuildTopologyIndex(&Topology{Nodes: []Node{{
+		Name: "r1",
+		Interfaces: []Interface{
+			{Name: "eth1"},
+			{Name: "eth2", VRF: "tenant-a"},
+		},
+		Routes: []ConfiguredRoute{{
+			NetworkInstance: "tenant-b",
+			Prefix:          MustPrefix("10.0.0.0/24"),
+			Kind:            RouteSourceStatic,
+		}},
+	}}})
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	got, ok := idx.NetworkInstancesForNode("r1")
+	if !ok {
+		t.Fatalf("NetworkInstancesForNode(r1) not found")
+	}
+	want := []NetworkInstanceID{"default", "tenant-a", "tenant-b"}
+	if len(got) != len(want) {
+		t.Fatalf("network instances = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("network instances = %v, want %v", got, want)
+		}
+	}
+	got[0] = "mutated"
+	again, _ := idx.NetworkInstancesForNode("r1")
+	if again[0] != "default" {
+		t.Fatalf("NetworkInstancesForNode returned mutable backing slice: %v", again)
+	}
+}
+
 func TestTopologyIndexOriginLookups(t *testing.T) {
 	idx, err := BuildTopologyIndex(&Topology{
 		Nodes: []Node{
