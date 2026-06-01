@@ -6,7 +6,6 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
-	"github.com/81ueman/hoyan-lab/internal/usecase/facts"
 )
 
 func TestExpandForallSubstitutesLoopVarsDeterministically(t *testing.T) {
@@ -101,24 +100,33 @@ func TestVerifyWithProviderCachesAndLazilyLoadsSnapshots(t *testing.T) {
 		},
 	}
 	provider := &fakeSnapshotProvider{
-		snapshots: map[string]facts.Snapshot{
+		snapshots: map[string]SnapshotContext{
 			"current": {
 				Name:    "current",
 				LabPath: "labs/current",
-				RIB: []observation.RIB{{
-					Node: "leaf1",
-					VRF:  "default",
-					Routes: []observation.RIBRoute{{
-						Common: observation.RIBRouteCommon{
-							AFI:      model.AFIIPv4,
-							Prefix:   "10.0.0.0/24",
-							Protocol: model.RouteSourceStatic,
-							Eligible: true,
-							Best:     true,
-						},
-						Static: &observation.StaticRIBRoute{},
+				Network: observation.NetworkSnapshot{
+					Nodes: []observation.NodeSnapshot{{
+						Node: "leaf1",
+						VRFs: []observation.VRFSnapshot{{
+							VRF: "default",
+							RIB: observation.RIB{
+								Node: "leaf1",
+								VRF:  "default",
+								Routes: []observation.RIBRoute{{
+									Common: observation.RIBRouteCommon{
+										AFI:      model.AFIIPv4,
+										Prefix:   "10.0.0.0/24",
+										Protocol: model.RouteSourceStatic,
+										Eligible: true,
+										Best:     true,
+									},
+									Static: &observation.StaticRIBRoute{},
+								}},
+							},
+							FIB: observation.FIB{Node: "leaf1", VRF: "default"},
+						}},
 					}},
-				}},
+				},
 			},
 		},
 	}
@@ -138,12 +146,12 @@ func TestVerifyWithProviderCachesAndLazilyLoadsSnapshots(t *testing.T) {
 }
 
 type fakeSnapshotProvider struct {
-	snapshots map[string]facts.Snapshot
+	snapshots map[string]SnapshotContext
 	calls     []string
 	defs      map[string]Snapshot
 }
 
-func (p *fakeSnapshotProvider) LoadSnapshot(name string, def Snapshot) (facts.Snapshot, error) {
+func (p *fakeSnapshotProvider) LoadSnapshot(name string, def Snapshot) (SnapshotContext, error) {
 	p.calls = append(p.calls, name)
 	if p.defs == nil {
 		p.defs = map[string]Snapshot{}

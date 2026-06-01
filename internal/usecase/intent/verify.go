@@ -11,7 +11,6 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	"github.com/81ueman/hoyan-lab/internal/usecase/facts"
 )
 
 func Verify(doc *Document) (Report, error) {
@@ -26,9 +25,9 @@ func VerifyWithProvider(doc *Document, provider SnapshotProvider) (Report, error
 	if err != nil {
 		return Report{}, err
 	}
-	snapshots := map[string]facts.Snapshot{}
+	snapshots := map[string]SnapshotContext{}
 	report := Report{Version: "hoyan.intent.report/v1"}
-	loadSnapshot := func(name string) (facts.Snapshot, error) {
+	loadSnapshot := func(name string) (SnapshotContext, error) {
 		snapshot, ok := snapshots[name]
 		if ok {
 			return snapshot, nil
@@ -36,7 +35,7 @@ func VerifyWithProvider(doc *Document, provider SnapshotProvider) (Report, error
 		snapshotDef := expanded.Snapshots[name]
 		snapshot, err := provider.LoadSnapshot(name, snapshotDef)
 		if err != nil {
-			return facts.Snapshot{}, fmt.Errorf("snapshot %q: %w", name, err)
+			return SnapshotContext{}, fmt.Errorf("snapshot %q: %w", name, err)
 		}
 		snapshots[name] = snapshot
 		return snapshot, nil
@@ -71,7 +70,7 @@ func VerifyWithProvider(doc *Document, provider SnapshotProvider) (Report, error
 	return report, nil
 }
 
-func evaluateIntent(in Intent, scenario Scenario, snapshotName string, snapshot facts.Snapshot) []Result {
+func evaluateIntent(in Intent, scenario Scenario, snapshotName string, snapshot SnapshotContext) []Result {
 	assertion := effectiveAssertion(in)
 	if in.Check.Table == "packet" {
 		return []Result{evaluatePacketIntent(in, assertion, scenario, snapshotName, snapshot)}
@@ -114,7 +113,7 @@ func evaluateRows(in Intent, assertion Assertion, snapshotName string, rows []ro
 	return result
 }
 
-func evaluatePacketIntent(in Intent, assertion Assertion, scenario Scenario, snapshotName string, snapshot facts.Snapshot) Result {
+func evaluatePacketIntent(in Intent, assertion Assertion, scenario Scenario, snapshotName string, snapshot SnapshotContext) Result {
 	target := sim.PacketTarget{
 		To:       in.Check.Packet.To,
 		Protocol: in.Check.Packet.Protocol,
@@ -196,7 +195,7 @@ func failureCounterexample(elements []solver.FailureElement, reason string) Fail
 	return out
 }
 
-func evaluateCompare(in Intent, loadSnapshot func(string) (facts.Snapshot, error)) ([]Result, error) {
+func evaluateCompare(in Intent, loadSnapshot func(string) (SnapshotContext, error)) ([]Result, error) {
 	compare := in.Check.Compare
 	left, err := loadSnapshot(compare.Left.Snapshot)
 	if err != nil {
@@ -258,11 +257,11 @@ type fibEntryView struct {
 	Installed bool   `json:"installed"`
 }
 
-func matchingRows(table string, where map[string]any, snapshot facts.Snapshot) []rowView {
+func matchingRows(table string, where map[string]any, snapshot SnapshotContext) []rowView {
 	var rows []rowView
 	switch table {
 	case "rib":
-		for _, rib := range snapshot.RIB {
+		for _, rib := range RIBs(snapshot.Network) {
 			for _, row := range ribRouteViews(snapshot, rib) {
 				if matchRIB(row, where) {
 					cp := row
@@ -271,7 +270,7 @@ func matchingRows(table string, where map[string]any, snapshot facts.Snapshot) [
 			}
 		}
 	case "fib":
-		for _, fib := range snapshot.FIB {
+		for _, fib := range FIBs(snapshot.Network) {
 			for _, row := range fibEntryViews(fib) {
 				if matchFIB(row, where) {
 					cp := row
@@ -283,9 +282,9 @@ func matchingRows(table string, where map[string]any, snapshot facts.Snapshot) [
 	return rows
 }
 
-func matchingRIBFacts(snapshot facts.Snapshot, where map[string]any) []ribRouteView {
+func matchingRIBFacts(snapshot SnapshotContext, where map[string]any) []ribRouteView {
 	var rows []ribRouteView
-	for _, rib := range snapshot.RIB {
+	for _, rib := range RIBs(snapshot.Network) {
 		for _, row := range ribRouteViews(snapshot, rib) {
 			if matchRIB(row, where) {
 				rows = append(rows, row)
@@ -295,7 +294,7 @@ func matchingRIBFacts(snapshot facts.Snapshot, where map[string]any) []ribRouteV
 	return rows
 }
 
-func ribRouteViews(snapshot facts.Snapshot, rib observation.RIB) []ribRouteView {
+func ribRouteViews(snapshot SnapshotContext, rib observation.RIB) []ribRouteView {
 	out := make([]ribRouteView, 0, len(rib.Routes))
 	for _, route := range rib.Routes {
 		nextHop, localPref, med := ribRouteBestPathFields(route)
@@ -308,7 +307,7 @@ func ribRouteViews(snapshot facts.Snapshot, rib observation.RIB) []ribRouteView 
 			LocalPref: localPref,
 			MED:       med,
 			Selected:  route.Common.Best,
-			Installed: fibHasPrefix(snapshot.FIB, rib.Node, route.Common.Prefix),
+			Installed: fibHasPrefix(FIBs(snapshot.Network), rib.Node, route.Common.Prefix),
 		})
 	}
 	return out

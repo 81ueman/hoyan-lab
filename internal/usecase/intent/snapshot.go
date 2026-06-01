@@ -1,4 +1,4 @@
-package facts
+package intent
 
 import (
 	"context"
@@ -11,38 +11,34 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
-type Snapshot struct {
+type SnapshotContext struct {
 	Name     string
 	LabPath  string
 	Topology *model.Topology
 	Graph    *sim.Graph
-	RIB      []observation.RIB
-	FIB      []observation.FIB
+	Network  observation.NetworkSnapshot
 }
 
-func Build(labPath, snapshotName string) (Snapshot, error) {
+func BuildSnapshot(labPath, snapshotName string) (SnapshotContext, error) {
 	if snapshotName == "" {
 		snapshotName = "current"
 	}
 	topo, _, err := topology.LoadTopologyWithOptions(filepath.Join(labPath, "hoyan.clab.yml"), topology.LoadOptions{})
 	if err != nil {
-		return Snapshot{}, err
+		return SnapshotContext{}, err
 	}
 	simulator, err := collect.NewSimulator(topo)
 	if err != nil {
-		return Snapshot{}, err
+		return SnapshotContext{}, err
 	}
-	graph := simulator.Graph()
-	networkSnapshot, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	network, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
-		return Snapshot{}, err
+		return SnapshotContext{}, err
 	}
-	rib := snapshotRIBs(networkSnapshot)
-	fib := snapshotFIBs(networkSnapshot)
-	return Snapshot{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: graph, RIB: rib, FIB: fib}, nil
+	return SnapshotContext{Name: snapshotName, LabPath: labPath, Topology: topo, Graph: simulator.Graph(), Network: network}, nil
 }
 
-func snapshotRIBs(snapshot observation.NetworkSnapshot) []observation.RIB {
+func RIBs(snapshot observation.NetworkSnapshot) []observation.RIB {
 	var out []observation.RIB
 	for _, node := range snapshot.Nodes {
 		for _, vrf := range node.VRFs {
@@ -52,7 +48,7 @@ func snapshotRIBs(snapshot observation.NetworkSnapshot) []observation.RIB {
 	return out
 }
 
-func snapshotFIBs(snapshot observation.NetworkSnapshot) []observation.FIB {
+func FIBs(snapshot observation.NetworkSnapshot) []observation.FIB {
 	var out []observation.FIB
 	for _, node := range snapshot.Nodes {
 		for _, vrf := range node.VRFs {
