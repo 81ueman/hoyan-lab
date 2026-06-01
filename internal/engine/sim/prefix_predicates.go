@@ -11,28 +11,28 @@ func CollectRIBPrefixPredicates(g *Graph) []model.PrefixPredicate {
 	if g == nil {
 		return nil
 	}
-	var nodes []string
+	var nodes []model.NodeID
 	for node := range g.rib {
 		nodes = append(nodes, node)
 	}
-	sort.Strings(nodes)
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
 
 	var out []model.PrefixPredicate
 	seen := map[string]bool{}
 	for _, node := range nodes {
-		var vrfs []string
+		var vrfs []model.NetworkInstanceID
 		for vrf := range g.rib[node] {
 			vrfs = append(vrfs, vrf)
 		}
-		sort.Strings(vrfs)
+		sort.Slice(vrfs, func(i, j int) bool { return vrfs[i] < vrfs[j] })
 		for _, vrf := range vrfs {
-			var prefixes []string
+			var prefixes []model.Prefix
 			for prefix := range g.rib[node][vrf] {
 				prefixes = append(prefixes, prefix)
 			}
-			sort.Strings(prefixes)
-			for _, rawPrefix := range prefixes {
-				routes := append([]RIBEntry(nil), g.rib[node][vrf][rawPrefix]...)
+			sort.Slice(prefixes, func(i, j int) bool { return prefixes[i].String() < prefixes[j].String() })
+			for _, prefix := range prefixes {
+				routes := append([]RIBEntry(nil), g.rib[node][vrf][prefix]...)
 				sort.SliceStable(routes, func(i, j int) bool {
 					left := routes[i].Normalize()
 					right := routes[j].Normalize()
@@ -70,20 +70,20 @@ func CollectFIBPrefixPredicates(g *Graph) []model.PrefixPredicate {
 	if g == nil {
 		return nil
 	}
-	var nodes []string
+	var nodes []model.NodeID
 	for node := range g.fib {
 		nodes = append(nodes, node)
 	}
-	sort.Strings(nodes)
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
 
 	var out []model.PrefixPredicate
 	seen := map[string]bool{}
 	for _, node := range nodes {
-		var vrfs []string
+		var vrfs []model.NetworkInstanceID
 		for vrf := range g.fib[node] {
 			vrfs = append(vrfs, vrf)
 		}
-		sort.Strings(vrfs)
+		sort.Slice(vrfs, func(i, j int) bool { return vrfs[i] < vrfs[j] })
 		for _, vrf := range vrfs {
 			entries := append([]FIBEntry(nil), g.fib[node][vrf]...)
 			sort.SliceStable(entries, func(i, j int) bool {

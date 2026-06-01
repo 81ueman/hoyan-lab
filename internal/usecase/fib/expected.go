@@ -59,8 +59,8 @@ func (ExpectedBuilder) ExpectedFIBsForNodesWithFailureSet(topo *model.Topology, 
 			continue
 		}
 		behavior := controlplane.BehaviorFor(n.Kind)
-		for vrf, table := range graph.RIBTables(n.Name) {
-			fib := graph.FIBVRF(n.Name, vrf)
+		for vrf, table := range graph.RIBTables(model.NodeID(n.Name)) {
+			fib := graph.FIBVRF(model.NodeID(n.Name), vrf)
 			suppressedBGP := bgpSuppressedByNonBGPFIB(fib, ctx)
 			for _, rib := range table {
 				for _, entry := range rib {
@@ -82,7 +82,7 @@ func (ExpectedBuilder) ExpectedFIBsForNodesWithFailureSet(topo *model.Topology, 
 				}
 			}
 		}
-		for vrf, fib := range graph.FIBTables(n.Name) {
+		for vrf, fib := range graph.FIBTables(model.NodeID(n.Name)) {
 			for _, entry := range fib {
 				if entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate || entry.SourceKind == model.RouteSourceOSPF {
 					continue
@@ -133,7 +133,7 @@ func bgpSuppressedByNonBGPFIB(entries []dataplane.FIBEntry, ctx sim.FailureConte
 	return out
 }
 
-func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node, vrf, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
+func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.TopologyIndex, fib []dataplane.FIBEntry, ctx sim.FailureContext, node string, vrf model.NetworkInstanceID, prefix, nextHop, iface string, source model.RouteSourceKind, class model.ConnectedRouteClass, metric int) {
 	_ = class
 	route := observation.FIBEntry{
 		AFI:    model.AFIIPv4,
@@ -149,7 +149,7 @@ func addExpectedRoute(byRoute map[string]observation.FIBEntry, idx *model.Topolo
 	} else if iface != "" && source != model.RouteSourceBlackhole {
 		route.NextHops = []observation.NextHop{{Interface: iface}}
 	}
-	key := node + "|" + string(model.NormalizeNetworkInstance(vrf)) + "|" + observation.RouteKey(route)
+	key := node + "|" + string(model.NormalizeNetworkInstance(string(vrf))) + "|" + observation.RouteKey(route)
 	existing := byRoute[key]
 	if existing.Prefix == "" {
 		byRoute[key] = route

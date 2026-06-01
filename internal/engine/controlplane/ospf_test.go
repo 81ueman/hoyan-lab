@@ -24,7 +24,7 @@ func TestOSPFPrefersLowerMetricAndKeepsFallback(t *testing.T) {
 		},
 	}
 	rib := simulateOSPFTestRIB(t, topo)
-	routes := rib["r1"]["10.255.2.2/32"]
+	routes := rib["r1"][model.MustPrefix("10.255.2.2/32")]
 	if len(routes) < 2 {
 		t.Fatalf("r1 routes to r2 loopback = %#v, want primary and fallback", routes)
 	}
@@ -59,7 +59,7 @@ func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
 		},
 	}
 	rib := simulateOSPFTestRIB(t, topo)
-	routes := rib["r1"]["10.255.4.4/32"]
+	routes := rib["r1"][model.MustPrefix("10.255.4.4/32")]
 	if len(routes) == 0 {
 		t.Fatalf("r1 did not learn r4 loopback")
 	}
@@ -67,7 +67,7 @@ func TestOSPFInstallsInterAreaRoutesThroughABR(t *testing.T) {
 	if best.SourceKind != model.RouteSourceOSPF || best.RouteSource.OSPFRouteType != "inter-area" || best.RouteSource.Metric != 3 || best.ForwardingNextHop.Node != "r2" {
 		t.Fatalf("best route = %#v, want inter-area OSPF metric 3 via r2", best)
 	}
-	if got := rib["r1"]["198.51.100.2/31"]; len(got) == 0 || got[0].Normalize().RouteSource.OSPFRouteType != "inter-area" {
+	if got := rib["r1"][model.MustPrefix("198.51.100.2/31")]; len(got) == 0 || got[0].Normalize().RouteSource.OSPFRouteType != "inter-area" {
 		t.Fatalf("r1 backbone link route = %#v, want inter-area route", got)
 	}
 }
@@ -89,7 +89,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	engine := NewEngine(idx, map[string]map[string]map[string][]domainroute.RIBEntry{})
+	engine := NewEngine(idx, domainroute.RIBTable{})
 	states := engine.ospfInterfaceStates(model.NetworkInstanceDefault, engine.ospfProcesses(model.NetworkInstanceDefault))
 	adjs := engine.ospfAdjacencies("r1", states, func(fromState, toState InterfaceState) (string, bool) {
 		if fromState.Area != toState.Area {
@@ -102,7 +102,7 @@ func TestOSPFSharedBroadcastSegmentInstallsRoutes(t *testing.T) {
 	}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	routes := rib["r1"]["10.255.3.3/32"]
+	routes := rib["r1"][model.MustPrefix("10.255.3.3/32")]
 	if len(routes) == 0 {
 		t.Fatalf("r1 did not learn r3 loopback")
 	}
@@ -128,13 +128,13 @@ func TestOSPFStubSuppressesExternalAndInstallsDefault(t *testing.T) {
 	topo.Nodes[0].OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceStatic}}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	if routes := rib["r3"]["203.0.113.0/24"]; len(routes) != 0 {
+	if routes := rib["r3"][model.MustPrefix("203.0.113.0/24")]; len(routes) != 0 {
 		t.Fatalf("r3 external routes = %#v, want suppressed in stub area", routes)
 	}
-	if routes := rib["r3"]["0.0.0.0/0"]; len(routes) == 0 {
+	if routes := rib["r3"][model.MustPrefix("0.0.0.0/0")]; len(routes) == 0 {
 		t.Fatalf("r3 default route missing, want stub default from ABR")
 	}
-	if routes := rib["r2"]["0.0.0.0/0"]; len(routes) != 0 {
+	if routes := rib["r2"][model.MustPrefix("0.0.0.0/0")]; len(routes) != 0 {
 		t.Fatalf("r2 default routes = %#v, want no default originated by non-ABR stub router", routes)
 	}
 }
@@ -157,13 +157,13 @@ func TestOSPFNSSAAllowsLocalExternalAndBlocksNormalExternal(t *testing.T) {
 	topo.Nodes[2].OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceStatic}}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	if routes := rib["r1"]["198.18.3.0/24"]; len(routes) == 0 {
+	if routes := rib["r1"][model.MustPrefix("198.18.3.0/24")]; len(routes) == 0 {
 		t.Fatalf("r1 NSSA external route missing, want translated NSSA external from r3")
 	}
-	if routes := rib["r3"]["203.0.113.0/24"]; len(routes) != 0 {
+	if routes := rib["r3"][model.MustPrefix("203.0.113.0/24")]; len(routes) != 0 {
 		t.Fatalf("r3 normal external routes = %#v, want blocked from NSSA", routes)
 	}
-	if routes := rib["r3"]["0.0.0.0/0"]; len(routes) == 0 {
+	if routes := rib["r3"][model.MustPrefix("0.0.0.0/0")]; len(routes) == 0 {
 		t.Fatalf("r3 default route missing, want NSSA default-information-originate from ABR")
 	}
 }
@@ -193,11 +193,11 @@ func TestOSPFRedistributesConnectedWithRouteMapAndType1Metric(t *testing.T) {
 	}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	route := bestOSPFTestRoute(t, rib, "r2", "198.18.1.0/24")
+	route := bestOSPFTestRoute(t, rib, "r2", model.MustPrefix("198.18.1.0/24"))
 	if route.RouteSource.OSPFRouteType != RouteTypeExternal1 || route.RouteSource.Metric != 8 || route.ForwardingNextHop.Node != "r1" {
 		t.Fatalf("redistributed connected route = %#v, want E1 metric 8 via r1", route)
 	}
-	if routes := rib["r2"]["10.255.1.1/32"]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != RouteTypeIntraArea {
+	if routes := rib["r2"][model.MustPrefix("10.255.1.1/32")]; len(routes) == 0 || routes[0].Normalize().RouteSource.OSPFRouteType != RouteTypeIntraArea {
 		t.Fatalf("r1 loopback route = %#v, want normal intra-area route unaffected by route-map", routes)
 	}
 }
@@ -214,7 +214,7 @@ func TestOSPFRedistributesStaticType2MetricWithoutPathCost(t *testing.T) {
 	topo.Nodes[0].OSPF.Redistribute = []model.OSPFRedistribution{{Kind: model.RouteSourceStatic, Metric: 33, MetricType: 2}}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	route := bestOSPFTestRoute(t, rib, "r2", "203.0.113.0/24")
+	route := bestOSPFTestRoute(t, rib, "r2", model.MustPrefix("203.0.113.0/24"))
 	if route.RouteSource.OSPFRouteType != RouteTypeExternal2 || route.RouteSource.Metric != 33 {
 		t.Fatalf("redistributed static route = %#v, want E2 metric 33", route)
 	}
@@ -246,13 +246,13 @@ func TestOSPFRedistributesLearnedBGPRoute(t *testing.T) {
 	}
 
 	rib := simulateOSPFTestRIB(t, topo)
-	route := bestOSPFTestRoute(t, rib, "r2", "172.16.0.0/24")
+	route := bestOSPFTestRoute(t, rib, "r2", model.MustPrefix("172.16.0.0/24"))
 	if route.RouteSource.OSPFRouteType != RouteTypeExternal2 || route.RouteSource.Metric != 12 || route.Provenance.OriginNode != "r1" {
 		t.Fatalf("redistributed BGP route = %#v, want OSPF E2 from r1 metric 12", route)
 	}
 }
 
-func bestOSPFTestRoute(t *testing.T, rib map[string]map[string][]domainroute.RIBEntry, node, prefix string) domainroute.RIBEntry {
+func bestOSPFTestRoute(t *testing.T, rib map[model.NodeID]map[model.Prefix][]domainroute.RIBEntry, node model.NodeID, prefix model.Prefix) domainroute.RIBEntry {
 	t.Helper()
 	routes := rib[node][prefix]
 	if len(routes) == 0 {
@@ -281,33 +281,33 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
+	rib := domainroute.RIBTable{}
 	NewEngine(idx, rib).Simulate()
-	if routes := rib["r1"]["tenant-a"]["10.10.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+	if routes := rib["r1"]["tenant-a"][model.MustPrefix("10.10.0.1/32")]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
 		t.Fatalf("r1 tenant-a route to 10.10.0.1/32 = %#v, want OSPF", routes)
 	}
-	if routes := rib["r1"]["tenant-a"]["10.20.0.1/32"]; len(routes) != 0 {
+	if routes := rib["r1"]["tenant-a"][model.MustPrefix("10.20.0.1/32")]; len(routes) != 0 {
 		t.Fatalf("r1 tenant-a leaked tenant-b service route: %#v", routes)
 	}
-	if routes := rib["r1"]["tenant-b"]["10.20.0.1/32"]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
+	if routes := rib["r1"]["tenant-b"][model.MustPrefix("10.20.0.1/32")]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
 		t.Fatalf("r1 tenant-b route to 10.20.0.1/32 = %#v, want OSPF", routes)
 	}
-	if routes := rib["r1"]["tenant-b"]["10.10.0.1/32"]; len(routes) != 0 {
+	if routes := rib["r1"]["tenant-b"][model.MustPrefix("10.10.0.1/32")]; len(routes) != 0 {
 		t.Fatalf("r1 tenant-b leaked tenant-a service route: %#v", routes)
 	}
 }
 
-func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[string]map[string][]domainroute.RIBEntry {
+func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[model.NodeID]map[model.Prefix][]domainroute.RIBEntry {
 	t.Helper()
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
+	rib := domainroute.RIBTable{}
 	NewEngine(idx, rib).Simulate()
-	out := map[string]map[string][]domainroute.RIBEntry{}
+	out := map[model.NodeID]map[model.Prefix][]domainroute.RIBEntry{}
 	for node, byVRF := range rib {
-		out[node] = byVRF[string(model.NetworkInstanceDefault)]
+		out[node] = byVRF[model.NetworkInstanceDefault]
 	}
 	return out
 }
@@ -318,9 +318,9 @@ func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{}
+	rib := domainroute.RIBTable{}
 	NewEngine(idx, rib).Simulate()
-	routes := rib["r1"][string(model.NetworkInstanceDefault)]["10.255.12.12/32"]
+	routes := rib["r1"][model.NetworkInstanceDefault][model.MustPrefix("10.255.12.12/32")]
 	if len(routes) != 11 {
 		t.Fatalf("r1 routes to r12 loopback = %d, want one candidate per first hop", len(routes))
 	}

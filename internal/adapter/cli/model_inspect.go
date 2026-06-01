@@ -681,16 +681,21 @@ func collectPacketClassRows(headerSpace model.HeaderSpace, filter model.PrefixSe
 func collectRIBRows(graph *sim.Graph, nodes []string, prefix string, protocol model.RouteSourceKind) []ribInspectRow {
 	var rows []ribInspectRow
 	for _, node := range nodes {
+		nodeID := model.NodeID(node)
 		if prefix != "" {
-			rows = append(rows, ribRowsForRoutes(node, graph.RIB(node, prefix), protocol)...)
+			pfx, err := model.ParsePrefix(prefix)
+			if err != nil {
+				continue
+			}
+			rows = append(rows, ribRowsForRoutes(node, graph.RIB(nodeID, pfx), protocol)...)
 			continue
 		}
-		table := graph.RIBTable(node)
-		prefixes := make([]string, 0, len(table))
+		table := graph.RIBTable(nodeID)
+		prefixes := make([]model.Prefix, 0, len(table))
 		for p := range table {
 			prefixes = append(prefixes, p)
 		}
-		sort.Strings(prefixes)
+		sort.Slice(prefixes, func(i, j int) bool { return prefixes[i].String() < prefixes[j].String() })
 		for _, p := range prefixes {
 			rows = append(rows, ribRowsForRoutes(node, table[p], protocol)...)
 		}
@@ -743,7 +748,7 @@ func ribRowsForRoutes(node string, routes []sim.RIBEntry, protocol model.RouteSo
 func collectFIBRows(graph *sim.Graph, nodes []string, prefix string) []fibInspectRow {
 	var rows []fibInspectRow
 	for _, node := range nodes {
-		for _, entry := range graph.FIB(node) {
+		for _, entry := range graph.FIB(model.NodeID(node)) {
 			if prefix != "" && entry.Prefix.String() != prefix {
 				continue
 			}

@@ -380,9 +380,9 @@ func routeRedundantPathEngine() *Engine {
 			{Name: "backup-dst", A: "backup", B: "dst", Cost: 1},
 		},
 	})
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
+	rib := domainroute.RIBTable{
 		"src": {
-			string(model.NetworkInstanceDefault): {pfx.String(): {
+			model.NetworkInstanceDefault: {pfx: {
 				{
 					NLRI:         domainroute.NLRI{Prefix: pfx},
 					Provenance:   domainroute.Provenance{OriginNode: "dst", PathNodes: []string{"dst", "primary", "src"}, PathLinks: []string{"primary-dst", "src-primary"}},

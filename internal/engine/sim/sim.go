@@ -34,8 +34,8 @@ type Cond = failure.Cond
 type Graph struct {
 	topo      *model.Topology
 	topoIndex *model.TopologyIndex
-	rib       map[string]map[string]map[string][]RIBEntry
-	fib       map[string]map[string][]FIBEntry
+	rib       domainroute.RIBTable
+	fib       dataplane.FIBTable
 }
 
 func NoFailures() FailureSet { return failure.None() }
@@ -78,38 +78,38 @@ func NewGraph(topo *model.Topology) *Graph {
 	g := &Graph{
 		topo:      topo,
 		topoIndex: idx,
-		rib:       map[string]map[string]map[string][]RIBEntry{},
-		fib:       map[string]map[string][]FIBEntry{},
+		rib:       domainroute.RIBTable{},
+		fib:       dataplane.FIBTable{},
 	}
 	controlplane.NewEngine(idx, g.rib).Simulate()
 	dataplane.NewEngine(idx, g.rib, g.fib).DeriveFIB()
 	return g
 }
 
-func (g *Graph) RIB(node, prefix string) []RIBEntry {
-	return g.RIBVRF(node, string(model.NetworkInstanceDefault), prefix)
+func (g *Graph) RIB(node model.NodeID, prefix model.Prefix) []RIBEntry {
+	return g.RIBVRF(node, model.NetworkInstanceDefault, prefix)
 }
 
-func (g *Graph) RIBVRF(node, vrf, prefix string) []RIBEntry {
-	return append([]RIBEntry(nil), g.rib[node][string(model.NormalizeNetworkInstance(vrf))][prefix]...)
+func (g *Graph) RIBVRF(node model.NodeID, vrf model.NetworkInstanceID, prefix model.Prefix) []RIBEntry {
+	return append([]RIBEntry(nil), g.rib[node][model.NormalizeNetworkInstance(string(vrf))][prefix]...)
 }
 
-func (g *Graph) RIBTable(node string) map[string][]RIBEntry {
-	return g.RIBTableVRF(node, string(model.NetworkInstanceDefault))
+func (g *Graph) RIBTable(node model.NodeID) map[model.Prefix][]RIBEntry {
+	return g.RIBTableVRF(node, model.NetworkInstanceDefault)
 }
 
-func (g *Graph) RIBTableVRF(node, vrf string) map[string][]RIBEntry {
-	out := map[string][]RIBEntry{}
-	for prefix, routes := range g.rib[node][string(model.NormalizeNetworkInstance(vrf))] {
+func (g *Graph) RIBTableVRF(node model.NodeID, vrf model.NetworkInstanceID) map[model.Prefix][]RIBEntry {
+	out := map[model.Prefix][]RIBEntry{}
+	for prefix, routes := range g.rib[node][model.NormalizeNetworkInstance(string(vrf))] {
 		out[prefix] = append([]RIBEntry(nil), routes...)
 	}
 	return out
 }
 
-func (g *Graph) RIBTables(node string) map[string]map[string][]RIBEntry {
-	out := map[string]map[string][]RIBEntry{}
+func (g *Graph) RIBTables(node model.NodeID) map[model.NetworkInstanceID]map[model.Prefix][]RIBEntry {
+	out := map[model.NetworkInstanceID]map[model.Prefix][]RIBEntry{}
 	for vrf, byPrefix := range g.rib[node] {
-		out[vrf] = map[string][]RIBEntry{}
+		out[vrf] = map[model.Prefix][]RIBEntry{}
 		for prefix, routes := range byPrefix {
 			out[vrf][prefix] = append([]RIBEntry(nil), routes...)
 		}
@@ -117,16 +117,16 @@ func (g *Graph) RIBTables(node string) map[string]map[string][]RIBEntry {
 	return out
 }
 
-func (g *Graph) FIB(node string) []FIBEntry {
-	return g.FIBVRF(node, string(model.NetworkInstanceDefault))
+func (g *Graph) FIB(node model.NodeID) []FIBEntry {
+	return g.FIBVRF(node, model.NetworkInstanceDefault)
 }
 
-func (g *Graph) FIBVRF(node, vrf string) []FIBEntry {
-	return append([]FIBEntry(nil), g.fib[node][string(model.NormalizeNetworkInstance(vrf))]...)
+func (g *Graph) FIBVRF(node model.NodeID, vrf model.NetworkInstanceID) []FIBEntry {
+	return append([]FIBEntry(nil), g.fib[node][model.NormalizeNetworkInstance(string(vrf))]...)
 }
 
-func (g *Graph) FIBTables(node string) map[string][]FIBEntry {
-	out := map[string][]FIBEntry{}
+func (g *Graph) FIBTables(node model.NodeID) map[model.NetworkInstanceID][]FIBEntry {
+	out := map[model.NetworkInstanceID][]FIBEntry{}
 	for vrf, entries := range g.fib[node] {
 		out[vrf] = append([]FIBEntry(nil), entries...)
 	}

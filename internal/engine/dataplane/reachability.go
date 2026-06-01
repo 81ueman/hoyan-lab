@@ -24,7 +24,7 @@ func (e *Engine) RouteReachableVRF(from, vrf, prefix string, failures failure.Se
 		return Path{}, false
 	}
 	var best *domainroute.RIBEntry
-	for _, r := range e.rib[from][string(model.NormalizeNetworkInstance(vrf))][pfx.String()] {
+	for _, r := range e.rib[model.NodeID(from)][model.NormalizeNetworkInstance(vrf)][pfx] {
 		r = r.Normalize()
 		if r.SelectedCond != nil && r.SelectedCond.Eval(ctx) {
 			cp := r

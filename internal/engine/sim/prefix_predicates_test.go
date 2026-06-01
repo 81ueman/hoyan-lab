@@ -8,14 +8,15 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
+	"github.com/81ueman/hoyan-lab/internal/engine/dataplane"
 )
 
 func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
 	prefix := model.MustPrefix("192.0.2.0/24")
-	graph := &Graph{rib: map[string]map[string]map[string][]RIBEntry{
+	graph := &Graph{rib: domainroute.RIBTable{
 		"r1": {
-			"default": {
-				prefix.String(): {{
+			model.NetworkInstanceDefault: {
+				prefix: {{
 					NLRI:       domainroute.NLRI{Prefix: prefix},
 					Provenance: domainroute.Provenance{OriginNode: "origin"},
 				}},
@@ -40,9 +41,9 @@ func TestCollectRIBPrefixPredicatesIncludesModeledRIBOnlyPrefix(t *testing.T) {
 
 func TestCollectFIBPrefixPredicatesIncludesModeledFIBOnlyPrefix(t *testing.T) {
 	prefix := model.MustPrefix("198.51.100.0/24")
-	graph := &Graph{fib: map[string]map[string][]FIBEntry{
+	graph := &Graph{fib: dataplane.FIBTable{
 		"r1": {
-			"default": {
+			model.NetworkInstanceDefault: {
 				{
 					Prefix:    prefix.NetIP(),
 					NextHop:   "r2",
@@ -71,19 +72,19 @@ func TestCollectFIBPrefixPredicatesIncludesModeledFIBOnlyPrefix(t *testing.T) {
 func TestRIBAndFIBPredicatesPreserveSourcesWithoutExtraClassBoundaries(t *testing.T) {
 	prefix := model.MustPrefix("203.0.113.0/24")
 	graph := &Graph{
-		rib: map[string]map[string]map[string][]RIBEntry{
+		rib: domainroute.RIBTable{
 			"r1": {
-				"default": {
-					prefix.String(): {{
+				model.NetworkInstanceDefault: {
+					prefix: {{
 						NLRI:       domainroute.NLRI{Prefix: prefix},
 						Provenance: domainroute.Provenance{OriginNode: "dst"},
 					}},
 				},
 			},
 		},
-		fib: map[string]map[string][]FIBEntry{
+		fib: dataplane.FIBTable{
 			"r1": {
-				"default": {
+				model.NetworkInstanceDefault: {
 					{Prefix: prefix.NetIP(), NextHop: "a", GroupID: "ecmp", Condition: failure.True()},
 					{Prefix: prefix.NetIP(), NextHop: "b", GroupID: "ecmp", Condition: failure.True()},
 				},

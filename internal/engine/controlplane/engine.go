@@ -16,12 +16,12 @@ import (
 
 type Engine struct {
 	idx *model.TopologyIndex
-	rib map[string]map[string]map[string][]domainroute.RIBEntry
+	rib domainroute.RIBTable
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]domainroute.RIBEntry) *Engine {
+func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable) *Engine {
 	if rib == nil {
-		rib = map[string]map[string]map[string][]domainroute.RIBEntry{}
+		rib = domainroute.RIBTable{}
 	}
 	return &Engine{idx: idx, rib: rib}
 }
@@ -251,9 +251,8 @@ func (e *Engine) aggregateContributorCond(node string, aggregate model.Prefix) (
 func (e *Engine) aggregateContributorCondVRF(node string, vrf model.NetworkInstanceID, aggregate model.Prefix) (failure.Cond, []string, bool) {
 	var contributors []failure.Cond
 	contributorPrefixes := map[string]bool{}
-	for prefix, routes := range e.rib[node][string(model.NormalizeNetworkInstance(string(vrf)))] {
-		candidate, err := model.ParsePrefix(prefix)
-		if err != nil || !isMoreSpecificWithin(candidate, aggregate) {
+	for candidate, routes := range e.rib[model.NodeID(node)][model.NormalizeNetworkInstance(string(vrf))] {
+		if !isMoreSpecificWithin(candidate, aggregate) {
 			continue
 		}
 		for _, route := range routes {
@@ -320,7 +319,7 @@ func (e *Engine) SelectRoutes() {
 	for node, byVRF := range e.rib {
 		for vrf, byPrefix := range byVRF {
 			for prefix, routes := range byPrefix {
-				n, _ := e.idx.Node(node)
+				n, _ := e.idx.Node(string(node))
 				behavior := BehaviorFor(n.Kind)
 				routes = behavior.SelectRoutes(n, routes)
 				for i := range routes {
@@ -441,7 +440,7 @@ func (e *Engine) ParentRoute(route domainroute.RIBEntry) (domainroute.RIBEntry, 
 		return domainroute.RIBEntry{}, false
 	}
 	parentNodes := strings.Join(route.Provenance.PathNodes[:len(route.Provenance.PathNodes)-1], ">")
-	for _, candidate := range e.rib[route.Provenance.FromNode][string(route.RouteSource.NetworkInstance)][route.NLRI.Prefix.String()] {
+	for _, candidate := range e.rib[model.NodeID(route.Provenance.FromNode)][route.RouteSource.NetworkInstance][route.NLRI.Prefix] {
 		candidate = candidate.Normalize()
 		if candidate.SourceKind != route.SourceKind {
 			continue
@@ -562,19 +561,19 @@ func (e *Engine) addRIB(node string, prefix model.Prefix, entry domainroute.RIBE
 	}
 	vrf := model.NormalizeNetworkInstance(string(entry.RouteSource.NetworkInstance))
 	entry.RouteSource.NetworkInstance = vrf
-	if e.rib[node] == nil {
-		e.rib[node] = map[string]map[string][]domainroute.RIBEntry{}
+	nodeID := model.NodeID(node)
+	if e.rib[nodeID] == nil {
+		e.rib[nodeID] = map[model.NetworkInstanceID]map[model.Prefix][]domainroute.RIBEntry{}
 	}
-	if e.rib[node][string(vrf)] == nil {
-		e.rib[node][string(vrf)] = map[string][]domainroute.RIBEntry{}
+	if e.rib[nodeID][vrf] == nil {
+		e.rib[nodeID][vrf] = map[model.Prefix][]domainroute.RIBEntry{}
 	}
-	key := prefix.String()
-	for _, existing := range e.rib[node][string(vrf)][key] {
+	for _, existing := range e.rib[nodeID][vrf][prefix] {
 		if routeKey(existing) == routeKey(entry) {
 			return
 		}
 	}
-	e.rib[node][string(vrf)][key] = append(e.rib[node][string(vrf)][key], entry)
+	e.rib[nodeID][vrf][prefix] = append(e.rib[nodeID][vrf][prefix], entry)
 }
 
 func routeKey(r domainroute.RIBEntry) string {

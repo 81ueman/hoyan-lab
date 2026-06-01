@@ -5,6 +5,8 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
+type RIBTable map[model.NodeID]map[model.NetworkInstanceID]map[model.Prefix][]RIBEntry
+
 type RIBEntry struct {
 	NLRI                  NLRI
 	Attrs                 BGPAttributes

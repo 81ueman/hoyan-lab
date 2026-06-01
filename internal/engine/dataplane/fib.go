@@ -49,26 +49,28 @@ type FIBEntry struct {
 
 type Engine struct {
 	idx *model.TopologyIndex
-	rib map[string]map[string]map[string][]domainroute.RIBEntry
-	fib map[string]map[string][]FIBEntry
+	rib domainroute.RIBTable
+	fib FIBTable
 }
 
-func NewEngine(idx *model.TopologyIndex, rib map[string]map[string]map[string][]domainroute.RIBEntry, fib map[string]map[string][]FIBEntry) *Engine {
+type FIBTable map[model.NodeID]map[model.NetworkInstanceID][]FIBEntry
+
+func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable, fib FIBTable) *Engine {
 	if rib == nil {
-		rib = map[string]map[string]map[string][]domainroute.RIBEntry{}
+		rib = domainroute.RIBTable{}
 	}
 	if fib == nil {
-		fib = map[string]map[string][]FIBEntry{}
+		fib = FIBTable{}
 	}
 	return &Engine{idx: idx, rib: rib, fib: fib}
 }
 
 func (e *Engine) DeriveFIB() {
 	for node, byVRF := range e.rib {
-		n, _ := e.idx.Node(node)
+		n, _ := e.idx.Node(string(node))
 		behavior := controlplane.BehaviorFor(n.Kind)
 		if e.fib[node] == nil {
-			e.fib[node] = map[string][]FIBEntry{}
+			e.fib[node] = map[model.NetworkInstanceID][]FIBEntry{}
 		}
 		for vrf, byPrefix := range byVRF {
 			var entries []FIBEntry
@@ -117,7 +119,7 @@ func (e *Engine) DeriveFIB() {
 					resolutionStatus, resolutionReason := nextHopResolution(resolvedNextHop, nextHopAddress)
 					entries = append(entries, FIBEntry{
 						Prefix:           route.NLRI.Prefix.NetIP(),
-						VRF:              vrf,
+						VRF:              string(vrf),
 						NextHop:          resolvedNextHop,
 						RawNextHop:       rawNextHop,
 						NextHopAddress:   nextHopAddress,
@@ -202,7 +204,7 @@ func (e *Engine) LookupFIBVRF(node, vrf, dst string, ctx failure.Context) (FIBEn
 	if err != nil {
 		return FIBEntry{}, false
 	}
-	for _, rule := range e.fib[node][string(model.NormalizeNetworkInstance(vrf))] {
+	for _, rule := range e.fib[model.NodeID(node)][model.NormalizeNetworkInstance(vrf)] {
 		if rule.Prefix.Contains(ip) && rule.Condition.Eval(ctx) {
 			return rule, true
 		}
