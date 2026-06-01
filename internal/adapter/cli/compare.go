@@ -6,10 +6,14 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
+	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
 )
 
@@ -75,6 +79,9 @@ func runCompare(ctx context.Context, opts compareOptions, out io.Writer) error {
 	}
 	collectOpts, err := collectOptionsFromCompareOptions(opts)
 	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+	if err := startCompareClabTargets(ctx, []CollectorTarget{leftTarget, rightTarget}, out, time.Second, newLiveRunner()); err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
 	leftCollector, err := resolveCollector(ctx, leftTarget)
@@ -218,4 +225,27 @@ func formatCompareChecks(checks map[compareCheck]bool) string {
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+func startCompareClabTargets(ctx context.Context, targets []CollectorTarget, out io.Writer, pollInterval time.Duration, runner liveadapter.Runner) error {
+	started := map[string]bool{}
+	runtime := clabruntime.Runtime{Runner: runner}
+	for _, target := range targets {
+		if target.Type != TargetClab {
+			continue
+		}
+		path := filepath.Clean(target.Path)
+		if started[path] {
+			continue
+		}
+		topo, err := topology.LoadTopology(target.Path)
+		if err != nil {
+			return fmt.Errorf("load containerlab topology %s: %w", target.Path, err)
+		}
+		if err := runtime.Start(ctx, target.Path, topo, pollInterval, out); err != nil {
+			return fmt.Errorf("start containerlab topology %s: %w", target.Path, err)
+		}
+		started[path] = true
+	}
+	return nil
 }

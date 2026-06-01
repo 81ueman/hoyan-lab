@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -298,6 +299,40 @@ func TestCompareModelWithSnapshot(t *testing.T) {
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestStartCompareClabTargetsDeploysExplicitClabSide(t *testing.T) {
+	topologyPath := filepath.Join("..", "..", "usecase", "livecheck", "testdata", "live.clab.yml")
+	runner := &recordingRunner{}
+
+	err := startCompareClabTargets(t.Context(), []CollectorTarget{
+		{Type: TargetModel, Path: topologyPath},
+		{Type: TargetClab, Path: topologyPath},
+	}, ioDiscard{}, 0, runner)
+	if err != nil {
+		t.Fatalf("startCompareClabTargets() error = %v", err)
+	}
+
+	if got, want := countCommand(runner.commands, "containerlab deploy --reconfigure -t "+topologyPath), 1; got != want {
+		t.Fatalf("containerlab deploy count = %d, want %d; commands=%v", got, want, runner.commands)
+	}
+}
+
+func TestStartCompareClabTargetsDeploysSharedClabTopologyOnce(t *testing.T) {
+	topologyPath := filepath.Join("..", "..", "usecase", "livecheck", "testdata", "live.clab.yml")
+	runner := &recordingRunner{}
+
+	err := startCompareClabTargets(t.Context(), []CollectorTarget{
+		{Type: TargetClab, Path: topologyPath},
+		{Type: TargetClab, Path: topologyPath},
+	}, ioDiscard{}, 0, runner)
+	if err != nil {
+		t.Fatalf("startCompareClabTargets() error = %v", err)
+	}
+
+	if got, want := countCommand(runner.commands, "containerlab deploy --reconfigure -t "+topologyPath), 1; got != want {
+		t.Fatalf("containerlab deploy count = %d, want %d; commands=%v", got, want, runner.commands)
 	}
 }
 
@@ -1016,4 +1051,26 @@ type ioDiscard struct{}
 
 func (ioDiscard) Write(p []byte) (int, error) {
 	return len(p), nil
+}
+
+type recordingRunner struct {
+	commands []string
+}
+
+func (r *recordingRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	r.commands = append(r.commands, strings.Join(append([]string{name}, args...), " "))
+	if name == "docker" && len(args) >= 2 && args[0] == "inspect" {
+		return []byte("true\n"), nil
+	}
+	return nil, nil
+}
+
+func countCommand(commands []string, want string) int {
+	count := 0
+	for _, command := range commands {
+		if command == want {
+			count++
+		}
+	}
+	return count
 }
