@@ -11,12 +11,8 @@ import (
 )
 
 type Runtime interface {
-	BuildLocalImages(ctx context.Context, topologyPath string, out io.Writer) error
-	Deploy(ctx context.Context, topologyPath string) error
-	Destroy(ctx context.Context, topologyPath string) error
-	WaitContainers(ctx context.Context, nodes []model.Node, interval time.Duration) error
-	WaitSRLinuxCLI(ctx context.Context, nodes []model.Node, interval time.Duration) error
-	ApplyNftablesPolicies(ctx context.Context, topo *model.Topology, out io.Writer) error
+	Start(ctx context.Context, topologyPath string, topo *model.Topology, pollInterval time.Duration, out io.Writer) error
+	Stop(ctx context.Context, topologyPath string) error
 }
 
 type FailureRuntime interface {
@@ -44,7 +40,6 @@ type DataplaneProber interface {
 type Dependencies struct {
 	Runtime         Runtime
 	QueryLoader     QueryLoader
-	RIBCollector    RIBCollector
-	FIBCollector    FIBCollector
+	Collector       observation.Collector
 	DataplaneProber DataplaneProber
 }

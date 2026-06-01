@@ -58,7 +58,6 @@ func (s Simulator) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkIn
 }
 
 func (s Simulator) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
-	vrf = model.NormalizeNetworkInstance(string(vrf))
 	nodeID := model.NodeID(node.Name)
 	n, ok := s.idx.Node(string(nodeID))
 	if !ok {
@@ -69,7 +68,6 @@ func (s Simulator) CollectRIB(_ context.Context, node model.Node, vrf model.Netw
 }
 
 func (s Simulator) CollectFIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
-	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := s.idx.Node(node.Name)
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node.Name)

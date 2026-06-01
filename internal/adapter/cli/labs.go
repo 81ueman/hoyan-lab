@@ -12,12 +12,10 @@ import (
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
-	livedataplane "github.com/81ueman/hoyan-lab/internal/adapter/live/dataplane"
-	livefib "github.com/81ueman/hoyan-lab/internal/adapter/live/fib"
-	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
+	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -156,13 +154,25 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
 		queriesPath := filepath.Join(lab.Path, labQueriesPath)
 		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
-		err := livecheck.New(livecheck.Dependencies{
-			Runtime:         clabruntime.Runtime{Runner: runner},
+		topo, _, err := topology.LoadTopologyWithOptions(topologyPath, topology.LoadOptions{StrictConfig: opts.strictConfig})
+		if err != nil {
+			return err
+		}
+		env := clabruntime.NewEnvironment(
+			topo.Nodes,
+			runner,
+			observation.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
+		)
+		usecase, err := livecheck.New(livecheck.Dependencies{
+			Runtime:         env,
 			QueryLoader:     queryfile.Loader{},
-			RIBCollector:    liverib.NewCollector(runner),
-			FIBCollector:    livefib.NewCollector(runner),
-			DataplaneProber: livedataplane.DockerProber{Runner: runner},
-		}).Run(ctx, livecheck.Options{
+			Collector:       env,
+			DataplaneProber: env,
+		})
+		if err != nil {
+			return err
+		}
+		err = usecase.Run(ctx, livecheck.Options{
 			Topology:      topologyPath,
 			Queries:       queriesPath,
 			StrictConfig:  opts.strictConfig,
