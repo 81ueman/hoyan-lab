@@ -295,7 +295,7 @@ func TestAggregateSummaryOnlySuppressesMoreSpecificAdvertisement(t *testing.T) {
 func TestDefaultRouteSourceEntersPrefixUniverse(t *testing.T) {
 	defaultRoute := model.MustPrefix("0.0.0.0/0")
 	topo := &model.Topology{Nodes: []model.Node{{Name: "r1", Routes: []model.ConfiguredRoute{{Prefix: defaultRoute, Kind: model.RouteSourceStatic}}}}}
-	universe, err := model.NewPrefixUniverse(topo, nil)
+	universe, err := model.NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatal(err)
 	}

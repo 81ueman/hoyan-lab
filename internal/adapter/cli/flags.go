@@ -17,11 +17,7 @@ func addTopologyFlag(cmd *cobra.Command, value *string, usage string) {
 	cmd.Flags().StringVar(value, "topology", defaultTopologyPath, usage)
 }
 
-func addQueriesFlag(cmd *cobra.Command, value *string, usage string) {
-	cmd.Flags().StringVar(value, "queries", defaultQueriesPath, usage)
-}
-
-func resolveLabInputs(cmd *cobra.Command, labPath string, topologyPath *string, queriesPath *string) error {
+func resolveLabInputs(cmd *cobra.Command, labPath string, topologyPath *string) error {
 	if labPath == "" {
 		return nil
 	}
@@ -31,9 +27,6 @@ func resolveLabInputs(cmd *cobra.Command, labPath string, topologyPath *string, 
 	}
 	if topologyPath != nil && !cmd.Flags().Changed("topology") {
 		*topologyPath = filepath.Join(labDir, labTopologyFile)
-	}
-	if queriesPath != nil && !cmd.Flags().Changed("queries") {
-		*queriesPath = filepath.Join(labDir, labQueriesPath)
 	}
 	return nil
 }

@@ -33,7 +33,7 @@ func NewRenderTopologyCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			if err := runRenderTopology(opts, cmd.OutOrStdout()); err != nil {

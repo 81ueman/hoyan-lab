@@ -11,11 +11,11 @@ func TestHeaderSpaceSplitsTCPDstPorts(t *testing.T) {
 		ACLRule{Seq: 10, Action: ACLDeny, Match: PacketSpec{Protocol: "tcp", DstSet: ExactPrefixSet{Prefix: pfx}, DstPort: ExactPort(80)}},
 		ACLRule{Seq: 20, Action: ACLPermit, Match: PacketSpec{Protocol: "tcp", DstSet: ExactPrefixSet{Prefix: pfx}, DstPort: ExactPort(443)}},
 	)
-	universe, err := NewPrefixUniverse(topo, nil)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
-	headerSpace := NewHeaderSpace(topo, nil, universe)
+	headerSpace := NewHeaderSpace(topo, universe)
 	if got, want := len(headerSpace.Classes), 2; got != want {
 		t.Fatalf("len(Classes) = %d, want %d: %#v", got, want, headerSpace.Classes)
 	}
@@ -32,11 +32,11 @@ func TestHeaderSpaceLinksDstPrefixToPrefixClass(t *testing.T) {
 			Seq: 10, Action: ACLDeny, Match: PacketSpec{Protocol: "tcp", DstSet: ExactPrefixSet{Prefix: MustPrefix("10.0.1.0/24")}},
 		}}}},
 	}
-	universe, err := NewPrefixUniverse(topo, nil)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
-	headerSpace := NewHeaderSpace(topo, nil, universe)
+	headerSpace := NewHeaderSpace(topo, universe)
 	if got, want := len(headerSpace.Classes), 1; got != want {
 		t.Fatalf("len(Classes) = %d, want %d: %#v", got, want, headerSpace.Classes)
 	}
@@ -60,11 +60,11 @@ func TestHeaderSpaceSplitsIngressInterface(t *testing.T) {
 			{Node: "r1", Interface: "eth2", Direction: "ingress", ACLName: "DENY-IN"},
 		},
 	}
-	universe, err := NewPrefixUniverse(topo, nil)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
-	headerSpace := NewHeaderSpace(topo, nil, universe)
+	headerSpace := NewHeaderSpace(topo, universe)
 	if got, want := len(headerSpace.Classes), 2; got != want {
 		t.Fatalf("len(Classes) = %d, want %d: %#v", got, want, headerSpace.Classes)
 	}
@@ -79,11 +79,11 @@ func TestHeaderSpaceAvoidsUnusedDimensionCrossProduct(t *testing.T) {
 		{Seq: 10, Action: ACLDeny, Match: PacketSpec{DstSet: ExactPrefixSet{Prefix: MustPrefix("10.0.0.0/24")}}},
 		{Seq: 20, Action: ACLDeny, Match: PacketSpec{DstSet: ExactPrefixSet{Prefix: MustPrefix("10.0.1.0/24")}}},
 	}}}}
-	universe, err := NewPrefixUniverse(topo, nil)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
-	headerSpace := NewHeaderSpace(topo, nil, universe)
+	headerSpace := NewHeaderSpace(topo, universe)
 	if got, want := len(headerSpace.Classes), 2; got != want {
 		t.Fatalf("len(Classes) = %d, want %d: %#v", got, want, headerSpace.Classes)
 	}
@@ -91,21 +91,6 @@ func TestHeaderSpaceAvoidsUnusedDimensionCrossProduct(t *testing.T) {
 		if class.Protocol != "" || class.DstPort != nil || class.IngressInterface != "" || class.EgressInterface != "" {
 			t.Fatalf("class contains an unnecessary dimension: %#v", class)
 		}
-	}
-}
-
-func TestCollectHeaderPredicatesIncludesQueries(t *testing.T) {
-	topo := &Topology{Nodes: []Node{{Name: "dst", Prefixes: MustPrefixes("10.0.0.0/24")}}}
-	queries := &testQueries{headers: []HeaderQuery{{Name: "web", To: "dst", Protocol: "tcp", DstPorts: []int{80, 443}}}}
-	predicates := CollectHeaderPredicates(topo, queries)
-	if got, want := len(predicates), 2; got != want {
-		t.Fatalf("len(predicates) = %d, want %d", got, want)
-	}
-	if got, want := predicates[0].Source, "query-packet:web"; got != want {
-		t.Fatalf("Source = %q, want %q", got, want)
-	}
-	if !predicates[0].DstPort.Contains(80) || !predicates[1].DstPort.Contains(443) {
-		t.Fatalf("DstPorts = %#v, %#v; want 80 and 443", predicates[0].DstPort, predicates[1].DstPort)
 	}
 }
 

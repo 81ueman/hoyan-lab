@@ -5,44 +5,12 @@ import (
 	"testing"
 )
 
-type testQueries struct {
-	routes   []RoutePrefixQuery
-	packets  []DestinationQuery
-	failures []FailureDestinationQuery
-	headers  []HeaderQuery
-	fHeaders []FailureHeaderQuery
-}
-
-func (q *testQueries) RoutePrefixQueries() []RoutePrefixQuery {
-	return q.routes
-}
-
-func (q *testQueries) PacketDestinationQueries() []DestinationQuery {
-	return q.packets
-}
-
-func (q *testQueries) FailureDestinationQueries() []FailureDestinationQuery {
-	return q.failures
-}
-
-func (q *testQueries) PacketHeaderQueries() []HeaderQuery {
-	return q.headers
-}
-
-func (q *testQueries) FailureHeaderQueries() []FailureHeaderQuery {
-	return q.fHeaders
-}
-
-func TestPrefixUniverseFromAdvertisedAndQueryPrefixes(t *testing.T) {
+func TestPrefixUniverseFromAdvertisedPrefixes(t *testing.T) {
 	topo := &Topology{Nodes: []Node{
 		{Name: "src"},
 		{Name: "dst", Prefixes: MustPrefixes("10.0.0.0/24", "10.0.1.0/24")},
 	}}
-	queries := &testQueries{
-		routes:  []RoutePrefixQuery{{Name: "route", Prefix: MustPrefix("10.0.1.0/24")}},
-		packets: []DestinationQuery{{Name: "packet", To: "dst"}},
-	}
-	universe, err := NewPrefixUniverse(topo, queries)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
@@ -51,7 +19,7 @@ func TestPrefixUniverseFromAdvertisedAndQueryPrefixes(t *testing.T) {
 	}
 	id, ok := universe.ClassForPrefix(MustPrefix("10.0.1.0/24"))
 	if !ok {
-		t.Fatalf("ClassForPrefix() did not find advertised/query prefix")
+		t.Fatalf("ClassForPrefix() did not find advertised prefix")
 	}
 	if got, want := id, PrefixClassID(1); got != want {
 		t.Fatalf("ClassForPrefix() ID = %d, want %d", got, want)
@@ -78,7 +46,7 @@ func TestPrefixUniverseCollectsPrefixListAndPolicyPredicates(t *testing.T) {
 			Seq: 10, Action: ACLDeny, Match: PacketSpec{DstSet: ExactPrefixSet{Prefix: MustPrefix("192.0.2.0/24")}},
 		}}}},
 	}
-	universe, err := NewPrefixUniverse(topo, nil)
+	universe, err := NewPrefixUniverse(topo)
 	if err != nil {
 		t.Fatalf("NewPrefixUniverse() error = %v", err)
 	}
@@ -173,7 +141,7 @@ func TestPrefixUniverseSeparatesAddressSpaceAndNLRIPredicateKinds(t *testing.T) 
 	packetHost := ExactPrefixSet{Prefix: MustPrefix("10.4.1.10/32")}
 	universe, err := BuildPrefixUniverseFromPredicates([]PrefixPredicate{
 		{ID: 0, Source: "prefix-list:PL:10", Kind: PredicateNLRI, Set: rangeSet},
-		{ID: 1, Source: "query-packet:packet", Kind: PredicateAddressSpace, Set: packetHost},
+		{ID: 1, Source: "request-packet:packet", Kind: PredicateAddressSpace, Set: packetHost},
 	})
 	if err != nil {
 		t.Fatalf("BuildPrefixUniverseFromPredicates() error = %v", err)
@@ -212,7 +180,7 @@ func TestPrefixUniverseStats(t *testing.T) {
 		{Source: "route:r1", Set: ExactPrefixSet{Prefix: MustPrefix("10.0.0.0/24")}},
 		{Source: "route:r2", Set: ExactPrefixSet{Prefix: MustPrefix("10.0.0.0/24")}},
 		{Source: "prefix-list:r1:PL:10", Set: ExactPrefixSet{Prefix: MustPrefix("10.0.1.0/24")}},
-		{Source: "query-route:q1", Set: ExactPrefixSet{Prefix: MustPrefix("10.0.2.0/24")}},
+		{Source: "request-route:q1", Set: ExactPrefixSet{Prefix: MustPrefix("10.0.2.0/24")}},
 	})
 	if err != nil {
 		t.Fatalf("BuildPrefixUniverseFromPredicates() error = %v", err)
@@ -229,7 +197,7 @@ func TestPrefixUniverseStats(t *testing.T) {
 	if got, want := universe.Stats.MaxClassCIDRs, 1; got != want {
 		t.Fatalf("MaxClassCIDRs = %d, want %d", got, want)
 	}
-	wantSources := map[string]int{"route": 2, "prefix-list": 1, "query-route": 1}
+	wantSources := map[string]int{"route": 2, "prefix-list": 1, "request-route": 1}
 	if !reflect.DeepEqual(universe.Stats.PredicateSources, wantSources) {
 		t.Fatalf("PredicateSources = %#v, want %#v", universe.Stats.PredicateSources, wantSources)
 	}
@@ -237,11 +205,11 @@ func TestPrefixUniverseStats(t *testing.T) {
 
 func TestPrefixPredicateSourceCategory(t *testing.T) {
 	tests := map[string]string{
-		"route:r1":           "route",
-		"prefix-list:r1:PL":  "prefix-list",
-		"query-packet:allow": "query-packet",
-		"fib":                "fib",
-		"":                   "unknown",
+		"route:r1":             "route",
+		"prefix-list:r1:PL":    "prefix-list",
+		"request-packet:allow": "request-packet",
+		"fib":                  "fib",
+		"":                     "unknown",
 	}
 	for source, want := range tests {
 		if got := PrefixPredicateSourceCategory(source); got != want {
@@ -266,13 +234,12 @@ func TestCollectPrefixPredicateMetadataSources(t *testing.T) {
 			Seq: 10, Action: ACLDeny, Match: PacketSpec{DstSet: ExactPrefixSet{Prefix: MustPrefix("192.0.2.0/24")}},
 		}}}},
 	}
-	queries := &testQueries{routes: []RoutePrefixQuery{{Name: "route", Prefix: MustPrefix("10.0.0.0/24")}}}
-	predicates := CollectPrefixPredicateMetadata(topo, queries)
+	predicates := CollectPrefixPredicateMetadata(topo)
 	var sources []string
 	for _, predicate := range predicates {
 		sources = append(sources, predicate.Source)
 	}
-	want := []string{"route:dst", "acl:deny-dst", "query-route:route"}
+	want := []string{"route:dst", "acl:deny-dst"}
 	if !reflect.DeepEqual(sources, want) {
 		t.Fatalf("sources = %#v, want %#v", sources, want)
 	}

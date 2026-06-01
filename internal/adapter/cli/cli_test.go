@@ -75,15 +75,11 @@ func TestLabFlagResolvesDefaultInputs(t *testing.T) {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
 	topology := defaultTopologyPath
-	queries := defaultQueriesPath
-	if err := resolveLabInputs(cmd, "base-wan", &topology, &queries); err != nil {
+	if err := resolveLabInputs(cmd, "base-wan", &topology); err != nil {
 		t.Fatalf("resolveLabInputs() error = %v", err)
 	}
 	if want := filepath.Join("labs", "base-wan", "hoyan.clab.yml"); topology != want {
 		t.Fatalf("topology = %q, want %q", topology, want)
-	}
-	if want := filepath.Join("labs", "base-wan", "intent", "queries.yml"); queries != want {
-		t.Fatalf("queries = %q, want %q", queries, want)
 	}
 }
 
@@ -111,15 +107,11 @@ func TestLabFlagKeepsExplicitTopology(t *testing.T) {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
 	topology := "custom.yml"
-	queries := defaultQueriesPath
-	if err := resolveLabInputs(cmd, "base-wan", &topology, &queries); err != nil {
+	if err := resolveLabInputs(cmd, "base-wan", &topology); err != nil {
 		t.Fatalf("resolveLabInputs() error = %v", err)
 	}
 	if topology != "custom.yml" {
 		t.Fatalf("topology = %q, want explicit custom.yml", topology)
-	}
-	if want := filepath.Join("labs", "base-wan", "intent", "queries.yml"); queries != want {
-		t.Fatalf("queries = %q, want %q", queries, want)
 	}
 }
 
@@ -384,24 +376,6 @@ func TestSelectedLabDescriptorsDefaultsToAllLabsSorted(t *testing.T) {
 	}
 }
 
-func TestVerifyStrictConfigRejectsUnsupportedStatements(t *testing.T) {
-	topologyPath, _ := writeUnsupportedConfigLab(t)
-	cmd := NewVerifyCommand()
-	cmd.SetOut(ioDiscard{})
-	cmd.SetErr(ioDiscard{})
-	cmd.SetArgs([]string{"--topology", topologyPath, "--strict-config"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatalf("Execute() error = nil")
-	}
-	for _, want := range []string{"unsupported config statements", "vendor=frr", "line=4", `raw="match source-protocol bgp"`, "reason=unsupported FRR route-map match statement"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error missing %q:\n%s", want, err.Error())
-		}
-	}
-}
-
 func TestModelRIBStrictConfigRejectsUnsupportedStatements(t *testing.T) {
 	topologyPath, _ := writeUnsupportedConfigLab(t)
 	cmd := NewModelRIBCommand()
@@ -484,177 +458,6 @@ topology:
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered topology missing %q:\n%s", want, rendered)
 		}
-	}
-}
-
-func TestVerifyCommandOutputsStructuredPrefixClassJSON(t *testing.T) {
-	var out bytes.Buffer
-	cmd := NewVerifyCommand()
-	cmd.SetOut(&out)
-	cmd.SetErr(ioDiscard{})
-	cmd.SetArgs([]string{
-		"--topology", filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"),
-		"--queries", filepath.Join("..", "..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--no-collapse",
-		"--format", "json",
-	})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	var report struct {
-		Results []map[string]any `json:"results"`
-	}
-	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v\n%s", err, out.String())
-	}
-	if len(report.Results) <= 13 {
-		t.Fatalf("structured results = %d, want class-expanded results", len(report.Results))
-	}
-	required := map[string]string{
-		"route":   "route",
-		"packet":  "packet",
-		"failure": "failure",
-	}
-	var foundRIB, foundFIB bool
-	for _, row := range report.Results {
-		typ, _ := row["type"].(string)
-		nested := required[typ]
-		if nested == "" {
-			continue
-		}
-		if _, ok := row["metadata"].(map[string]any); !ok {
-			t.Fatalf("%s result missing metadata: %#v", typ, row)
-		}
-		if _, ok := row[nested].(map[string]any); !ok {
-			t.Fatalf("%s result missing nested payload %q: %#v", typ, nested, row)
-		}
-		if prefixClass, ok := row["prefix_class"].(map[string]any); !ok || prefixClass["matched_predicates"] == nil {
-			t.Fatalf("%s result missing prefix_class metadata: %#v", typ, row)
-		}
-		prefixClass := row["prefix_class"].(map[string]any)
-		predicates, _ := prefixClass["matched_predicates"].([]any)
-		for _, raw := range predicates {
-			source, _ := raw.(string)
-			if strings.HasPrefix(source, "rib:") {
-				foundRIB = true
-			}
-			if strings.HasPrefix(source, "fib:") {
-				foundFIB = true
-			}
-		}
-		delete(required, typ)
-	}
-	if len(required) != 0 {
-		t.Fatalf("structured JSON missing query types: %#v", required)
-	}
-	if !foundRIB || !foundFIB {
-		t.Fatalf("verify JSON missing RIB/FIB predicates: rib=%v fib=%v", foundRIB, foundFIB)
-	}
-	var foundSolver bool
-	for _, row := range report.Results {
-		rawSolver, ok := row["solver"].(map[string]any)
-		if !ok {
-			continue
-		}
-		foundSolver = true
-		if _, ok := rawSolver["mode"]; ok {
-			t.Fatalf("verify JSON solver trace should not include redundant mode: %#v", rawSolver)
-		}
-		if _, ok := rawSolver["used_symbolic"]; ok {
-			t.Fatalf("verify JSON solver trace should not include redundant used_symbolic: %#v", rawSolver)
-		}
-		if rawSolver["backend"] == "" || rawSolver["elements"] == nil || rawSolver["max_failures"] == nil {
-			t.Fatalf("verify JSON solver trace incomplete: %#v", rawSolver)
-		}
-	}
-	if !foundSolver {
-		t.Fatalf("verify JSON missing solver trace in failure-search results")
-	}
-}
-
-func TestVerifyCommandPrefixClassThresholdFails(t *testing.T) {
-	var out bytes.Buffer
-	cmd := NewVerifyCommand()
-	cmd.SetOut(&out)
-	cmd.SetErr(ioDiscard{})
-	cmd.SetArgs([]string{
-		"--topology", filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"),
-		"--queries", filepath.Join("..", "..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--max-prefix-classes", "1",
-	})
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatalf("Execute() error = nil")
-	}
-	got := out.String() + err.Error()
-	for _, want := range []string{"prefix universe class count", "exceeds --max-prefix-classes 1"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("threshold output missing %q:\n%s", want, got)
-		}
-	}
-}
-
-func TestVerifyCommandShowsPrefixUniverseStats(t *testing.T) {
-	var out bytes.Buffer
-	cmd := NewVerifyCommand()
-	cmd.SetOut(&out)
-	cmd.SetErr(ioDiscard{})
-	cmd.SetArgs([]string{
-		"--topology", filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"),
-		"--queries", filepath.Join("..", "..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--show-prefix-universe-stats",
-	})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error = %v", err)
-	}
-	got := out.String()
-	for _, want := range []string{"predicates=", "unique=", "classes=", "build=", "sources:", "  route:", "  prefix-list:", "  rib:", "  fib:"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("stats output missing %q:\n%s", want, got)
-		}
-	}
-}
-
-func TestVerifyCommandCollapsesPrefixClassOutputByDefault(t *testing.T) {
-	var collapsed, raw bytes.Buffer
-	collapsedCmd := NewVerifyCommand()
-	collapsedCmd.SetOut(&collapsed)
-	collapsedCmd.SetErr(ioDiscard{})
-	collapsedCmd.SetArgs([]string{
-		"--topology", filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"),
-		"--queries", filepath.Join("..", "..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--format", "json",
-	})
-	if err := collapsedCmd.Execute(); err != nil {
-		t.Fatalf("collapsed Execute() error = %v", err)
-	}
-	rawCmd := NewVerifyCommand()
-	rawCmd.SetOut(&raw)
-	rawCmd.SetErr(ioDiscard{})
-	rawCmd.SetArgs([]string{
-		"--topology", filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"),
-		"--queries", filepath.Join("..", "..", "..", "labs", "base-wan", "intent", "queries.yml"),
-		"--no-collapse",
-		"--format", "json",
-	})
-	if err := rawCmd.Execute(); err != nil {
-		t.Fatalf("raw Execute() error = %v", err)
-	}
-	var collapsedReport, rawReport struct {
-		Results []map[string]any `json:"results"`
-	}
-	if err := json.Unmarshal(collapsed.Bytes(), &collapsedReport); err != nil {
-		t.Fatalf("collapsed json.Unmarshal() error = %v\n%s", err, collapsed.String())
-	}
-	if err := json.Unmarshal(raw.Bytes(), &rawReport); err != nil {
-		t.Fatalf("raw json.Unmarshal() error = %v\n%s", err, raw.String())
-	}
-	if len(collapsedReport.Results) >= len(rawReport.Results) {
-		t.Fatalf("collapsed rows = %d, raw rows = %d; want fewer collapsed rows", len(collapsedReport.Results), len(rawReport.Results))
-	}
-	prefixClass, ok := collapsedReport.Results[0]["prefix_class"].(map[string]any)
-	if !ok || prefixClass["class_ids"] == nil {
-		t.Fatalf("collapsed JSON missing prefix_class.class_ids: %#v", collapsedReport.Results[0])
 	}
 }
 

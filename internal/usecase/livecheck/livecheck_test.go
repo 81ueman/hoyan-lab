@@ -15,7 +15,6 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
-	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/collect"
@@ -81,17 +80,6 @@ func (f *fakeRuntime) StopNode(ctx context.Context, node model.Node) error {
 	return nil
 }
 
-type fakeQueryLoader struct {
-	queries *query.Queries
-}
-
-func (f fakeQueryLoader) Load(path string) (*query.Queries, error) {
-	if f.queries != nil {
-		return f.queries, nil
-	}
-	return &query.Queries{}, nil
-}
-
 type fakeRIBCollector struct {
 	supported []model.Node
 	routes    [][]observation.RIBRoute
@@ -122,20 +110,10 @@ func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
 	return f.routes[i], nil
 }
 
-type fakeProber struct {
-	reachable bool
-}
-
-func (f fakeProber) Probe(ctx context.Context, topo *model.Topology, check query.PacketCheck) (bool, error) {
-	return f.reachable, nil
-}
-
 func deps(runtime *fakeRuntime, collector observation.Collector) Dependencies {
 	return Dependencies{
-		Runtime:         runtime,
-		QueryLoader:     fakeQueryLoader{},
-		Collector:       collector,
-		DataplaneProber: fakeProber{reachable: true},
+		Runtime:   runtime,
+		Collector: collector,
 	}
 }
 
@@ -155,10 +133,8 @@ func TestNewRejectsMissingDependencies(t *testing.T) {
 		deps Dependencies
 		want string
 	}{
-		{name: "runtime", deps: Dependencies{QueryLoader: valid.QueryLoader, Collector: valid.Collector, DataplaneProber: valid.DataplaneProber}, want: "runtime"},
-		{name: "query loader", deps: Dependencies{Runtime: valid.Runtime, Collector: valid.Collector, DataplaneProber: valid.DataplaneProber}, want: "query loader"},
-		{name: "collector", deps: Dependencies{Runtime: valid.Runtime, QueryLoader: valid.QueryLoader, DataplaneProber: valid.DataplaneProber}, want: "collector"},
-		{name: "dataplane prober", deps: Dependencies{Runtime: valid.Runtime, QueryLoader: valid.QueryLoader, Collector: valid.Collector}, want: "dataplane prober"},
+		{name: "runtime", deps: Dependencies{Collector: valid.Collector}, want: "runtime"},
+		{name: "collector", deps: Dependencies{Runtime: valid.Runtime}, want: "collector"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -264,10 +240,8 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	rt := &fakeRuntime{}
 	opts := Options{Topology: topologyPath, Snapshot: snapshotPath, Offline: true, CheckFIB: false, Out: io.Discard}
 	usecase, err := New(Dependencies{
-		Runtime:         rt,
-		QueryLoader:     fakeQueryLoader{},
-		Collector:       observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
-		DataplaneProber: fakeProber{reachable: true},
+		Runtime:   rt,
+		Collector: observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -277,21 +251,6 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	}
 	if len(rt.calls) != 0 {
 		t.Fatalf("runtime calls = %v, want none", rt.calls)
-	}
-}
-
-func TestRunDataplaneChecksUsesInjectedProber(t *testing.T) {
-	reachable := true
-	topo := &model.Topology{
-		Nodes: []model.Node{{Name: "dst", Kind: model.KindFRR, Prefixes: model.MustPrefixes("10.0.0.10/32")}},
-	}
-	queries := &query.Queries{PacketChecks: []query.PacketCheck{{Name: "icmp-ok", From: "dst", To: "10.0.0.10", Protocol: "icmp", ExpectReachable: &reachable}}}
-	if err := RunDataplaneChecks(context.Background(), fakeProber{reachable: true}, topo, queries, io.Discard); err != nil {
-		t.Fatalf("RunDataplaneChecks() error = %v", err)
-	}
-	err := RunDataplaneChecks(context.Background(), fakeProber{reachable: false}, topo, queries, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "live dataplane reachable=false expected=true") {
-		t.Fatalf("RunDataplaneChecks() error = %v", err)
 	}
 }
 
