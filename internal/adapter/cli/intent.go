@@ -17,11 +17,6 @@ type intentOptions struct {
 	format string
 }
 
-type factsOptions struct {
-	labPath string
-	format  string
-}
-
 func NewIntentCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "intent",
@@ -133,77 +128,9 @@ func NewIntentVerifyCommand() *cobra.Command {
 	return cmd
 }
 
-func NewFactsCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:           "facts",
-		Short:         "Emit modeled fact tables",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	cmd.AddCommand(NewFactsRIBCommand(), NewFactsFIBCommand())
-	return cmd
-}
-
-func NewFactsRIBCommand() *cobra.Command {
-	var opts factsOptions
-	cmd := &cobra.Command{
-		Use:           "rib",
-		Short:         "Emit modeled RIB facts",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
-			}
-			labPath, err := resolveFactsLabPath(opts.labPath)
-			if err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			snapshot, err := intent.BuildSnapshot(labPath, "current")
-			if err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, intent.RIBs(snapshot.Network))
-		},
-	}
-	addFactsFlags(cmd, &opts)
-	return cmd
-}
-
-func NewFactsFIBCommand() *cobra.Command {
-	var opts factsOptions
-	cmd := &cobra.Command{
-		Use:           "fib",
-		Short:         "Emit modeled FIB facts",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
-			}
-			labPath, err := resolveFactsLabPath(opts.labPath)
-			if err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			snapshot, err := intent.BuildSnapshot(labPath, "current")
-			if err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, intent.FIBs(snapshot.Network))
-		},
-	}
-	addFactsFlags(cmd, &opts)
-	return cmd
-}
-
 func addIntentInputFlags(cmd *cobra.Command, opts *intentOptions) {
 	cmd.Flags().StringVar(&opts.file, "file", "", "intent YAML file")
 	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.yml")
-}
-
-func addFactsFlags(cmd *cobra.Command, opts *factsOptions) {
-	cmd.Flags().StringVar(&opts.labPath, "lab", defaultLabDir, "scenario lab directory")
-	cmd.Flags().StringVar(&opts.format, "format", "json", "output format: json")
 }
 
 func loadIntentFile(path string) (*domainintent.Document, error) {
@@ -230,10 +157,6 @@ func resolveIntentInput(cmd *cobra.Command, opts intentOptions) (string, error) 
 		return filepath.Join(labDir, labIntentPath), nil
 	}
 	return "", fmt.Errorf("--file or --lab is required")
-}
-
-func resolveFactsLabPath(raw string) (string, error) {
-	return resolveLabDir(raw)
 }
 
 func resolveIntentSnapshotLabs(doc *domainintent.Document) error {

@@ -24,7 +24,7 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	help := out.String()
-	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
@@ -40,7 +40,7 @@ func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
 		}
 		names[child.Name()] = true
 	}
-	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent"} {
 		if !names[want] {
 			t.Fatalf("root command missing %q; got %v", want, names)
 		}
@@ -112,49 +112,6 @@ func TestLabFlagKeepsExplicitTopology(t *testing.T) {
 	}
 	if topology != "custom.yml" {
 		t.Fatalf("topology = %q, want explicit custom.yml", topology)
-	}
-}
-
-func TestFactsLabPathResolvesShorthandAtCLIBoundary(t *testing.T) {
-	dir := t.TempDir()
-	labDir := filepath.Join(dir, "labs", "base-wan")
-	if err := os.MkdirAll(labDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	oldwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(oldwd); err != nil {
-			t.Fatalf("restore cwd: %v", err)
-		}
-	})
-
-	got, err := resolveFactsLabPath("base-wan")
-	if err != nil {
-		t.Fatalf("resolveFactsLabPath() error = %v", err)
-	}
-	if want := filepath.Join("labs", "base-wan"); got != want {
-		t.Fatalf("lab path = %q, want %q", got, want)
-	}
-}
-
-func TestFactsLabPathAcceptsDirectLabPathAtCLIBoundary(t *testing.T) {
-	labDir := filepath.Join(t.TempDir(), "custom-lab")
-	if err := os.MkdirAll(labDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-
-	got, err := resolveFactsLabPath(labDir)
-	if err != nil {
-		t.Fatalf("resolveFactsLabPath() error = %v", err)
-	}
-	if got != labDir {
-		t.Fatalf("lab path = %q, want %q", got, labDir)
 	}
 }
 
@@ -371,6 +328,42 @@ func TestSelectedLabDescriptorsDefaultsToAllLabsSorted(t *testing.T) {
 	}
 	got := []string{labs[0].Name, labs[1].Name}
 	want := []string{"a-lab", "z-lab"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("labs = %v, want %v", got, want)
+	}
+}
+
+func TestSelectedLabDescriptorsIncludesDirsWithoutLabYAML(t *testing.T) {
+	dir := t.TempDir()
+	labDir := filepath.Join(dir, "labs", "listed")
+	if err := os.MkdirAll(labDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(listed) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(labDir, "lab.yml"), []byte("name: listed\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(lab.yml) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "labs", "missing-metadata"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(missing-metadata) error = %v", err)
+	}
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	labs, err := selectedLabDescriptors(nil)
+	if err != nil {
+		t.Fatalf("selectedLabDescriptors() error = %v", err)
+	}
+	got := []string{labs[0].Name, labs[1].Name}
+	want := []string{"listed", "missing-metadata"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("labs = %v, want %v", got, want)
 	}

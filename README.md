@@ -173,18 +173,6 @@ customers, and HTTPS is allowed. The JSON report uses
 `hoyan.intent.report/v1` with deterministic result ordering so CI can compare
 summary fields or individual result names.
 
-Use `hoyan facts` when you want the modeled RIB/FIB fact tables directly:
-
-```bash
-go run ./cmd/hoyan facts rib --lab labs/base-wan --format json
-go run ./cmd/hoyan facts fib --lab labs/base-wan --format json
-```
-
-These facts are built offline from the lab topology and startup configs via the
-same control-plane and data-plane model used by `hoyan model`. Live-device
-collection and additional RCL-style workflows are intentionally kept separate
-from offline intent verification.
-
 ## Compare Modeled BGP RIBs With Live Nodes
 
 ## Live Snapshots
