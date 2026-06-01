@@ -1,13 +1,11 @@
 package intent
 
-import "github.com/81ueman/hoyan-lab/internal/usecase/facts"
-
 type SnapshotProvider interface {
-	LoadSnapshot(name string, def Snapshot) (facts.Snapshot, error)
+	LoadSnapshot(name string, def Snapshot) (SnapshotContext, error)
 }
 
 type DefaultSnapshotProvider struct{}
 
-func (DefaultSnapshotProvider) LoadSnapshot(name string, def Snapshot) (facts.Snapshot, error) {
-	return facts.Build(def.Lab, name)
+func (DefaultSnapshotProvider) LoadSnapshot(name string, def Snapshot) (SnapshotContext, error) {
+	return BuildSnapshot(def.Lab, name)
 }

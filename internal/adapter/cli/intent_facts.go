@@ -7,7 +7,6 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
 	domainintent "github.com/81ueman/hoyan-lab/internal/domain/intent"
-	"github.com/81ueman/hoyan-lab/internal/usecase/facts"
 	"github.com/81ueman/hoyan-lab/internal/usecase/intent"
 	"github.com/spf13/cobra"
 )
@@ -160,11 +159,11 @@ func NewFactsRIBCommand() *cobra.Command {
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
-			snapshot, err := facts.Build(labPath, "current")
+			snapshot, err := intent.BuildSnapshot(labPath, "current")
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
-			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, snapshot.RIB)
+			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, intent.RIBs(snapshot.Network))
 		},
 	}
 	addFactsFlags(cmd, &opts)
@@ -186,11 +185,11 @@ func NewFactsFIBCommand() *cobra.Command {
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
-			snapshot, err := facts.Build(labPath, "current")
+			snapshot, err := intent.BuildSnapshot(labPath, "current")
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
-			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, snapshot.FIB)
+			return writeFormatJSONOnly(cmd.OutOrStdout(), opts.format, intent.FIBs(snapshot.Network))
 		},
 	}
 	addFactsFlags(cmd, &opts)
