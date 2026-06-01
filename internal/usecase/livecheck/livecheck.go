@@ -42,8 +42,20 @@ type Usecase struct {
 	deps Dependencies
 }
 
-func New(deps Dependencies) Usecase {
-	return Usecase{deps: deps}
+func New(deps Dependencies) (Usecase, error) {
+	if deps.Runtime == nil {
+		return Usecase{}, fmt.Errorf("livecheck runtime is required")
+	}
+	if deps.QueryLoader == nil {
+		return Usecase{}, fmt.Errorf("livecheck query loader is required")
+	}
+	if deps.Collector == nil {
+		return Usecase{}, fmt.Errorf("livecheck collector is required")
+	}
+	if deps.DataplaneProber == nil {
+		return Usecase{}, fmt.Errorf("livecheck dataplane prober is required")
+	}
+	return Usecase{deps: deps}, nil
 }
 
 func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
@@ -65,28 +77,9 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if opts.HashPolicy == "" {
 		opts.HashPolicy = snapshotdomain.HashPolicyWarn
 	}
-	compareOptions := opts.CompareOptions
-	if isZeroCompareOptions(compareOptions) {
-		compareOptions = observation.DefaultCompareOptions()
-	}
 	topo, _, err := topology.LoadTopologyWithOptions(opts.Topology, topology.LoadOptions{StrictConfig: opts.StrictConfig})
 	if err != nil {
 		return err
-	}
-	if u.deps.Runtime == nil {
-		return fmt.Errorf("livecheck runtime is required")
-	}
-	if u.deps.QueryLoader == nil {
-		return fmt.Errorf("livecheck query loader is required")
-	}
-	if u.deps.RIBCollector == nil {
-		return fmt.Errorf("livecheck RIB collector is required")
-	}
-	if opts.CheckFIB && u.deps.FIBCollector == nil {
-		return fmt.Errorf("livecheck FIB collector is required")
-	}
-	if u.deps.DataplaneProber == nil {
-		return fmt.Errorf("livecheck dataplane prober is required")
 	}
 	queriesPath := opts.Queries
 	if queriesPath == "" {
@@ -96,16 +89,12 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	nodes := topo.Nodes
 	simulator, err := collect.NewSimulator(topo)
 	if err != nil {
 		return err
 	}
-	expected, err := collectRIBRoutes(ctx, simulator, nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
-	if err != nil {
-		return err
-	}
-	expectedBGP := observation.BGPOnly(expected)
+	collectOpts := observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true}
+	snapshotCompareOpts := observation.SnapshotCompareOptions{IgnoreMetadata: true}
 
 	var snap *snapshotdomain.Snapshot
 	if opts.Snapshot != "" {
@@ -116,24 +105,25 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		if err := checkSnapshotHashes(opts.Topology, snap, opts.HashPolicy, opts.Out); err != nil {
 			return err
 		}
-		if err := compareSnapshotRIBs(snap, expected, expectedBGP, compareOptions, opts.Out); err != nil {
+		expectedSnapshot, err := observation.CollectSnapshot(ctx, simulator, collectOpts)
+		if err != nil {
 			return err
 		}
-		if opts.CheckFIB {
-			if err := compareSnapshotFIBs(snap, topo, simulator, u.deps.FIBCollector, opts.FIBOptions, opts.Out); err != nil {
-				return err
-			}
+		result := observation.CompareSnapshots(expectedSnapshot, snap.Network, snapshotCompareOpts)
+		result = filterSnapshotComparison(result, opts.CheckFIB)
+		formatSnapshotComparison(opts.Out, result, opts.CheckFIB)
+		if !result.OK {
+			return fmt.Errorf("snapshot comparison found diff(s)")
 		}
+		fmt.Fprintln(opts.Out, "snapshot matches modeled RIB/FIB state")
 		if opts.Offline {
 			return nil
 		}
 	}
 
-	if err := u.deps.Runtime.BuildLocalImages(ctx, opts.Topology, opts.Out); err != nil {
-		return err
-	}
-	fmt.Fprintf(opts.Out, "deploying %s\n", opts.Topology)
-	if err := u.deps.Runtime.Deploy(ctx, opts.Topology); err != nil {
+	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
+	defer cancel()
+	if err := u.deps.Runtime.Start(deadlineCtx, opts.Topology, topo, opts.PollInterval, opts.Out); err != nil {
 		return err
 	}
 	defer func() {
@@ -141,64 +131,20 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 			return
 		}
 		fmt.Fprintf(opts.Out, "destroying %s\n", opts.Topology)
-		if destroyErr := u.deps.Runtime.Destroy(context.Background(), opts.Topology); err == nil && destroyErr != nil {
+		if destroyErr := u.deps.Runtime.Stop(context.Background(), opts.Topology); err == nil && destroyErr != nil {
 			err = destroyErr
 		}
 	}()
 
-	deadlineCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
-	defer cancel()
-	if err := u.deps.Runtime.WaitContainers(deadlineCtx, nodes, opts.PollInterval); err != nil {
-		return err
-	}
-	if err := u.deps.Runtime.WaitSRLinuxCLI(deadlineCtx, nodes, opts.PollInterval); err != nil {
-		return err
-	}
-	if err := u.deps.Runtime.ApplyNftablesPolicies(deadlineCtx, topo, opts.Out); err != nil {
-		return err
-	}
 	if snap == nil {
-		fmt.Fprintf(opts.Out, "waiting for live RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expected)))
-		actual, result, err := WaitForMatchingRIBs(deadlineCtx, u.deps.RIBCollector, nodes, expected, opts.PollInterval, opts.MaxPolls, compareOptions)
+		fmt.Fprintln(opts.Out, "waiting for live collector snapshot")
+		result, err := WaitForMatchingCollectors(deadlineCtx, simulator, u.deps.Collector, collectOpts, opts.PollInterval, opts.MaxPolls, snapshotCompareOpts, opts.CheckFIB)
 		if err != nil {
-			if len(actual) > 0 {
-				for _, line := range observation.FormatDiffs(result) {
-					fmt.Fprintln(opts.Out, line)
-				}
-			}
+			formatSnapshotComparison(opts.Out, result, opts.CheckFIB)
 			return err
 		}
-		for _, line := range observation.FormatDiffs(result) {
-			fmt.Fprintln(opts.Out, line)
-		}
-		if !result.OK {
-			return fmt.Errorf("live RIB comparison found diff(s)")
-		}
-		fmt.Fprintln(opts.Out, "live RIBs converged to modeled paths")
-	}
-	if opts.CheckFIB && snap == nil {
-		fibNodes := topo.Nodes
-		expectedFIBs, err := collectFIBs(deadlineCtx, simulator, fibNodes, opts.FIBOptions)
-		if err != nil {
-			return err
-		}
-		expectedFIB := observation.AnalyzeComparableRoutes(topo, expectedFIBs, opts.FIBOptions)
-		actualFIB, err := collectFIBs(deadlineCtx, u.deps.FIBCollector, fibNodes, opts.FIBOptions)
-		if err != nil {
-			return err
-		}
-		actualFIBResult := observation.AnalyzeComparableRoutes(topo, actualFIB, opts.FIBOptions)
-		for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actualFIBResult, opts.FIBOptions)) {
-			fmt.Fprintln(opts.Out, line)
-		}
-		fibResult := observation.CompareFilterResults(expectedFIB, actualFIBResult, opts.FIBOptions)
-		for _, line := range observation.FormatFIBDiffs(fibResult) {
-			fmt.Fprintln(opts.Out, line)
-		}
-		if !fibResult.OK {
-			return fmt.Errorf("live FIB comparison found diff(s)")
-		}
-		fmt.Fprintln(opts.Out, "live FIBs match modeled forwarding entries")
+		formatSnapshotComparison(opts.Out, result, opts.CheckFIB)
+		fmt.Fprintln(opts.Out, "live collector snapshot matches modeled RIB/FIB state")
 	}
 	if err := RunDataplaneChecks(deadlineCtx, u.deps.DataplaneProber, topo, queries, opts.Out); err != nil {
 		return err
@@ -206,48 +152,93 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	return nil
 }
 
-func compareSnapshotRIBs(snap *snapshotdomain.Snapshot, expected, expectedBGP []observation.RIBRoute, compareOptions observation.CompareOptions, out io.Writer) error {
-	actualBGP := snapshotdomain.BGPRoutes(snap)
-	fmt.Fprintf(out, "comparing snapshot BGP RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expectedBGP)))
-	result := observation.CompareRoutes(expectedBGP, actualBGP, compareOptions)
-	for _, line := range observation.FormatDiffs(result) {
-		fmt.Fprintln(out, line)
+func WaitForMatchingCollectors(ctx context.Context, expected, actual observation.Collector, collectOpts observation.CollectOptions, interval time.Duration, maxPolls int, compareOpts observation.SnapshotCompareOptions, checkFIB bool) (observation.SnapshotComparison, error) {
+	var lastResult observation.SnapshotComparison
+	var lastErr error
+	bestDiffCount := -1
+	polls := 0
+	err := poll(ctx, interval, func() (bool, error) {
+		polls++
+		result, err := observation.CompareCollectors(ctx, expected, actual, collectOpts, compareOpts)
+		if err != nil {
+			lastErr = err
+			if maxPolls > 0 && polls >= maxPolls {
+				return false, snapshotConvergenceError(lastErr, bestDiffCount)
+			}
+			return false, nil
+		}
+		lastErr = nil
+		lastResult = filterSnapshotComparison(result, checkFIB)
+		diffCount := countSnapshotDiffs(lastResult)
+		if bestDiffCount == -1 || diffCount < bestDiffCount {
+			bestDiffCount = diffCount
+		}
+		if lastResult.OK {
+			return true, nil
+		}
+		if maxPolls > 0 && polls >= maxPolls {
+			return false, snapshotConvergenceError(lastErr, bestDiffCount)
+		}
+		return false, nil
+	}, func() error {
+		return snapshotConvergenceError(lastErr, bestDiffCount)
+	})
+	if err != nil {
+		return lastResult, err
 	}
-	if !result.OK {
-		return fmt.Errorf("snapshot BGP RIB comparison found diff(s)")
-	}
-	fmt.Fprintf(out, "comparing snapshot RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expected)))
-	result = observation.CompareRoutes(expected, snapshotdomain.RIBRoutes(snap), compareOptions)
-	for _, line := range observation.FormatDiffs(result) {
-		fmt.Fprintln(out, line)
-	}
-	if !result.OK {
-		return fmt.Errorf("snapshot RIB comparison found diff(s)")
-	}
-	fmt.Fprintln(out, "snapshot RIBs match modeled paths")
-	return nil
+	return lastResult, nil
 }
 
-func compareSnapshotFIBs(snap *snapshotdomain.Snapshot, topo *model.Topology, simulator collect.Simulator, _ FIBCollector, opts observation.Options, out io.Writer) error {
-	fibNodes := topo.Nodes
-	expectedFIBs, err := collectFIBs(context.Background(), simulator, fibNodes, opts)
-	if err != nil {
-		return err
+func filterSnapshotComparison(result observation.SnapshotComparison, checkFIB bool) observation.SnapshotComparison {
+	if !checkFIB {
+		result.FIBMismatches = nil
 	}
-	expected := observation.AnalyzeComparableRoutes(topo, expectedFIBs, opts)
-	actual := observation.AnalyzeComparableRoutes(topo, snapshotdomain.FIBs(snap), opts)
-	for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actual, opts)) {
-		fmt.Fprintln(out, line)
+	result.OK = len(result.MissingNodes) == 0 &&
+		len(result.UnexpectedNodes) == 0 &&
+		len(result.MissingVRFs) == 0 &&
+		len(result.UnexpectedVRFs) == 0 &&
+		len(result.RIBMismatches) == 0 &&
+		len(result.FIBMismatches) == 0
+	return result
+}
+
+func formatSnapshotComparison(out io.Writer, result observation.SnapshotComparison, checkFIB bool) {
+	for _, node := range result.MissingNodes {
+		fmt.Fprintf(out, "missing node: %s\n", node)
 	}
-	result := observation.CompareFilterResults(expected, actual, opts)
-	for _, line := range observation.FormatFIBDiffs(result) {
-		fmt.Fprintln(out, line)
+	for _, node := range result.UnexpectedNodes {
+		fmt.Fprintf(out, "unexpected node: %s\n", node)
 	}
-	if !result.OK {
-		return fmt.Errorf("snapshot FIB comparison found diff(s)")
+	for _, vrf := range result.MissingVRFs {
+		fmt.Fprintf(out, "missing VRF: %s/%s\n", vrf.Node, vrf.VRF)
 	}
-	fmt.Fprintln(out, "snapshot FIBs match modeled forwarding entries")
-	return nil
+	for _, vrf := range result.UnexpectedVRFs {
+		fmt.Fprintf(out, "unexpected VRF: %s/%s\n", vrf.Node, vrf.VRF)
+	}
+	for _, mismatch := range result.RIBMismatches {
+		fmt.Fprintf(out, "RIB mismatch: %s/%s expected=%s actual=%s\n", mismatch.Node, mismatch.VRF, mismatch.Expected, mismatch.Actual)
+	}
+	if checkFIB {
+		for _, mismatch := range result.FIBMismatches {
+			fmt.Fprintf(out, "FIB mismatch: %s/%s expected=%s actual=%s\n", mismatch.Node, mismatch.VRF, mismatch.Expected, mismatch.Actual)
+		}
+	}
+}
+
+func snapshotConvergenceError(lastErr error, bestDiffCount int) error {
+	if lastErr != nil {
+		return fmt.Errorf("collector snapshots did not converge to modeled state; last collection error: %w", lastErr)
+	}
+	if bestDiffCount < 0 {
+		return fmt.Errorf("collector snapshots did not converge to modeled state")
+	}
+	return fmt.Errorf("collector snapshots did not converge to modeled state: best diff count %d", bestDiffCount)
+}
+
+func countSnapshotDiffs(result observation.SnapshotComparison) int {
+	return len(result.MissingNodes) + len(result.UnexpectedNodes) +
+		len(result.MissingVRFs) + len(result.UnexpectedVRFs) +
+		len(result.RIBMismatches) + len(result.FIBMismatches)
 }
 
 func collectRIBRoutes(ctx context.Context, collector RIBCollector, nodes []model.Node, opts observation.CollectOptions) ([]observation.RIBRoute, error) {
@@ -262,20 +253,6 @@ func collectRIBRoutes(ctx context.Context, collector RIBCollector, nodes []model
 		}
 	}
 	observation.SortRoutes(out)
-	return out, nil
-}
-
-func collectFIBs(ctx context.Context, collector FIBCollector, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
-	var out []observation.FIB
-	for _, node := range nodes {
-		for _, vrf := range model.NetworkInstancesForNode(node) {
-			fib, err := collector.CollectFIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, fib)
-		}
-	}
 	return out, nil
 }
 

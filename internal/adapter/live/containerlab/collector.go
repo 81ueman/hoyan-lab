@@ -51,7 +51,6 @@ func (c Collector) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkIn
 }
 
 func (c Collector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
-	vrf = model.NormalizeNetworkInstance(string(vrf))
 	nodeID := model.NodeID(node.Name)
 	n, ok := c.node(nodeID)
 	if !ok {
@@ -61,7 +60,6 @@ func (c Collector) CollectRIB(ctx context.Context, node model.Node, vrf model.Ne
 }
 
 func (c Collector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
-	vrf = model.NormalizeNetworkInstance(string(vrf))
 	n, ok := c.node(model.NodeID(node.Name))
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node.Name)

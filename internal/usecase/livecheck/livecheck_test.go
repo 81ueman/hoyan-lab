@@ -31,6 +31,16 @@ func (f *fakeRuntime) BuildLocalImages(ctx context.Context, topologyPath string,
 	return nil
 }
 
+func (f *fakeRuntime) Start(ctx context.Context, topologyPath string, topo *model.Topology, pollInterval time.Duration, out io.Writer) error {
+	f.calls = append(f.calls, "start "+topologyPath)
+	return nil
+}
+
+func (f *fakeRuntime) Stop(ctx context.Context, topologyPath string) error {
+	f.calls = append(f.calls, "destroy "+topologyPath)
+	return nil
+}
+
 func (f *fakeRuntime) Deploy(ctx context.Context, topologyPath string) error {
 	f.calls = append(f.calls, "deploy "+topologyPath)
 	return nil
@@ -112,19 +122,6 @@ func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
 	return f.routes[i], nil
 }
 
-type fakeFIBCollector struct {
-	fibs []observation.FIB
-}
-
-func (f fakeFIBCollector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
-	for _, fib := range f.fibs {
-		if fib.Node == model.NodeID(node.Name) && fib.VRF == vrf {
-			return fib, nil
-		}
-	}
-	return observation.FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
-}
-
 type fakeProber struct {
 	reachable bool
 }
@@ -133,13 +130,43 @@ func (f fakeProber) Probe(ctx context.Context, topo *model.Topology, check query
 	return f.reachable, nil
 }
 
-func deps(runtime *fakeRuntime, rib *fakeRIBCollector) Dependencies {
+func deps(runtime *fakeRuntime, collector observation.Collector) Dependencies {
 	return Dependencies{
 		Runtime:         runtime,
 		QueryLoader:     fakeQueryLoader{},
-		RIBCollector:    rib,
-		FIBCollector:    fakeFIBCollector{},
+		Collector:       collector,
 		DataplaneProber: fakeProber{reachable: true},
+	}
+}
+
+func newTestUsecase(t *testing.T, deps Dependencies) Usecase {
+	t.Helper()
+	u, err := New(deps)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return u
+}
+
+func TestNewRejectsMissingDependencies(t *testing.T) {
+	valid := deps(&fakeRuntime{}, observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}))
+	tests := []struct {
+		name string
+		deps Dependencies
+		want string
+	}{
+		{name: "runtime", deps: Dependencies{QueryLoader: valid.QueryLoader, Collector: valid.Collector, DataplaneProber: valid.DataplaneProber}, want: "runtime"},
+		{name: "query loader", deps: Dependencies{Runtime: valid.Runtime, Collector: valid.Collector, DataplaneProber: valid.DataplaneProber}, want: "query loader"},
+		{name: "collector", deps: Dependencies{Runtime: valid.Runtime, QueryLoader: valid.QueryLoader, DataplaneProber: valid.DataplaneProber}, want: "collector"},
+		{name: "dataplane prober", deps: Dependencies{Runtime: valid.Runtime, QueryLoader: valid.QueryLoader, Collector: valid.Collector}, want: "dataplane prober"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(tt.deps)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("New() error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 
@@ -167,26 +194,25 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTopology() error = %v", err)
 	}
-	nodes := topo.Nodes
 	simulator, err := collect.NewSimulator(topo)
 	if err != nil {
 		t.Fatalf("NewSimulator() error = %v", err)
 	}
-	expected, err := collectRIBRoutes(context.Background(), simulator, nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	expected, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
-		t.Fatalf("collectRIBRoutes() error = %v", err)
+		t.Fatalf("CollectSnapshot() error = %v", err)
 	}
-	rib := &fakeRIBCollector{supported: nodes, routes: [][]observation.RIBRoute{expected}}
+	collector := observation.NewSnapshotBackedCollector(expected)
 	opts := Options{
 		Topology:     "testdata/live.clab.yml",
 		Timeout:      time.Second,
 		PollInterval: time.Millisecond,
 		Out:          io.Discard,
 	}
-	if err := New(deps(rt, rib)).Run(context.Background(), opts); err != nil {
+	if err := newTestUsecase(t, deps(rt, collector)).Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if got, want := rt.calls, []string{"build testdata/live.clab.yml", "deploy testdata/live.clab.yml", "wait-containers", "wait-srlinux", "nftables", "destroy testdata/live.clab.yml"}; !reflect.DeepEqual(got, want) {
+	if got, want := rt.calls, []string{"start testdata/live.clab.yml", "destroy testdata/live.clab.yml"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("runtime calls = %v, want %v", got, want)
 	}
 }
@@ -236,16 +262,21 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 	rt := &fakeRuntime{}
-	rib := &fakeRIBCollector{supported: topo.Nodes}
 	opts := Options{Topology: topologyPath, Snapshot: snapshotPath, Offline: true, CheckFIB: false, Out: io.Discard}
-	if err := New(deps(rt, rib)).Run(context.Background(), opts); err != nil {
+	usecase, err := New(Dependencies{
+		Runtime:         rt,
+		QueryLoader:     fakeQueryLoader{},
+		Collector:       observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
+		DataplaneProber: fakeProber{reachable: true},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := usecase.Run(context.Background(), opts); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if len(rt.calls) != 0 {
 		t.Fatalf("runtime calls = %v, want none", rt.calls)
-	}
-	if rib.polls != 0 {
-		t.Fatalf("collector polls = %d, want none", rib.polls)
 	}
 }
 
@@ -408,16 +439,16 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSimulator() error = %v", err)
 	}
-	expected, err := collectRIBRoutes(context.Background(), simulator, topo.Nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	expected, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
-		t.Fatalf("collectRIBRoutes() error = %v", err)
+		t.Fatalf("CollectSnapshot() error = %v", err)
 	}
-	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observation.RIBRoute{expected}}
-	deps := deps(rt, rib)
-	deps.FIBCollector = fakeFIBCollector{fibs: []observation.FIB{{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{AFI: "ipv4", Prefix: "10.255.1.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, Action: observation.ActionReceive}}}}}
+	actual := expected
+	actual.Nodes[0].VRFs[0].FIB = observation.FIB{Node: actual.Nodes[0].Node, VRF: actual.Nodes[0].VRFs[0].VRF, Entries: []observation.FIBEntry{{AFI: "ipv4", Prefix: "10.255.1.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, Action: observation.ActionReceive}}}
+	deps := deps(rt, observation.NewSnapshotBackedCollector(actual))
 	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observation.Options{UnresolvedPolicy: observation.UnresolvedPolicyIgnore}, Out: &out}
-	err = New(deps).Run(context.Background(), opts)
-	if err == nil || !strings.Contains(err.Error(), "live FIB comparison found diff") {
+	err = newTestUsecase(t, deps).Run(context.Background(), opts)
+	if err == nil || !strings.Contains(err.Error(), "collector snapshots did not converge") {
 		t.Fatalf("Run() error = %v, want FIB diff from injected collector", err)
 	}
 }

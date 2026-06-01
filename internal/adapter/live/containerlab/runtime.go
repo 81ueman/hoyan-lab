@@ -21,6 +21,32 @@ type Runtime struct {
 	Runner liveadapter.Runner
 }
 
+func (r Runtime) Start(ctx context.Context, topologyPath string, topo *model.Topology, pollInterval time.Duration, out io.Writer) error {
+	if err := r.BuildLocalImages(ctx, topologyPath, out); err != nil {
+		return err
+	}
+	if out != nil {
+		fmt.Fprintf(out, "deploying %s\n", topologyPath)
+	}
+	if err := r.Deploy(ctx, topologyPath); err != nil {
+		return err
+	}
+	if topo == nil {
+		return nil
+	}
+	if err := r.WaitContainers(ctx, topo.Nodes, pollInterval); err != nil {
+		return err
+	}
+	if err := r.WaitSRLinuxCLI(ctx, topo.Nodes, pollInterval); err != nil {
+		return err
+	}
+	return r.ApplyNftablesPolicies(ctx, topo, out)
+}
+
+func (r Runtime) Stop(ctx context.Context, topologyPath string) error {
+	return r.Destroy(ctx, topologyPath)
+}
+
 func (r Runtime) BuildLocalImages(ctx context.Context, topologyPath string, out io.Writer) error {
 	root := filepath.Dir(topologyPath)
 	dockerfile := filepath.Join(root, "images", "frr-nftables", "Dockerfile")
