@@ -29,12 +29,16 @@ type CollectorTarget struct {
 }
 
 func newCollectorTarget(path string, typeRaw string) (CollectorTarget, error) {
+	return newCollectorTargetWithTypeHint(path, typeRaw, "--type")
+}
+
+func newCollectorTargetWithTypeHint(path string, typeRaw string, typeFlagHint string) (CollectorTarget, error) {
 	targetType, err := parseTargetType(typeRaw)
 	if err != nil {
 		return CollectorTarget{}, err
 	}
 	if targetType == "" {
-		targetType, err = inferTargetType(path)
+		targetType, err = inferTargetType(path, typeFlagHint)
 		if err != nil {
 			return CollectorTarget{}, err
 		}
@@ -59,7 +63,7 @@ func parseTargetType(raw string) (TargetType, error) {
 	}
 }
 
-func inferTargetType(path string) (TargetType, error) {
+func inferTargetType(path string, typeFlagHint string) (TargetType, error) {
 	lower := strings.ToLower(filepath.Clean(path))
 	switch {
 	case strings.HasSuffix(lower, ".json"):
@@ -70,7 +74,7 @@ func inferTargetType(path string) (TargetType, error) {
 		strings.HasSuffix(lower, ".yaml"):
 		return TargetModel, nil
 	default:
-		return "", fmt.Errorf("cannot infer collector type for %q; set --left-type, --right-type, or --type", path)
+		return "", fmt.Errorf("cannot infer collector type for %q; set %s", path, typeFlagHint)
 	}
 }
 
