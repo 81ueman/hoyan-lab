@@ -285,6 +285,12 @@ func loadLabDescriptor(labDir string) (labDescriptor, error) {
 	path := filepath.Join(labDir, "lab.yml")
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return labDescriptor{
+				Name: filepath.Base(labDir),
+				Path: filepath.Clean(labDir),
+			}, nil
+		}
 		return labDescriptor{}, err
 	}
 	var desc labDescriptor
