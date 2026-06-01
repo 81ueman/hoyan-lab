@@ -24,7 +24,7 @@ func TestRootHelpListsSubcommands(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	help := out.String()
-	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help output missing %q:\n%s", want, help)
 		}
@@ -40,7 +40,7 @@ func TestRootCommandsUseGroupedHierarchy(t *testing.T) {
 		}
 		names[child.Name()] = true
 	}
-	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent", "facts"} {
+	for _, want := range []string{"compare", "collect", "topology", "labs", "model", "intent"} {
 		if !names[want] {
 			t.Fatalf("root command missing %q; got %v", want, names)
 		}
@@ -120,49 +120,6 @@ func TestLabFlagKeepsExplicitTopology(t *testing.T) {
 	}
 	if want := filepath.Join("labs", "base-wan", "intent", "queries.yml"); queries != want {
 		t.Fatalf("queries = %q, want %q", queries, want)
-	}
-}
-
-func TestFactsLabPathResolvesShorthandAtCLIBoundary(t *testing.T) {
-	dir := t.TempDir()
-	labDir := filepath.Join(dir, "labs", "base-wan")
-	if err := os.MkdirAll(labDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	oldwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(oldwd); err != nil {
-			t.Fatalf("restore cwd: %v", err)
-		}
-	})
-
-	got, err := resolveFactsLabPath("base-wan")
-	if err != nil {
-		t.Fatalf("resolveFactsLabPath() error = %v", err)
-	}
-	if want := filepath.Join("labs", "base-wan"); got != want {
-		t.Fatalf("lab path = %q, want %q", got, want)
-	}
-}
-
-func TestFactsLabPathAcceptsDirectLabPathAtCLIBoundary(t *testing.T) {
-	labDir := filepath.Join(t.TempDir(), "custom-lab")
-	if err := os.MkdirAll(labDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-
-	got, err := resolveFactsLabPath(labDir)
-	if err != nil {
-		t.Fatalf("resolveFactsLabPath() error = %v", err)
-	}
-	if got != labDir {
-		t.Fatalf("lab path = %q, want %q", got, labDir)
 	}
 }
 
