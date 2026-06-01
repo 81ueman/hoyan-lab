@@ -88,7 +88,7 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (observation.
 		if err != nil {
 			return nil, err
 		}
-		return collectusecase.NewSimulator(topo), nil
+		return collectusecase.NewSimulator(topo)
 	case TargetClab:
 		topo, err := topology.LoadTopology(target.Path)
 		if err != nil {

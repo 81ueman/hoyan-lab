@@ -14,6 +14,7 @@ type TopologyIndex struct {
 	Adj              map[NodeID][]AdjEdge
 	LinksByEndpoints map[EndpointPair]Link
 	OriginsByPrefix  map[string]NodeID
+	NetworkInstances map[NodeID][]NetworkInstanceID
 }
 
 type AdjEdge struct {
@@ -41,6 +42,7 @@ func BuildTopologyIndex(topo *Topology) (*TopologyIndex, error) {
 		Adj:              map[NodeID][]AdjEdge{},
 		LinksByEndpoints: map[EndpointPair]Link{},
 		OriginsByPrefix:  map[string]NodeID{},
+		NetworkInstances: map[NodeID][]NetworkInstanceID{},
 	}
 	if topo == nil {
 		return idx, nil
@@ -51,6 +53,7 @@ func BuildTopologyIndex(topo *Topology) (*TopologyIndex, error) {
 			return nil, fmt.Errorf("duplicate node %q", node.Name)
 		}
 		idx.NodesByName[nodeID] = node
+		idx.NetworkInstances[nodeID] = networkInstanceIDsForNode(node)
 		for _, prefix := range node.Prefixes {
 			idx.OriginsByPrefix[prefix.String()] = nodeID
 		}
@@ -92,6 +95,17 @@ func (idx *TopologyIndex) Node(name string) (Node, bool) {
 	}
 	node, ok := idx.NodesByName[NodeID(name)]
 	return node, ok
+}
+
+func (idx *TopologyIndex) NetworkInstancesForNode(node NodeID) ([]NetworkInstanceID, bool) {
+	if idx == nil {
+		return nil, false
+	}
+	instances, ok := idx.NetworkInstances[node]
+	if !ok {
+		return nil, false
+	}
+	return append([]NetworkInstanceID(nil), instances...), true
 }
 
 func (idx *TopologyIndex) Link(name string) (Link, bool) {

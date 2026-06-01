@@ -18,7 +18,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
+	"github.com/81ueman/hoyan-lab/internal/usecase/collect"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -168,7 +168,14 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 		t.Fatalf("LoadTopology() error = %v", err)
 	}
 	nodes := topo.Nodes
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		t.Fatalf("NewSimulator() error = %v", err)
+	}
+	expected, err := collectRIBRoutes(context.Background(), simulator, nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		t.Fatalf("collectRIBRoutes() error = %v", err)
+	}
 	rib := &fakeRIBCollector{supported: nodes, routes: [][]observation.RIBRoute{expected}}
 	opts := Options{
 		Topology:     "testdata/live.clab.yml",
@@ -190,7 +197,14 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTopology() error = %v", err)
 	}
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		t.Fatalf("NewSimulator() error = %v", err)
+	}
+	expected, err := collectRIBRoutes(context.Background(), simulator, topo.Nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		t.Fatalf("collectRIBRoutes() error = %v", err)
+	}
 	hashes, err := inputhash.InputHashes(topologyPath)
 	if err != nil {
 		t.Fatalf("InputHashes() error = %v", err)
@@ -361,9 +375,16 @@ func TestCompareRIBsWithFailuresUsesFailureAwareExpectedRoutes(t *testing.T) {
 		{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")},
 	}}
 	active := []model.Node{{Name: "r2", Kind: "frr", ASN: 65002, Prefixes: model.MustPrefixes("10.1.0.0/24")}}
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodesWithFailureSet(topo, active, sim.NodeFailures("r1"))
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		t.Fatalf("NewSimulator() error = %v", err)
+	}
+	expected, err := collectRIBRoutes(context.Background(), simulator.CollectorFor(sim.NodeFailures("r1")), active, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		t.Fatalf("collectRIBRoutes() error = %v", err)
+	}
 	rib := &fakeRIBCollector{supported: active, routes: [][]observation.RIBRoute{expected}}
-	err := CompareRIBsWithFailures(context.Background(), &fakeRuntime{}, rib, topo, RIBFailureScenario{
+	err = CompareRIBsWithFailures(context.Background(), &fakeRuntime{}, rib, topo, RIBFailureScenario{
 		Name:        "node-r1",
 		Failures:    sim.NodeFailures("r1"),
 		ActiveNodes: active,
@@ -383,7 +404,14 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTopology() error = %v", err)
 	}
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, topo.Nodes)
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		t.Fatalf("NewSimulator() error = %v", err)
+	}
+	expected, err := collectRIBRoutes(context.Background(), simulator, topo.Nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		t.Fatalf("collectRIBRoutes() error = %v", err)
+	}
 	rib := &fakeRIBCollector{supported: topo.Nodes, routes: [][]observation.RIBRoute{expected}}
 	deps := deps(rt, rib)
 	deps.FIBCollector = fakeFIBCollector{fibs: []observation.FIB{{Node: "r1", VRF: "default", Entries: []observation.FIBEntry{{AFI: "ipv4", Prefix: "10.255.1.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, Action: observation.ActionReceive}}}}}

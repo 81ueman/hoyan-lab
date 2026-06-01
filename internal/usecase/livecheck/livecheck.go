@@ -14,8 +14,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
-	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
-	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
+	"github.com/81ueman/hoyan-lab/internal/usecase/collect"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
 
@@ -98,7 +97,14 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		return err
 	}
 	nodes := topo.Nodes
-	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
+	simulator, err := collect.NewSimulator(topo)
+	if err != nil {
+		return err
+	}
+	expected, err := collectRIBRoutes(ctx, simulator, nodes, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	if err != nil {
+		return err
+	}
 	expectedBGP := observation.BGPOnly(expected)
 
 	var snap *snapshotdomain.Snapshot
@@ -114,7 +120,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 			return err
 		}
 		if opts.CheckFIB {
-			if err := compareSnapshotFIBs(snap, topo, u.deps.FIBCollector, opts.FIBOptions, opts.Out); err != nil {
+			if err := compareSnapshotFIBs(snap, topo, simulator, u.deps.FIBCollector, opts.FIBOptions, opts.Out); err != nil {
 				return err
 			}
 		}
@@ -172,8 +178,12 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	}
 	if opts.CheckFIB && snap == nil {
 		fibNodes := topo.Nodes
-		expectedFIB := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, fibNodes), opts.FIBOptions)
-		actualFIB, err := fibcompare.New(u.deps.FIBCollector).Collect(deadlineCtx, fibNodes, opts.FIBOptions)
+		expectedFIBs, err := collectFIBs(deadlineCtx, simulator, fibNodes, opts.FIBOptions)
+		if err != nil {
+			return err
+		}
+		expectedFIB := observation.AnalyzeComparableRoutes(topo, expectedFIBs, opts.FIBOptions)
+		actualFIB, err := collectFIBs(deadlineCtx, u.deps.FIBCollector, fibNodes, opts.FIBOptions)
 		if err != nil {
 			return err
 		}
@@ -218,9 +228,13 @@ func compareSnapshotRIBs(snap *snapshotdomain.Snapshot, expected, expectedBGP []
 	return nil
 }
 
-func compareSnapshotFIBs(snap *snapshotdomain.Snapshot, topo *model.Topology, collector FIBCollector, opts observation.Options, out io.Writer) error {
+func compareSnapshotFIBs(snap *snapshotdomain.Snapshot, topo *model.Topology, simulator collect.Simulator, _ FIBCollector, opts observation.Options, out io.Writer) error {
 	fibNodes := topo.Nodes
-	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, fibNodes), opts)
+	expectedFIBs, err := collectFIBs(context.Background(), simulator, fibNodes, opts)
+	if err != nil {
+		return err
+	}
+	expected := observation.AnalyzeComparableRoutes(topo, expectedFIBs, opts)
 	actual := observation.AnalyzeComparableRoutes(topo, snapshotdomain.FIBs(snap), opts)
 	for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actual, opts)) {
 		fmt.Fprintln(out, line)
@@ -234,6 +248,35 @@ func compareSnapshotFIBs(snap *snapshotdomain.Snapshot, topo *model.Topology, co
 	}
 	fmt.Fprintln(out, "snapshot FIBs match modeled forwarding entries")
 	return nil
+}
+
+func collectRIBRoutes(ctx context.Context, collector RIBCollector, nodes []model.Node, opts observation.CollectOptions) ([]observation.RIBRoute, error) {
+	var out []observation.RIBRoute
+	for _, node := range nodes {
+		for _, vrf := range model.NetworkInstancesForNode(node) {
+			rib, err := collector.CollectRIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, rib.Routes...)
+		}
+	}
+	observation.SortRoutes(out)
+	return out, nil
+}
+
+func collectFIBs(ctx context.Context, collector FIBCollector, nodes []model.Node, opts observation.Options) ([]observation.FIB, error) {
+	var out []observation.FIB
+	for _, node := range nodes {
+		for _, vrf := range model.NetworkInstancesForNode(node) {
+			fib, err := collector.CollectFIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, fib)
+		}
+	}
+	return out, nil
 }
 
 func checkSnapshotHashes(topologyPath string, snap *snapshotdomain.Snapshot, policy snapshotdomain.HashPolicy, out io.Writer) error {
