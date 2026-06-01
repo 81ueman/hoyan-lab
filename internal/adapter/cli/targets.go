@@ -6,13 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	clabcollector "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	collectusecase "github.com/81ueman/hoyan-lab/internal/usecase/collect"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
+
+var newLiveRunner = func() liveadapter.Runner {
+	return liveadapter.ExecRunner{}
+}
 
 type TargetType string
 
@@ -94,7 +98,7 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (observation.
 		if err != nil {
 			return nil, err
 		}
-		runner := liveexec.ExecRunner{}
+		runner := newLiveRunner()
 		return clabcollector.NewCollector(
 			topo.Nodes,
 			runner,
