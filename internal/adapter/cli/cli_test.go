@@ -384,6 +384,42 @@ func TestSelectedLabDescriptorsDefaultsToAllLabsSorted(t *testing.T) {
 	}
 }
 
+func TestSelectedLabDescriptorsIncludesDirsWithoutLabYAML(t *testing.T) {
+	dir := t.TempDir()
+	labDir := filepath.Join(dir, "labs", "listed")
+	if err := os.MkdirAll(labDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(listed) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(labDir, "lab.yml"), []byte("name: listed\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(lab.yml) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "labs", "missing-metadata"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(missing-metadata) error = %v", err)
+	}
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	labs, err := selectedLabDescriptors(nil)
+	if err != nil {
+		t.Fatalf("selectedLabDescriptors() error = %v", err)
+	}
+	got := []string{labs[0].Name, labs[1].Name}
+	want := []string{"listed", "missing-metadata"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("labs = %v, want %v", got, want)
+	}
+}
+
 func TestVerifyStrictConfigRejectsUnsupportedStatements(t *testing.T) {
 	topologyPath, _ := writeUnsupportedConfigLab(t)
 	cmd := NewVerifyCommand()
