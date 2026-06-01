@@ -16,8 +16,8 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/domain/query"
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -195,22 +195,27 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InputHashes() error = %v", err)
 	}
-	snap := &livesnapshot.Snapshot{
-		Version:      livesnapshot.Version,
+	snap := &snapshotdomain.Snapshot{
+		Version:      snapshotdomain.Version,
 		TopologyPath: topologyPath,
 		TopologyHash: hashes.TopologyHash,
 		ConfigHashes: hashes.ConfigHashes,
 		CollectedAt:  time.Now().UTC(),
-		Nodes:        map[string]livesnapshot.NodeSnapshot{},
+		Nodes:        map[string]snapshotdomain.NodeSnapshot{},
+		Network:      observation.NetworkSnapshot{Nodes: make([]observation.NodeSnapshot, 0, len(topo.Nodes))},
 	}
 	for _, node := range topo.Nodes {
-		ns := livesnapshot.NodeSnapshot{Kind: node.Kind}
+		snap.Nodes[node.Name] = snapshotdomain.NodeSnapshot{Kind: node.Kind}
+		vrf := observation.VRFSnapshot{
+			VRF: model.NetworkInstanceDefault,
+			RIB: observation.RIB{Node: model.NodeID(node.Name), VRF: model.NetworkInstanceDefault},
+		}
 		for _, route := range expected {
 			if route.ModelInfo != nil && string(route.ModelInfo.Provenance.FromNode) == node.Name {
-				ns.BGPRIB = append(ns.BGPRIB, route)
+				vrf.RIB.Routes = append(vrf.RIB.Routes, route)
 			}
 		}
-		snap.Nodes[node.Name] = ns
+		snap.Network.Nodes = append(snap.Network.Nodes, observation.NodeSnapshot{Node: model.NodeID(node.Name), VRFs: []observation.VRFSnapshot{vrf}})
 	}
 	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
 	if err := snapshotfile.Save(snapshotPath, snap); err != nil {

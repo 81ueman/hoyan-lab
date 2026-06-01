@@ -13,8 +13,8 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 	fibcompare "github.com/81ueman/hoyan-lab/internal/usecase/fib"
-	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 	ribcompare "github.com/81ueman/hoyan-lab/internal/usecase/rib"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -23,7 +23,7 @@ type Options struct {
 	Topology       string
 	Queries        string
 	Snapshot       string
-	HashPolicy     livesnapshot.HashPolicy
+	HashPolicy     snapshotdomain.HashPolicy
 	Offline        bool
 	Timeout        time.Duration
 	PollInterval   time.Duration
@@ -64,7 +64,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		opts.Out = io.Discard
 	}
 	if opts.HashPolicy == "" {
-		opts.HashPolicy = livesnapshot.HashPolicyWarn
+		opts.HashPolicy = snapshotdomain.HashPolicyWarn
 	}
 	compareOptions := opts.CompareOptions
 	if isZeroCompareOptions(compareOptions) {
@@ -101,7 +101,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	expected := (ribcompare.ExpectedBuilder{}).BuildForNodes(topo, nodes)
 	expectedBGP := observation.BGPOnly(expected)
 
-	var snap *livesnapshot.Snapshot
+	var snap *snapshotdomain.Snapshot
 	if opts.Snapshot != "" {
 		snap, err = snapshotfile.Load(opts.Snapshot)
 		if err != nil {
@@ -196,8 +196,8 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	return nil
 }
 
-func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []observation.RIBRoute, compareOptions observation.CompareOptions, out io.Writer) error {
-	actualBGP := livesnapshot.BGPRoutes(snap)
+func compareSnapshotRIBs(snap *snapshotdomain.Snapshot, expected, expectedBGP []observation.RIBRoute, compareOptions observation.CompareOptions, out io.Writer) error {
+	actualBGP := snapshotdomain.BGPRoutes(snap)
 	fmt.Fprintf(out, "comparing snapshot BGP RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expectedBGP)))
 	result := observation.CompareRoutes(expectedBGP, actualBGP, compareOptions)
 	for _, line := range observation.FormatDiffs(result) {
@@ -207,7 +207,7 @@ func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ob
 		return fmt.Errorf("snapshot BGP RIB comparison found diff(s)")
 	}
 	fmt.Fprintf(out, "comparing snapshot RIB routes (sources: %s)\n", observation.FormatSourceSummary(observation.SourceSummary(expected)))
-	result = observation.CompareRoutes(expected, livesnapshot.AllRIBRoutes(snap), compareOptions)
+	result = observation.CompareRoutes(expected, snapshotdomain.RIBRoutes(snap), compareOptions)
 	for _, line := range observation.FormatDiffs(result) {
 		fmt.Fprintln(out, line)
 	}
@@ -218,10 +218,10 @@ func compareSnapshotRIBs(snap *livesnapshot.Snapshot, expected, expectedBGP []ob
 	return nil
 }
 
-func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, collector FIBCollector, opts observation.Options, out io.Writer) error {
+func compareSnapshotFIBs(snap *snapshotdomain.Snapshot, topo *model.Topology, collector FIBCollector, opts observation.Options, out io.Writer) error {
 	fibNodes := topo.Nodes
 	expected := observation.AnalyzeComparableRoutes(topo, fibcompare.NewExpectedBuilder().ExpectedFIBsForNodes(topo, fibNodes), opts)
-	actual := observation.AnalyzeComparableRoutes(topo, livesnapshot.FIBs(snap), opts)
+	actual := observation.AnalyzeComparableRoutes(topo, snapshotdomain.FIBs(snap), opts)
 	for _, line := range observation.FormatFIBWarnings(observation.WarningDiagnostics(actual, opts)) {
 		fmt.Fprintln(out, line)
 	}
@@ -236,12 +236,12 @@ func compareSnapshotFIBs(snap *livesnapshot.Snapshot, topo *model.Topology, coll
 	return nil
 }
 
-func checkSnapshotHashes(topologyPath string, snap *livesnapshot.Snapshot, policy livesnapshot.HashPolicy, out io.Writer) error {
-	policy, ok := livesnapshot.ParseHashPolicy(string(policy))
+func checkSnapshotHashes(topologyPath string, snap *snapshotdomain.Snapshot, policy snapshotdomain.HashPolicy, out io.Writer) error {
+	policy, ok := snapshotdomain.ParseHashPolicy(string(policy))
 	if !ok {
 		return fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")
 	}
-	if policy == livesnapshot.HashPolicyIgnore {
+	if policy == snapshotdomain.HashPolicyIgnore {
 		return nil
 	}
 	result, err := inputhash.CheckHashes(topologyPath, snap)
@@ -258,7 +258,7 @@ func checkSnapshotHashes(topologyPath string, snap *livesnapshot.Snapshot, polic
 	for _, missing := range result.Missing {
 		lines = append(lines, fmt.Sprintf("snapshot hash missing current input: %s", missing))
 	}
-	if policy == livesnapshot.HashPolicyFail {
+	if policy == snapshotdomain.HashPolicyFail {
 		return errors.New(strings.Join(lines, "; "))
 	}
 	for _, line := range lines {

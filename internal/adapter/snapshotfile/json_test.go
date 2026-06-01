@@ -8,7 +8,6 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
-	"github.com/81ueman/hoyan-lab/internal/usecase/livesnapshot"
 )
 
 func TestMarshalLoadRoundTrip(t *testing.T) {
@@ -18,13 +17,19 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 		Lab:         "unit",
 		CollectedAt: time.Date(2026, 5, 26, 1, 2, 3, 0, time.UTC),
 		Nodes: map[string]snapshotdomain.NodeSnapshot{
-			"r1": {
-				Kind: model.KindFRR,
-				BGPRIB: []observation.RIBRoute{{
-					Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
-					BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
+			"r1": {Kind: model.KindFRR},
+		},
+		Network: observation.NetworkSnapshot{
+			Nodes: []observation.NodeSnapshot{{
+				Node: "r1",
+				VRFs: []observation.VRFSnapshot{{
+					VRF: model.NetworkInstanceDefault,
+					RIB: observation.RIB{Node: "r1", VRF: model.NetworkInstanceDefault, Routes: []observation.RIBRoute{{
+						Common: observation.RIBRouteCommon{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP, Eligible: true, Best: true},
+						BGP:    &observation.BGPRIBRoute{Paths: []observation.BGPPath{{Eligible: true, Best: true}}},
+					}}},
 				}},
-			},
+			}},
 		},
 	}
 	if err := Save(path, snap); err != nil {
@@ -37,7 +42,7 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 	if loaded.Version != snapshotdomain.Version || loaded.Lab != "unit" {
 		t.Fatalf("loaded snapshot = %#v", loaded)
 	}
-	if got := livesnapshot.BGPRoutes(loaded); len(got) != 1 || got[0].Common.Prefix != "10.0.0.0/24" {
+	if got := snapshotdomain.BGPRoutes(loaded); len(got) != 1 || got[0].Common.Prefix != "10.0.0.0/24" {
 		t.Fatalf("BGPRoutes() = %#v", got)
 	}
 }
