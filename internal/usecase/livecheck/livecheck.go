@@ -20,7 +20,6 @@ import (
 
 type Options struct {
 	Topology       string
-	Queries        string
 	Snapshot       string
 	HashPolicy     snapshotdomain.HashPolicy
 	Offline        bool
@@ -46,14 +45,8 @@ func New(deps Dependencies) (Usecase, error) {
 	if deps.Runtime == nil {
 		return Usecase{}, fmt.Errorf("livecheck runtime is required")
 	}
-	if deps.QueryLoader == nil {
-		return Usecase{}, fmt.Errorf("livecheck query loader is required")
-	}
 	if deps.Collector == nil {
 		return Usecase{}, fmt.Errorf("livecheck collector is required")
-	}
-	if deps.DataplaneProber == nil {
-		return Usecase{}, fmt.Errorf("livecheck dataplane prober is required")
 	}
 	return Usecase{deps: deps}, nil
 }
@@ -78,14 +71,6 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		opts.HashPolicy = snapshotdomain.HashPolicyWarn
 	}
 	topo, _, err := topology.LoadTopologyWithOptions(opts.Topology, topology.LoadOptions{StrictConfig: opts.StrictConfig})
-	if err != nil {
-		return err
-	}
-	queriesPath := opts.Queries
-	if queriesPath == "" {
-		queriesPath = "labs/base-wan/intent/queries.yml"
-	}
-	queries, err := u.deps.QueryLoader.Load(queriesPath)
 	if err != nil {
 		return err
 	}
@@ -145,9 +130,6 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		}
 		formatSnapshotComparison(opts.Out, result, opts.CheckFIB)
 		fmt.Fprintln(opts.Out, "live collector snapshot matches modeled RIB/FIB state")
-	}
-	if err := RunDataplaneChecks(deadlineCtx, u.deps.DataplaneProber, topo, queries, opts.Out); err != nil {
-		return err
 	}
 	return nil
 }

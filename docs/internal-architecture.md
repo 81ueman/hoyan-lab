@@ -15,7 +15,6 @@ Packages should not import in the opposite direction. Domain packages model rout
 - `internal/domain/failure`: failure-domain conditions and failure-set helpers.
 - `internal/domain/symbolic`: pure symbolic expression types.
 - `internal/domain/solver`: solver-facing problem and answer types.
-- `internal/domain/query`: offline verification query schema.
 - `internal/domain/intent`: intent document and report schema.
 - `internal/domain/observation`: modeled observation rows, normalized RIB/FIB route types, parser contracts, and pure comparison/filter/format logic for RIB/FIB facts.
 - `internal/domain/routing/route`: shared simulated route/RIB entry attributes used by protocol rules and engines.
@@ -23,7 +22,7 @@ Packages should not import in the opposite direction. Domain packages model rout
 - `internal/domain/routing/ospf`: OSPF route type constants, interface/advertisement/path/SPF types, route ranking, and path helpers.
 - `internal/domain/routing/policy`: route-policy match/set logic and prefix-list, AS-path-list, and community-list evaluation.
 - `internal/engine`: control-plane and data-plane simulation orchestration. Engines decide when to apply domain protocol rules, mutate simulated RIB/FIB state, and run convergence loops; protocol law should stay in `internal/domain/routing`.
-- `internal/usecase`: application workflows that assemble engines and reports, including verify, topology build, intent evaluation, live checks, snapshots, and expected RIB/FIB derivation.
+- `internal/usecase`: application workflows that assemble engines and reports, including topology build, intent evaluation, live checks, snapshots, and expected RIB/FIB derivation.
 - `internal/adapter`: CLI, file formats, config parsers, concrete solver backends, live RIB/FIB collectors and parsers, SR Linux JSON command execution, and other boundary IO.
 
 ## Routing Logic
@@ -39,5 +38,5 @@ Control-plane convergence remains in `internal/engine/controlplane`: iterative m
 3. Move containerlab parsing into `internal/adapter/labfile` and topology assembly into `internal/usecase/topology`.
 4. Move Cobra commands under `internal/adapter/cli` and keep application orchestration in `internal/usecase`.
 5. Extract pure BGP and OSPF decision logic into `internal/domain/routing`.
-6. Move query, intent, and observation schemas into `internal/domain`, with YAML loading in `internal/adapter/*file` and evaluation/build workflows in `internal/usecase`.
+6. Move intent and observation schemas into `internal/domain`, with YAML loading in `internal/adapter/*file` and evaluation/build workflows in `internal/usecase`.
 7. Split RIB/FIB comparison into normalized observation domain packages under `internal/domain/observation/{rib,fib}`, live device collectors/parsers under `internal/adapter/live/{rib,fib}`, and expected-state usecases under `internal/usecase/{rib,fib}`.

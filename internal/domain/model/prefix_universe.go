@@ -56,30 +56,8 @@ func (e OverlappingPrefixPredicateError) Error() string {
 	return fmt.Sprintf("overlapping prefix predicates are not supported yet: %s overlaps %s", e.Candidate.String(), e.Existing.String())
 }
 
-type PrefixQuerySource interface {
-	RoutePrefixQueries() []RoutePrefixQuery
-	PacketDestinationQueries() []DestinationQuery
-	FailureDestinationQueries() []FailureDestinationQuery
-}
-
-type RoutePrefixQuery struct {
-	Name   string
-	Prefix Prefix
-}
-
-type DestinationQuery struct {
-	Name string
-	To   string
-}
-
-type FailureDestinationQuery struct {
-	Name   string
-	To     string
-	Prefix Prefix
-}
-
-func CollectPrefixPredicates(topo *Topology, queries PrefixQuerySource) []PrefixSet {
-	predicates := CollectPrefixPredicateMetadata(topo, queries)
+func CollectPrefixPredicates(topo *Topology) []PrefixSet {
+	predicates := CollectPrefixPredicateMetadata(topo)
 	out := make([]PrefixSet, 0, len(predicates))
 	for _, predicate := range predicates {
 		out = append(out, predicate.Set)
@@ -87,7 +65,7 @@ func CollectPrefixPredicates(topo *Topology, queries PrefixQuerySource) []Prefix
 	return out
 }
 
-func CollectPrefixPredicateMetadata(topo *Topology, queries PrefixQuerySource) []PrefixPredicate {
+func CollectPrefixPredicateMetadata(topo *Topology) []PrefixPredicate {
 	var out []PrefixPredicate
 	add := func(source string, kind PrefixPredicateKind, set PrefixSet) {
 		if set == nil {
@@ -133,27 +111,6 @@ func CollectPrefixPredicateMetadata(topo *Topology, queries PrefixQuerySource) [
 				if rule.Match.SrcSet != nil {
 					add("acl:"+acl.Name+":src", PredicateAddressSpace, rule.Match.SrcSet)
 				}
-			}
-		}
-	}
-	if queries != nil {
-		for _, check := range queries.RoutePrefixQueries() {
-			if !check.Prefix.IsZero() {
-				add("query-route:"+check.Name, PredicateNLRI, ExactPrefixSet{Prefix: check.Prefix})
-			}
-		}
-		for _, check := range queries.PacketDestinationQueries() {
-			for _, set := range destinationPrefixSets(topo, check.To) {
-				add("query-packet:"+check.Name, PredicateAddressSpace, set)
-			}
-		}
-		for _, check := range queries.FailureDestinationQueries() {
-			if !check.Prefix.IsZero() {
-				add("query-failure:"+check.Name, PredicateAddressSpace, ExactPrefixSet{Prefix: check.Prefix})
-				continue
-			}
-			for _, set := range destinationPrefixSets(topo, check.To) {
-				add("query-failure:"+check.Name, PredicateAddressSpace, set)
 			}
 		}
 	}
@@ -232,8 +189,8 @@ func BuildPrefixUniverseFromPredicates(predicates []PrefixPredicate) (PrefixUniv
 	return universe, nil
 }
 
-func NewPrefixUniverse(topo *Topology, queries PrefixQuerySource) (PrefixUniverse, error) {
-	return BuildPrefixUniverseFromPredicates(CollectPrefixPredicateMetadata(topo, queries))
+func NewPrefixUniverse(topo *Topology) (PrefixUniverse, error) {
+	return BuildPrefixUniverseFromPredicates(CollectPrefixPredicateMetadata(topo))
 }
 
 func (u PrefixUniverse) ClassForPrefix(prefix Prefix) (PrefixClassID, bool) {
@@ -265,23 +222,6 @@ func (u PrefixUniverse) PredicatesForClass(id PrefixClassID) []PrefixPredicateID
 		}
 	}
 	return nil
-}
-
-func destinationPrefixSets(topo *Topology, destination string) []PrefixSet {
-	if topo == nil || destination == "" {
-		return nil
-	}
-	node, ok := topo.Node(destination)
-	if !ok {
-		return nil
-	}
-	out := make([]PrefixSet, 0, len(node.Prefixes))
-	for _, prefix := range node.Prefixes {
-		if !prefix.IsZero() {
-			out = append(out, ExactPrefixSet{Prefix: prefix})
-		}
-	}
-	return out
 }
 
 func normalizedPrefixPredicateKind(kind PrefixPredicateKind) PrefixPredicateKind {

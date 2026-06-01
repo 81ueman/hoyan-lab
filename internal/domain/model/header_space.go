@@ -49,27 +49,7 @@ func (c PacketClass) Spec() PacketSpec {
 	}
 }
 
-type HeaderQuerySource interface {
-	PacketHeaderQueries() []HeaderQuery
-	FailureHeaderQueries() []FailureHeaderQuery
-}
-
-type HeaderQuery struct {
-	Name     string
-	To       string
-	Protocol string
-	DstPorts []int
-}
-
-type FailureHeaderQuery struct {
-	Name     string
-	To       string
-	Prefix   Prefix
-	Protocol string
-	DstPorts []int
-}
-
-func CollectHeaderPredicates(topo *Topology, queries HeaderQuerySource) []HeaderPredicate {
+func CollectHeaderPredicates(topo *Topology) []HeaderPredicate {
 	var out []HeaderPredicate
 	add := func(predicate HeaderPredicate) {
 		if predicate.Protocol == "" &&
@@ -126,50 +106,11 @@ func CollectHeaderPredicates(topo *Topology, queries HeaderQuerySource) []Header
 			}
 		}
 	}
-	if queries != nil {
-		for _, check := range queries.PacketHeaderQueries() {
-			for _, port := range check.DstPorts {
-				predicate := HeaderPredicate{
-					Source:   "query-packet:" + check.Name,
-					Protocol: check.Protocol,
-					DstPort:  ExactPort(port),
-				}
-				for _, set := range destinationPrefixSets(topo, check.To) {
-					predicate.DstSet = set
-					add(predicate)
-				}
-				if predicate.DstSet == nil {
-					add(predicate)
-				}
-			}
-		}
-		for _, check := range queries.FailureHeaderQueries() {
-			for _, port := range check.DstPorts {
-				predicate := HeaderPredicate{
-					Source:   "query-failure:" + check.Name,
-					Protocol: check.Protocol,
-					DstPort:  ExactPort(port),
-				}
-				if !check.Prefix.IsZero() {
-					predicate.DstSet = ExactPrefixSet{Prefix: check.Prefix}
-					add(predicate)
-					continue
-				}
-				for _, set := range destinationPrefixSets(topo, check.To) {
-					predicate.DstSet = set
-					add(predicate)
-				}
-				if predicate.DstSet == nil {
-					add(predicate)
-				}
-			}
-		}
-	}
 	return out
 }
 
-func NewHeaderSpace(topo *Topology, queries HeaderQuerySource, universe PrefixUniverse) HeaderSpace {
-	return BuildHeaderSpaceFromPredicates(universe, CollectHeaderPredicates(topo, queries))
+func NewHeaderSpace(topo *Topology, universe PrefixUniverse) HeaderSpace {
+	return BuildHeaderSpaceFromPredicates(universe, CollectHeaderPredicates(topo))
 }
 
 func aclByName(acls []ACL, node, name string) (ACL, bool) {

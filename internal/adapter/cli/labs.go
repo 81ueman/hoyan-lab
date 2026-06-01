@@ -12,7 +12,6 @@ import (
 
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
-	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
@@ -22,12 +21,10 @@ import (
 
 const (
 	labTopologyFile     = "hoyan.clab.yml"
-	labQueriesPath      = "intent/queries.yml"
 	labIntentPath       = "intent/hoyan.yml"
 	defaultLabsDir      = "labs"
 	defaultLabDir       = "labs/base-wan"
 	defaultTopologyPath = defaultLabDir + "/" + labTopologyFile
-	defaultQueriesPath  = defaultLabDir + "/" + labQueriesPath
 )
 
 type labDescriptor struct {
@@ -152,7 +149,6 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 	var failures []string
 	for _, lab := range labs {
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
-		queriesPath := filepath.Join(lab.Path, labQueriesPath)
 		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
 		topo, _, err := topology.LoadTopologyWithOptions(topologyPath, topology.LoadOptions{StrictConfig: opts.strictConfig})
 		if err != nil {
@@ -164,17 +160,14 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			observation.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
 		)
 		usecase, err := livecheck.New(livecheck.Dependencies{
-			Runtime:         env,
-			QueryLoader:     queryfile.Loader{},
-			Collector:       env,
-			DataplaneProber: env,
+			Runtime:   env,
+			Collector: env,
 		})
 		if err != nil {
 			return err
 		}
 		err = usecase.Run(ctx, livecheck.Options{
 			Topology:      topologyPath,
-			Queries:       queriesPath,
 			StrictConfig:  opts.strictConfig,
 			Timeout:       opts.timeout,
 			PollInterval:  opts.pollInterval,
@@ -253,9 +246,6 @@ func runLabsDescribe(raw string, out io.Writer) error {
 	writeStringList(out, "checks", desc.Checks)
 	writeStringList(out, "features", desc.Features)
 	fmt.Fprintf(out, "topology: %s\n", filepath.Join(desc.Path, labTopologyFile))
-	if _, err := os.Stat(filepath.Join(desc.Path, labQueriesPath)); err == nil {
-		fmt.Fprintf(out, "queries: %s\n", filepath.Join(desc.Path, labQueriesPath))
-	}
 	return nil
 }
 

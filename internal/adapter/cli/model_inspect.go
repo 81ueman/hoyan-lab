@@ -10,10 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/queryfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/domain/query"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
@@ -27,7 +25,6 @@ const (
 type modelInspectOptions struct {
 	labPath          string
 	topologyPath     string
-	queriesPath      string
 	node             string
 	prefix           string
 	format           string
@@ -213,7 +210,7 @@ func NewModelPrefixClassesCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelPrefixClasses(cmd.Context(), opts, cmd.OutOrStdout())
@@ -240,7 +237,7 @@ func NewModelPacketClassesCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, &opts.queriesPath); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelPacketClasses(cmd.Context(), opts, cmd.OutOrStdout())
@@ -249,7 +246,6 @@ func NewModelPacketClassesCommand() *cobra.Command {
 	addLabFlag(cmd, &opts.labPath)
 	addTopologyFlag(cmd, &opts.topologyPath, "containerlab topology YAML")
 	cmd.Flags().BoolVar(&opts.strictConfig, "strict-config", false, "fail on unsupported config parser statements")
-	addQueriesFlag(cmd, &opts.queriesPath, "query YAML for packet predicates")
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", "destination prefix overlap filter")
 	cmd.Flags().StringVar(&opts.protocol, "protocol", "", "protocol filter")
 	cmd.Flags().IntVar(&opts.dstPort, "dst-port", 0, "destination transport port filter")
@@ -272,7 +268,7 @@ func NewModelRIBCommand() *cobra.Command {
 			if len(args) == 1 {
 				opts.protocol = args[0]
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelRIB(cmd.Context(), opts, cmd.OutOrStdout())
@@ -293,7 +289,7 @@ func NewModelFIBCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelFIB(cmd.Context(), opts, cmd.OutOrStdout())
@@ -314,7 +310,7 @@ func NewModelSymbolicPacketCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelSymbolicPacket(cmd.Context(), opts, cmd.OutOrStdout())
@@ -343,7 +339,7 @@ func NewModelSymbolicRouteCommand() *cobra.Command {
 			if len(args) > 0 {
 				return fmt.Errorf("unexpected arguments: %s", strings.Join(args, " "))
 			}
-			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath, nil); err != nil {
+			if err := resolveLabInputs(cmd, opts.labPath, &opts.topologyPath); err != nil {
 				return err
 			}
 			return runModelSymbolicRoute(cmd.Context(), opts, cmd.OutOrStdout())
@@ -473,10 +469,6 @@ func runModelPacketClasses(_ context.Context, opts modelInspectOptions, out io.W
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	queries, err := queryfile.Load(opts.queriesPath)
-	if err != nil {
-		return ExitError{Code: 2, Err: err}
-	}
 	var filter model.PrefixSet
 	var request []model.PrefixPredicate
 	if opts.prefix != "" {
@@ -487,11 +479,11 @@ func runModelPacketClasses(_ context.Context, opts modelInspectOptions, out io.W
 		filter = model.ExactPrefixSet{Prefix: prefix}
 		request = append(request, model.PrefixPredicate{Source: "request:packet-classes:" + prefix.String(), Set: filter})
 	}
-	universe, err := modelPrefixUniverseWithQueries(topo, queries, graph, request)
+	universe, err := modelPrefixUniverse(topo, graph, request)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	headerSpace := model.NewHeaderSpace(topo, queries, universe)
+	headerSpace := model.NewHeaderSpace(topo, universe)
 	rows := collectPacketClassRows(headerSpace, filter, opts.protocol, opts.dstPort)
 	switch opts.format {
 	case modelFormatTable:
@@ -624,11 +616,7 @@ func ptr[T any](v T) *T {
 }
 
 func modelPrefixUniverse(topo *model.Topology, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
-	return modelPrefixUniverseWithQueries(topo, nil, graph, request)
-}
-
-func modelPrefixUniverseWithQueries(topo *model.Topology, queries *query.Queries, graph *sim.Graph, request []model.PrefixPredicate) (model.PrefixUniverse, error) {
-	predicates := model.CollectPrefixPredicateMetadata(topo, queries)
+	predicates := model.CollectPrefixPredicateMetadata(topo)
 	predicates = append(predicates, sim.CollectRIBPrefixPredicates(graph)...)
 	predicates = append(predicates, sim.CollectFIBPrefixPredicates(graph)...)
 	predicates = append(predicates, request...)

@@ -6,23 +6,19 @@ import (
 	"time"
 
 	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
-	livedataplane "github.com/81ueman/hoyan-lab/internal/adapter/live/dataplane"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
-	"github.com/81ueman/hoyan-lab/internal/domain/query"
 )
 
 type Environment struct {
 	runtime   Runtime
 	collector Collector
-	prober    livedataplane.DockerProber
 }
 
 func NewEnvironment(nodes []model.Node, runner liveadapter.Runner, fibOptions observation.Options) Environment {
 	return Environment{
 		runtime:   Runtime{Runner: runner},
 		collector: NewCollector(nodes, runner, fibOptions),
-		prober:    livedataplane.DockerProber{Runner: runner},
 	}
 }
 
@@ -64,8 +60,4 @@ func (e Environment) CollectRIB(ctx context.Context, node model.Node, vrf model.
 
 func (e Environment) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
 	return e.collector.CollectFIB(ctx, node, vrf, opts)
-}
-
-func (e Environment) Probe(ctx context.Context, topo *model.Topology, check query.PacketCheck) (bool, error) {
-	return e.prober.Probe(ctx, topo, check)
 }
