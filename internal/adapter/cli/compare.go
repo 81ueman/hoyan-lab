@@ -61,11 +61,11 @@ type compareOptions struct {
 }
 
 func runCompare(ctx context.Context, opts compareOptions, out io.Writer) error {
-	leftTarget, err := newCollectorTarget(opts.leftPath, opts.leftType)
+	leftTarget, err := newCollectorTargetWithTypeHint(opts.leftPath, opts.leftType, "--left-type, --right-type, or --type")
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	rightTarget, err := newCollectorTarget(opts.rightPath, opts.rightType)
+	rightTarget, err := newCollectorTargetWithTypeHint(opts.rightPath, opts.rightType, "--left-type, --right-type, or --type")
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}

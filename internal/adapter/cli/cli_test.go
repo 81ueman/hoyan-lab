@@ -244,6 +244,24 @@ func TestTargetTypeParsingAndInference(t *testing.T) {
 	}
 }
 
+func TestCollectorTargetInferenceErrorHints(t *testing.T) {
+	_, err := newCollectorTarget("target.txt", "")
+	if err == nil {
+		t.Fatalf("newCollectorTarget() error = nil")
+	}
+	if got, want := err.Error(), `cannot infer collector type for "target.txt"; set --type`; got != want {
+		t.Fatalf("newCollectorTarget() error = %q, want %q", got, want)
+	}
+
+	_, err = newCollectorTargetWithTypeHint("target.txt", "", "--left-type, --right-type, or --type")
+	if err == nil {
+		t.Fatalf("newCollectorTargetWithTypeHint() error = nil")
+	}
+	if got, want := err.Error(), `cannot infer collector type for "target.txt"; set --left-type, --right-type, or --type`; got != want {
+		t.Fatalf("newCollectorTargetWithTypeHint() error = %q, want %q", got, want)
+	}
+}
+
 func TestCompareSnapshotWithSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	snapshotPath := filepath.Join(dir, "snapshot.json")
