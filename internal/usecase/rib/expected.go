@@ -44,7 +44,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 		if ctx.NodeFailed(model.NodeID(n.Name)) {
 			continue
 		}
-		for vrf, table := range g.RIBTables(n.Name) {
+		for vrf, table := range g.RIBTables(model.NodeID(n.Name)) {
 			for prefix, rib := range table {
 				routesByProtocol := map[string][]sim.RIBEntry{}
 				for _, route := range rib {
@@ -70,7 +70,7 @@ func expected(topo *model.Topology, allowed map[string]bool, failures sim.Failur
 						continue
 					}
 					_ = vrf
-					out = append(out, expectedRoute(idx, n, prefix, protocol, entries, ctx))
+					out = append(out, expectedRoute(idx, n, prefix.String(), protocol, entries, ctx))
 				}
 			}
 		}

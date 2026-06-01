@@ -9,35 +9,36 @@ import (
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
-func testFIB(raw map[string][]FIBEntry) map[string]map[string][]FIBEntry {
-	out := map[string]map[string][]FIBEntry{}
+func testFIB(raw map[string][]FIBEntry) FIBTable {
+	out := FIBTable{}
 	for node, entries := range raw {
-		out[node] = map[string][]FIBEntry{string(model.NetworkInstanceDefault): entries}
+		out[model.NodeID(node)] = map[model.NetworkInstanceID][]FIBEntry{model.NetworkInstanceDefault: entries}
 	}
 	return out
 }
 
 func TestRouteReachableUsesSelectedCondition(t *testing.T) {
+	prefix := model.MustPrefix("10.0.0.0/24")
 	idx, err := model.BuildTopologyIndex(&model.Topology{
 		Nodes: []model.Node{
 			{Name: "a", Kind: model.KindFRR},
-			{Name: "b", Kind: model.KindFRR, Prefixes: []model.Prefix{model.MustPrefix("10.0.0.0/24")}},
+			{Name: "b", Kind: model.KindFRR, Prefixes: []model.Prefix{prefix}},
 		},
 		Links: []model.Link{{Name: "a-b", A: "a", B: "b", Cost: 10}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
-		"a": {string(model.NetworkInstanceDefault): {"10.0.0.0/24": {{
-			NLRI:              domainroute.NLRI{Prefix: model.MustPrefix("10.0.0.0/24")},
+	rib := domainroute.RIBTable{
+		"a": {model.NetworkInstanceDefault: {prefix: {{
+			NLRI:              domainroute.NLRI{Prefix: prefix},
 			Provenance:        domainroute.Provenance{PathNodes: []string{"b", "a"}, PathLinks: []string{"a-b"}},
 			SelectedCond:      failure.LinkVar("a-b"),
 			RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
 			ForwardingNextHop: domainroute.NextHop{Node: "b"},
 		}}}},
 	}
-	e := NewEngine(idx, rib, map[string]map[string][]FIBEntry{})
+	e := NewEngine(idx, rib, FIBTable{})
 	path, ok := e.RouteReachable("a", "10.0.0.0/24", failure.None())
 	if !ok || path.Cost != 10 || path.Nodes[0] != "a" || path.Nodes[1] != "b" {
 		t.Fatalf("RouteReachable() = %#v %v", path, ok)
@@ -790,10 +791,10 @@ func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	frrRIB := map[string]map[string]map[string][]domainroute.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
-	frrFIB := map[string]map[string][]FIBEntry{}
+	frrRIB := domainroute.RIBTable{"rx": {model.NetworkInstanceDefault: {prefix: append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
+	frrFIB := FIBTable{}
 	NewEngine(frrIdx, frrRIB, frrFIB).DeriveFIB()
-	if got := len(frrFIB["rx"][string(model.NetworkInstanceDefault)]); got != 1 {
+	if got := len(frrFIB["rx"][model.NetworkInstanceDefault]); got != 1 {
 		t.Fatalf("FRR FIB entries = %d, want equivalent route collapsed to 1", got)
 	}
 
@@ -802,13 +803,13 @@ func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	genericRIB := map[string]map[string]map[string][]domainroute.RIBEntry{"rx": {string(model.NetworkInstanceDefault): {prefix.String(): append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
-	genericFIB := map[string]map[string][]FIBEntry{}
+	genericRIB := domainroute.RIBTable{"rx": {model.NetworkInstanceDefault: {prefix: append([]domainroute.RIBEntry(nil), equivalentRoutes...)}}}
+	genericFIB := FIBTable{}
 	NewEngine(genericIdx, genericRIB, genericFIB).DeriveFIB()
-	if got := len(genericFIB["rx"][string(model.NetworkInstanceDefault)]); got != 2 {
+	if got := len(genericFIB["rx"][model.NetworkInstanceDefault]); got != 2 {
 		t.Fatalf("generic FIB entries = %d, want equivalent routes kept", got)
 	}
-	genericEntries := genericFIB["rx"][string(model.NetworkInstanceDefault)]
+	genericEntries := genericFIB["rx"][model.NetworkInstanceDefault]
 	if genericEntries[0].Rank != genericEntries[1].Rank || genericEntries[0].GroupID == "" || genericEntries[0].GroupID != genericEntries[1].GroupID {
 		t.Fatalf("generic equivalent routes should share rank/group: %#v", genericEntries)
 	}
@@ -825,18 +826,18 @@ func TestDeriveFIBMarksAddressOnlyNextHopUnresolved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fib := map[string]map[string][]FIBEntry{}
-	NewEngine(idx, map[string]map[string]map[string][]domainroute.RIBEntry{
-		"rx": {string(model.NetworkInstanceDefault): {prefix.String(): {{
+	fib := FIBTable{}
+	NewEngine(idx, domainroute.RIBTable{
+		"rx": {model.NetworkInstanceDefault: {prefix: {{
 			NLRI:              domainroute.NLRI{Prefix: prefix},
 			ForwardingNextHop: domainroute.NextHop{Addr: "192.0.2.1"},
 			SelectedCond:      failure.True(),
 		}}}},
 	}, fib).DeriveFIB()
-	if got := len(fib["rx"][string(model.NetworkInstanceDefault)]); got != 1 {
+	if got := len(fib["rx"][model.NetworkInstanceDefault]); got != 1 {
 		t.Fatalf("FIB entries = %d, want 1", got)
 	}
-	entry := fib["rx"][string(model.NetworkInstanceDefault)][0]
+	entry := fib["rx"][model.NetworkInstanceDefault][0]
 	if entry.NextHop != "" || entry.NextHopAddress != "192.0.2.1" || entry.ResolutionStatus != NextHopResolutionUnresolvedRecursive {
 		t.Fatalf("FIB next-hop resolution = %#v, want unresolved address-only next-hop", entry)
 	}
@@ -847,9 +848,9 @@ func TestDeriveFIBMarksBlackholeRouteAsDiscard(t *testing.T) {
 	idx := mustTopologyIndex(&model.Topology{
 		Nodes: []model.Node{{Name: "src", Kind: model.KindFRR}},
 	})
-	rib := map[string]map[string]map[string][]domainroute.RIBEntry{
+	rib := domainroute.RIBTable{
 		"src": {
-			string(model.NetworkInstanceDefault): {prefix.String(): {
+			model.NetworkInstanceDefault: {prefix: {
 				{
 					NLRI:         domainroute.NLRI{Prefix: prefix},
 					SourceKind:   model.RouteSourceBlackhole,
@@ -865,12 +866,12 @@ func TestDeriveFIBMarksBlackholeRouteAsDiscard(t *testing.T) {
 			}},
 		},
 	}
-	fib := map[string]map[string][]FIBEntry{}
+	fib := FIBTable{}
 	NewEngine(idx, rib, fib).DeriveFIB()
-	if len(fib["src"][string(model.NetworkInstanceDefault)]) != 1 {
+	if len(fib["src"][model.NetworkInstanceDefault]) != 1 {
 		t.Fatalf("FIB entries = %#v, want local blackhole selected over same-prefix BGP", fib["src"])
 	}
-	entry := fib["src"][string(model.NetworkInstanceDefault)][0]
+	entry := fib["src"][model.NetworkInstanceDefault][0]
 	if !entry.Discard || entry.SourceKind != model.RouteSourceBlackhole || entry.Interface != "Null0" {
 		t.Fatalf("blackhole FIB entry = %#v, want discard blackhole via Null0", entry)
 	}

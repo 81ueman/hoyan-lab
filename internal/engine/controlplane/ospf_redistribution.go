@@ -42,7 +42,7 @@ func (e *Engine) ospfRedistributionCandidates(node model.Node, vrf model.Network
 			out = append(out, entry.Normalize())
 		}
 	case model.RouteSourceBGP:
-		byPrefix := e.rib[node.Name][string(vrf)]
+		byPrefix := e.rib[model.NodeID(node.Name)][vrf]
 		for _, routes := range byPrefix {
 			for _, route := range routes {
 				route = route.Normalize()

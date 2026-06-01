@@ -107,7 +107,7 @@ func (e *Engine) SymbolicLookupFIBVRF(node, vrf, dst string) []SymbolicFIBCandid
 	if err != nil {
 		return nil
 	}
-	entries := matchingFIBEntries(e.fib[node][string(model.NormalizeNetworkInstance(vrf))], ip)
+	entries := matchingFIBEntries(e.fib[model.NodeID(node)][model.NormalizeNetworkInstance(vrf)], ip)
 	return e.symbolicLookupFIBEntries(entries)
 }
 
@@ -116,7 +116,7 @@ func (e *Engine) SymbolicLookupFIBForPrefixSet(node string, dst model.PrefixSet)
 }
 
 func (e *Engine) SymbolicLookupFIBForPrefixSetVRF(node, vrf string, dst model.PrefixSet) []SymbolicFIBCandidate {
-	entries := matchingFIBEntriesForPrefixSet(e.fib[node][string(model.NormalizeNetworkInstance(vrf))], dst)
+	entries := matchingFIBEntriesForPrefixSet(e.fib[model.NodeID(node)][model.NormalizeNetworkInstance(vrf)], dst)
 	return e.symbolicLookupFIBEntries(entries)
 }
 
@@ -177,7 +177,7 @@ func (e *Engine) SymbolicRouteReachabilityVRF(from, vrf, prefix string) Symbolic
 		result.Reason = "source node not found"
 		return result
 	}
-	routes := e.rib[from][string(model.NormalizeNetworkInstance(vrf))][pfx.String()]
+	routes := e.rib[model.NodeID(from)][model.NormalizeNetworkInstance(vrf)][pfx]
 	paths := make([]SymbolicRoutePath, 0, len(routes))
 	conds := make([]failure.Cond, 0, len(routes))
 	for _, route := range routes {
