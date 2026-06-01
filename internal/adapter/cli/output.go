@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
@@ -40,12 +39,4 @@ func writePrefixUniverseStats(out io.Writer, stats model.PrefixUniverseStats) {
 	for _, category := range categories {
 		fmt.Fprintf(out, "  %s: %d\n", category, stats.PredicateSources[category])
 	}
-}
-
-func formatClassIDs(ids []model.PrefixClassID) string {
-	parts := make([]string, 0, len(ids))
-	for _, id := range ids {
-		parts = append(parts, fmt.Sprintf("pc-%d", id))
-	}
-	return strings.Join(parts, ", ")
 }

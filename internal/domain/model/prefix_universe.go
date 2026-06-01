@@ -224,23 +224,6 @@ func (u PrefixUniverse) PredicatesForClass(id PrefixClassID) []PrefixPredicateID
 	return nil
 }
 
-func destinationPrefixSets(topo *Topology, destination string) []PrefixSet {
-	if topo == nil || destination == "" {
-		return nil
-	}
-	node, ok := topo.Node(destination)
-	if !ok {
-		return nil
-	}
-	out := make([]PrefixSet, 0, len(node.Prefixes))
-	for _, prefix := range node.Prefixes {
-		if !prefix.IsZero() {
-			out = append(out, ExactPrefixSet{Prefix: prefix})
-		}
-	}
-	return out
-}
-
 func normalizedPrefixPredicateKind(kind PrefixPredicateKind) PrefixPredicateKind {
 	if kind == PredicateNLRI {
 		return PredicateNLRI
