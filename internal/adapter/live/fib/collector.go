@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/live/device"
 	"github.com/81ueman/hoyan-lab/internal/adapter/srlinuxjson"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
@@ -27,12 +28,12 @@ func (c LiveCollector) CollectFIB(ctx context.Context, node model.Node, vrf mode
 	if len(unsupported) > 0 {
 		return FIB{}, UnsupportedNodesError{Nodes: unsupported}
 	}
-	collectors := fibCollectorsByID()
+	collectors := fibCollectorsByID(c.runner)
 	collectorID, ok := model.ProfileFor(node.Kind).LiveProfile().FIBCollector()
 	if !ok || collectors[collectorID] == nil {
 		return FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
 	}
-	fib, err := collectors[collectorID].CollectFIB(ctx, c.runner, node, vrf)
+	fib, err := collectors[collectorID].CollectFIB(ctx, node, vrf)
 	if err != nil {
 		return FIB{}, err
 	}
@@ -41,7 +42,7 @@ func (c LiveCollector) CollectFIB(ctx context.Context, node model.Node, vrf mode
 
 func unsupportedNodes(nodes []model.Node) []string {
 	var out []string
-	collectors := fibCollectorsByID()
+	collectors := fibCollectorsByID(nil)
 	for _, n := range nodes {
 		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().FIBCollector()
 		if !ok || collectors[collectorID] == nil {
@@ -52,29 +53,36 @@ func unsupportedNodes(nodes []model.Node) []string {
 	return out
 }
 
-type frrCollector struct{}
-type ceosCollector struct{}
-type srlinuxCollector struct{}
+type frrCollector struct{ device.VendorCollector }
+type ceosCollector struct{ device.VendorCollector }
+type srlinuxCollector struct{ device.VendorCollector }
 
 type collector interface {
-	CollectFIB(ctx context.Context, runner Runner, node model.Node, vrf model.NetworkInstanceID) (FIB, error)
+	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID) (FIB, error)
 }
 
-func fibCollectorsByID() map[model.LiveCollectorID]collector {
-	return map[model.LiveCollectorID]collector{
-		model.LiveCollectorFRR:     frrCollector{},
-		model.LiveCollectorCEOS:    ceosCollector{},
-		model.LiveCollectorSRLinux: srlinuxCollector{},
-	}
+func fibCollectorsByID(runner Runner) map[model.LiveCollectorID]collector {
+	return device.NewRegistry[collector](runner, func(id model.LiveCollectorID, base device.VendorCollector) collector {
+		switch id {
+		case model.LiveCollectorFRR:
+			return frrCollector{VendorCollector: base}
+		case model.LiveCollectorCEOS:
+			return ceosCollector{VendorCollector: base}
+		case model.LiveCollectorSRLinux:
+			return srlinuxCollector{VendorCollector: base}
+		default:
+			return nil
+		}
+	})
 }
 
-func (frrCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	fib := FIB{Node: model.NodeID(n.Name), VRF: vrf}
 	containerName := n.RuntimeName()
 	if vrf == model.NetworkInstanceDefault {
 		for _, table := range []string{"main", "local"} {
-			data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "route", "show", "table", table)
+			data, err := c.Exec.Exec(ctx, containerName, "ip", "-j", "route", "show", "table", table)
 			if err != nil {
 				return FIB{}, fmt.Errorf("docker exec -i %s ip -j route show table %s: %w", containerName, table, err)
 			}
@@ -87,7 +95,7 @@ func (frrCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node,
 		SortRoutes(fib.Entries)
 		return fib, nil
 	}
-	data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "ip", "-j", "route", "show", "vrf", string(vrf))
+	data, err := c.Exec.Exec(ctx, containerName, "ip", "-j", "route", "show", "vrf", string(vrf))
 	if err != nil {
 		return FIB{}, fmt.Errorf("docker exec -i %s ip -j route show vrf %s: %w", containerName, vrf, err)
 	}
@@ -100,10 +108,10 @@ func (frrCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node,
 	return fib, nil
 }
 
-func (ceosCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	containerName := n.RuntimeName()
-	data, err := runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
+	data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 	if err != nil {
 		return FIB{}, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
 	}
@@ -114,11 +122,11 @@ func (ceosCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node
 	return fibByVRF(fibs, model.NodeID(n.Name), vrf), nil
 }
 
-func (srlinuxCollector) CollectFIB(ctx context.Context, runner Runner, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	containerName := n.RuntimeName()
 	ni := string(vrf)
-	data, err := srlinuxjson.ExecJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+	data, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 	if err != nil {
 		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
 	}
@@ -130,7 +138,7 @@ func (srlinuxCollector) CollectFIB(ctx context.Context, runner Runner, n model.N
 		if !srlinuxNeedsRouteDetail(routes[i]) {
 			continue
 		}
-		detail, err := srlinuxjson.ExecJSON(ctx, runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+		detail, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
 		if err != nil {
 			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", containerName, ni, routes[i].Prefix, err)
 		}

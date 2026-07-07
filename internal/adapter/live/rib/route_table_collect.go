@@ -13,11 +13,11 @@ func (c frrCollector) collectRouteTableRoutes(ctx context.Context, nodes []model
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip route vrf all json")
+		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip route vrf all json")
 		if err != nil {
 			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip route vrf all json", err)
 		}
-		ospfData, ospfErr := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip ospf route json")
+		ospfData, ospfErr := c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip ospf route json")
 		if ospfErr != nil && strings.Contains(string(ospfData), "ospfd is not running") {
 			ospfData = nil
 		} else if ospfErr != nil {
@@ -37,7 +37,7 @@ func (c ceosCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
+		data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 		if err != nil {
 			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
 		}
@@ -56,7 +56,7 @@ func (c srlinuxCollector) collectRouteTableRoutes(ctx context.Context, nodes []m
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			data, err := RunSRLinuxJSON(ctx, c.runner, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+			data, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 			if err != nil {
 				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
 			}
@@ -76,7 +76,7 @@ func (c frrCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node)
 	var out []RIBRoute
 	for _, n := range nodes {
 		containerName := n.RuntimeName()
-		data, err := c.runner.Run(ctx, "docker", "exec", "-i", containerName, "vtysh", "-c", "show ip ospf route json")
+		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip ospf route json")
 		if err != nil {
 			if strings.Contains(string(data), "ospfd is not running") {
 				continue
