@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
+	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
@@ -160,8 +162,10 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			observation.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
 		)
 		usecase, err := livecheck.New(livecheck.Dependencies{
-			Runtime:   env,
-			Collector: env,
+			Runtime:            env,
+			Collector:          env,
+			SnapshotRepository: snapshotfile.NewRepository(),
+			InputHashChecker:   inputhash.NewProvider(),
 		})
 		if err != nil {
 			return err

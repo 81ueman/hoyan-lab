@@ -47,6 +47,10 @@ func InputHashes(topologyPath string) (snapshotdomain.InputHashSet, error) {
 	return snapshotdomain.InputHashSet{TopologyHash: topoHash, ConfigHashes: hashes}, nil
 }
 
+func (Provider) CheckHashes(topologyPath string, snap *snapshotdomain.Snapshot) (snapshotdomain.HashCheckResult, error) {
+	return CheckHashes(topologyPath, snap)
+}
+
 func CheckHashes(topologyPath string, snap *snapshotdomain.Snapshot) (snapshotdomain.HashCheckResult, error) {
 	hashes, err := InputHashes(topologyPath)
 	if err != nil {
