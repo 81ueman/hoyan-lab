@@ -8,6 +8,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	collectusecase "github.com/81ueman/hoyan-lab/internal/usecase/collect"
 	"github.com/spf13/cobra"
 )
 
@@ -55,7 +56,7 @@ func runCollect(ctx context.Context, opts collectOptions, out io.Writer) error {
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}
-	snap, err := observation.CollectSnapshot(ctx, collector, collectOpts)
+	snap, err := collectusecase.CollectSnapshot(ctx, collector, collectOpts)
 	if err != nil {
 		return ExitError{Code: 2, Err: err}
 	}

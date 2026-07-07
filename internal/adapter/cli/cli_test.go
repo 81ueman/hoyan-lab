@@ -12,6 +12,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	domainintent "github.com/81ueman/hoyan-lab/internal/domain/intent"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	collectusecase "github.com/81ueman/hoyan-lab/internal/usecase/collect"
 )
 
 func TestRootHelpListsSubcommands(t *testing.T) {
@@ -282,7 +283,7 @@ func TestCompareModelWithSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveCollector(model) error = %v", err)
 	}
-	snap, err := observation.CollectSnapshot(t.Context(), collector, observation.CollectOptions{})
+	snap, err := collectusecase.CollectSnapshot(t.Context(), collector, observation.CollectOptions{})
 	if err != nil {
 		t.Fatalf("CollectSnapshot(model) error = %v", err)
 	}

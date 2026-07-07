@@ -82,7 +82,7 @@ func inferTargetType(path string, typeFlagHint string) (TargetType, error) {
 	}
 }
 
-func resolveCollector(ctx context.Context, target CollectorTarget) (observation.Collector, error) {
+func resolveCollector(ctx context.Context, target CollectorTarget) (collectusecase.Collector, error) {
 	_ = ctx
 	switch target.Type {
 	case TargetSnapshot:

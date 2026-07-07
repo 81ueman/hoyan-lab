@@ -23,8 +23,6 @@ func TestCollectorExposesContainerlabTopology(t *testing.T) {
 	}}
 	collector := NewCollector(nodes, nil, observation.Options{})
 
-	var _ observation.Collector = collector
-
 	metadata := collector.Metadata(context.Background())
 	if metadata.Source != "containerlab" {
 		t.Fatalf("metadata source = %q, want containerlab", metadata.Source)
