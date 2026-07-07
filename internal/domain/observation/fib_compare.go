@@ -9,26 +9,16 @@ func CompareFIBEntries(expected, actual []FIBEntry) Result {
 func CompareFIB(expected, actual FIB) Result {
 	result := compareFIBEntries(expected.Entries, actual.Entries, fibTableRouteKey)
 	compareFIBTableIdentity(expected, actual, &result)
-	sort.Slice(result.Mismatched, func(i, j int) bool {
-		return result.Mismatched[i].RouteKey+"|"+result.Mismatched[i].Field < result.Mismatched[j].RouteKey+"|"+result.Mismatched[j].Field
-	})
+	sortByKey(result.Mismatched, fibMismatchSortKey)
 	result.OK = result.OK && len(result.Mismatched) == 0
 	return result
 }
 
 func CompareFIBs(expected, actual []FIB) Result {
-	exp := map[string]FIB{}
-	act := map[string]FIB{}
-	for _, fib := range expected {
-		exp[fib.Key()] = fib
-	}
-	for _, fib := range actual {
-		act[fib.Key()] = fib
-	}
+	exp := indexBy(expected, FIB.Key)
+	act := indexBy(actual, FIB.Key)
 	var result Result
-	for _, key := range sortedFIBTableUnion(exp, act) {
-		e, eok := exp[key]
-		a, aok := act[key]
+	walkSortedUnion(exp, act, func(key string, e FIB, eok bool, a FIB, aok bool) {
 		switch {
 		case !eok:
 			for _, entry := range a.Entries {
@@ -47,31 +37,20 @@ func CompareFIBs(expected, actual []FIB) Result {
 			result.UnexpectedNextHops = append(result.UnexpectedNextHops, scopeNextHopDiffs(a, table.UnexpectedNextHops)...)
 			result.Mismatched = append(result.Mismatched, scopeFIBMismatches(e, table.Mismatched)...)
 		}
-	}
+	})
 	sort.Strings(result.MissingRoutes)
 	sort.Strings(result.UnexpectedRoutes)
 	sortNextHopDiffs(result.MissingNextHops)
 	sortNextHopDiffs(result.UnexpectedNextHops)
-	sort.Slice(result.Mismatched, func(i, j int) bool {
-		return result.Mismatched[i].RouteKey+"|"+result.Mismatched[i].Field < result.Mismatched[j].RouteKey+"|"+result.Mismatched[j].Field
-	})
+	sortByKey(result.Mismatched, fibMismatchSortKey)
 	sortDuplicateRouteConflicts(result.DuplicateRouteConflicts)
-	result.OK = len(result.MissingRoutes) == 0 &&
-		len(result.UnexpectedRoutes) == 0 &&
-		len(result.MissingNextHops) == 0 &&
-		len(result.UnexpectedNextHops) == 0 &&
-		len(result.DuplicateRouteConflicts) == 0 &&
-		len(result.Mismatched) == 0 &&
-		len(result.UnresolvedRoutes) == 0 &&
-		len(result.UnsupportedNodes) == 0
+	result.OK = fibResultOK(result)
 	return result
 }
 
 func compareFIBEntries(expected, actual []FIBEntry, keyFunc func(FIBEntry) string) Result {
 	expected, expConflicts := normalizeRoutesForSide("expected", expected, keyFunc)
 	actual, actConflicts := normalizeRoutesForSide("actual", actual, keyFunc)
-	exp := map[string]FIBEntry{}
-	act := map[string]FIBEntry{}
 	conflictedKeys := map[string]bool{}
 	var result Result
 	result.DuplicateRouteConflicts = append(result.DuplicateRouteConflicts, expConflicts...)
@@ -79,116 +58,46 @@ func compareFIBEntries(expected, actual []FIBEntry, keyFunc func(FIBEntry) strin
 	for _, conflict := range result.DuplicateRouteConflicts {
 		conflictedKeys[conflict.RouteKey] = true
 	}
-	for _, route := range expected {
-		exp[keyFunc(route)] = route
-	}
-	for _, route := range actual {
-		act[keyFunc(route)] = route
-	}
-	keys := sortedUnion(exp, act)
-	for _, key := range keys {
+	exp := indexBy(expected, keyFunc)
+	act := indexBy(actual, keyFunc)
+	walkSortedUnion(exp, act, func(key string, e FIBEntry, eok bool, a FIBEntry, aok bool) {
 		if conflictedKeys[key] {
-			continue
+			return
 		}
-		e, eok := exp[key]
-		a, aok := act[key]
 		switch {
 		case !eok:
 			result.UnexpectedRoutes = append(result.UnexpectedRoutes, key)
-			continue
+			return
 		case !aok:
 			result.MissingRoutes = append(result.MissingRoutes, key)
-			continue
+			return
 		}
 		compareNextHops(key, e.NextHops, a.NextHops, &result)
 		if e.Preference != 0 && a.Preference != 0 && e.Preference != a.Preference {
 			result.Mismatched = append(result.Mismatched, FIBAttributeMismatch{RouteKey: key, Field: "preference", Expected: e.Preference, Actual: a.Preference})
 		}
-	}
+	})
 	sort.Strings(result.MissingRoutes)
 	sort.Strings(result.UnexpectedRoutes)
 	sortNextHopDiffs(result.MissingNextHops)
 	sortNextHopDiffs(result.UnexpectedNextHops)
-	sort.Slice(result.Mismatched, func(i, j int) bool {
-		return result.Mismatched[i].RouteKey+"|"+result.Mismatched[i].Field < result.Mismatched[j].RouteKey+"|"+result.Mismatched[j].Field
-	})
+	sortByKey(result.Mismatched, fibMismatchSortKey)
 	sortDuplicateRouteConflicts(result.DuplicateRouteConflicts)
-	result.OK = len(result.MissingRoutes) == 0 &&
-		len(result.UnexpectedRoutes) == 0 &&
-		len(result.MissingNextHops) == 0 &&
-		len(result.UnexpectedNextHops) == 0 &&
-		len(result.DuplicateRouteConflicts) == 0 &&
-		len(result.Mismatched) == 0 &&
-		len(result.UnresolvedRoutes) == 0 &&
-		len(result.UnsupportedNodes) == 0
+	result.OK = fibResultOK(result)
 	return result
 }
 
 func compareNextHops(routeKey string, expected, actual []NextHop, result *Result) {
-	exp := map[string]bool{}
-	act := map[string]bool{}
-	for _, hop := range expected {
-		exp[fibNextHopKey(hop)] = true
-	}
-	for _, hop := range actual {
-		act[fibNextHopKey(hop)] = true
-	}
-	for _, key := range sortedBoolUnion(exp, act) {
+	exp := indexByValue(expected, fibNextHopKey, func(NextHop) bool { return true })
+	act := indexByValue(actual, fibNextHopKey, func(NextHop) bool { return true })
+	walkSortedUnion(exp, act, func(key string, _ bool, eok bool, _ bool, aok bool) {
 		switch {
-		case !exp[key]:
+		case !eok:
 			result.UnexpectedNextHops = append(result.UnexpectedNextHops, NextHopDiff{RouteKey: routeKey, NextHopKey: key})
-		case !act[key]:
+		case !aok:
 			result.MissingNextHops = append(result.MissingNextHops, NextHopDiff{RouteKey: routeKey, NextHopKey: key})
 		}
-	}
-}
-
-func sortedUnion(a, b map[string]FIBEntry) []string {
-	seen := map[string]bool{}
-	for k := range a {
-		seen[k] = true
-	}
-	for k := range b {
-		seen[k] = true
-	}
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func sortedBoolUnion(a, b map[string]bool) []string {
-	seen := map[string]bool{}
-	for k := range a {
-		seen[k] = true
-	}
-	for k := range b {
-		seen[k] = true
-	}
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func sortedFIBTableUnion(a, b map[string]FIB) []string {
-	seen := map[string]bool{}
-	for k := range a {
-		seen[k] = true
-	}
-	for k := range b {
-		seen[k] = true
-	}
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
+	})
 }
 
 func scopeRouteKeys(fib FIB, keys []string) []string {
@@ -229,8 +138,8 @@ func scopeDuplicateConflicts(fib FIB, conflicts []DuplicateRouteConflict) []Dupl
 }
 
 func sortNextHopDiffs(diffs []NextHopDiff) {
-	sort.Slice(diffs, func(i, j int) bool {
-		return diffs[i].RouteKey+"|"+diffs[i].NextHopKey < diffs[j].RouteKey+"|"+diffs[j].NextHopKey
+	sortByKey(diffs, func(diff NextHopDiff) string {
+		return diff.RouteKey + "|" + diff.NextHopKey
 	})
 }
 
@@ -254,9 +163,7 @@ func compareFIBTableIdentity(expected, actual FIB, result *Result) {
 }
 
 func sortFIBEntriesForCompare(routes []FIBEntry) {
-	sort.SliceStable(routes, func(i, j int) bool {
-		return fibRouteKey(routes[i]) < fibRouteKey(routes[j])
-	})
+	sortStableByKey(routes, fibRouteKey)
 	for i := range routes {
 		sortNextHops(routes[i].NextHops)
 	}
@@ -267,9 +174,7 @@ func SortFIBEntriesForCompare(routes []FIBEntry) {
 }
 
 func sortNextHops(hops []NextHop) {
-	sort.SliceStable(hops, func(i, j int) bool {
-		return fibNextHopKey(hops[i]) < fibNextHopKey(hops[j])
-	})
+	sortStableByKey(hops, fibNextHopKey)
 }
 
 func SortNextHops(hops []NextHop) {
@@ -318,9 +223,7 @@ func fibNextHopKey(h NextHop) string {
 }
 
 func sortUnresolvedRoutes(routes []UnresolvedRoute) {
-	sort.SliceStable(routes, func(i, j int) bool {
-		return unresolvedRouteSortKey(routes[i]) < unresolvedRouteSortKey(routes[j])
-	})
+	sortStableByKey(routes, unresolvedRouteSortKey)
 }
 
 func unresolvedRouteSortKey(route UnresolvedRoute) string {
@@ -328,11 +231,26 @@ func unresolvedRouteSortKey(route UnresolvedRoute) string {
 }
 
 func sortDuplicateRouteConflicts(conflicts []DuplicateRouteConflict) {
-	sort.SliceStable(conflicts, func(i, j int) bool {
-		return duplicateRouteConflictSortKey(conflicts[i]) < duplicateRouteConflictSortKey(conflicts[j])
-	})
+	sortStableByKey(conflicts, duplicateRouteConflictSortKey)
 }
 
 func duplicateRouteConflictSortKey(conflict DuplicateRouteConflict) string {
 	return conflict.RouteKey + "|" + conflict.Side + "|" + conflict.Reason
+}
+
+func fibMismatchSortKey(diff FIBAttributeMismatch) string {
+	return diff.RouteKey + "|" + diff.Field
+}
+
+func fibResultOK(result Result) bool {
+	return okIfNoDiffs(
+		len(result.MissingRoutes),
+		len(result.UnexpectedRoutes),
+		len(result.MissingNextHops),
+		len(result.UnexpectedNextHops),
+		len(result.DuplicateRouteConflicts),
+		len(result.Mismatched),
+		len(result.UnresolvedRoutes),
+		len(result.UnsupportedNodes),
+	)
 }

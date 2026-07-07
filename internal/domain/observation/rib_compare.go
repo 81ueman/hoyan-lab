@@ -117,57 +117,44 @@ func CompareRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions) 
 func CompareRIB(expected RIB, actual RIB, opts CompareOptions) CompareResult {
 	result := compareRIBRoutes(comparableRIBRoutes(expected.Routes), comparableRIBRoutes(actual.Routes), opts, ribTableRouteKey)
 	compareRIBTableIdentity(expected, actual, &result)
-	sort.Slice(result.Mismatched, func(i, j int) bool {
-		return mismatchSortKey(result.Mismatched[i]) < mismatchSortKey(result.Mismatched[j])
-	})
+	sortByKey(result.Mismatched, mismatchSortKey)
 	result.OK = result.OK && len(result.Mismatched) == 0
 	return result
 }
 
 func compareRIBRoutes(expected []RIBRoute, actual []RIBRoute, opts CompareOptions, keyFunc func(RIBRoute) string) CompareResult {
 	opts = fillCompareDefaults(opts)
-	exp := map[string]RIBRoute{}
-	act := map[string]RIBRoute{}
-	for _, r := range expected {
-		exp[keyFunc(r)] = normalizeRoute(r)
-	}
-	for _, r := range actual {
-		act[keyFunc(r)] = normalizeRoute(r)
-	}
-	keys := sortedUnionKeys(exp, act)
+	exp := indexByValue(expected, keyFunc, normalizeRoute)
+	act := indexByValue(actual, keyFunc, normalizeRoute)
 	var result CompareResult
-	for _, key := range keys {
-		e, eok := exp[key]
-		a, aok := act[key]
+	walkSortedUnion(exp, act, func(key string, e RIBRoute, eok bool, a RIBRoute, aok bool) {
 		switch {
 		case !eok:
 			if normalizeRoute(a).Common.Protocol != model.RouteSourceBGP {
-				continue
+				return
 			}
 			if !opts.AllowExtraPrefixes {
 				result.UnexpectedPrefixes = append(result.UnexpectedPrefixes, key)
 			}
-			continue
+			return
 		case !aok:
 			result.MissingPrefixes = append(result.MissingPrefixes, key)
-			continue
+			return
 		}
 		comparePaths(key, comparablePaths(e), comparablePaths(a), opts, &result)
-	}
+	})
 	sortPathDiffs(result.MissingPaths)
 	sortPathDiffs(result.UnexpectedPaths)
-	sort.Slice(result.Mismatched, func(i, j int) bool {
-		return mismatchSortKey(result.Mismatched[i]) < mismatchSortKey(result.Mismatched[j])
-	})
-	sort.Slice(result.DuplicatePathConflicts, func(i, j int) bool {
-		return duplicateConflictSortKey(result.DuplicatePathConflicts[i]) < duplicateConflictSortKey(result.DuplicatePathConflicts[j])
-	})
-	result.OK = len(result.MissingPrefixes) == 0 &&
-		len(result.UnexpectedPrefixes) == 0 &&
-		len(result.MissingPaths) == 0 &&
-		len(result.UnexpectedPaths) == 0 &&
-		len(result.Mismatched) == 0 &&
-		len(result.DuplicatePathConflicts) == 0
+	sortByKey(result.Mismatched, mismatchSortKey)
+	sortByKey(result.DuplicatePathConflicts, duplicateConflictSortKey)
+	result.OK = okIfNoDiffs(
+		len(result.MissingPrefixes),
+		len(result.UnexpectedPrefixes),
+		len(result.MissingPaths),
+		len(result.UnexpectedPaths),
+		len(result.Mismatched),
+		len(result.DuplicatePathConflicts),
+	)
 	return result
 }
 
@@ -209,10 +196,7 @@ func comparePaths(routeKey string, expected, actual []comparablePath, opts Compa
 	act, actConflicts := buildPathIndex(routeKey, "actual", actual, opts)
 	result.DuplicatePathConflicts = append(result.DuplicatePathConflicts, expConflicts...)
 	result.DuplicatePathConflicts = append(result.DuplicatePathConflicts, actConflicts...)
-	keys := sortedUnionKeys(exp, act)
-	for _, key := range keys {
-		e, eok := exp[key]
-		a, aok := act[key]
+	walkSortedUnion(exp, act, func(key string, e comparablePath, eok bool, a comparablePath, aok bool) {
 		switch {
 		case !eok:
 			if !opts.AllowExtraPaths {
@@ -223,7 +207,7 @@ func comparePaths(routeKey string, expected, actual []comparablePath, opts Compa
 		default:
 			appendMismatches(routeKey, key, e, a, opts, result)
 		}
-	}
+	})
 }
 
 type pathIndexEntry struct {
@@ -496,28 +480,9 @@ func SortOSPFPaths(paths []OSPFPath, opts CompareOptions) {
 }
 
 func sortPathDiffs(diffs []PathDiff) {
-	sort.Slice(diffs, func(i, j int) bool {
-		if diffs[i].RouteKey == diffs[j].RouteKey {
-			return diffs[i].PathKey < diffs[j].PathKey
-		}
-		return diffs[i].RouteKey < diffs[j].RouteKey
+	sortByKey(diffs, func(diff PathDiff) string {
+		return diff.RouteKey + "|" + diff.PathKey
 	})
-}
-
-func sortedUnionKeys[A any, B any](a map[string]A, b map[string]B) []string {
-	seen := map[string]bool{}
-	for k := range a {
-		seen[k] = true
-	}
-	for k := range b {
-		seen[k] = true
-	}
-	var out []string
-	for k := range seen {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func mismatchSortKey(m AttributeMismatch) string {
