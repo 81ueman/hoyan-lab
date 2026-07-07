@@ -7,6 +7,7 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 )
 
 type Runtime interface {
@@ -28,7 +29,17 @@ type FIBCollector interface {
 	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error)
 }
 
+type SnapshotRepository interface {
+	Load(path string) (*snapshotdomain.Snapshot, error)
+}
+
+type InputHashChecker interface {
+	CheckHashes(topologyPath string, snap *snapshotdomain.Snapshot) (snapshotdomain.HashCheckResult, error)
+}
+
 type Dependencies struct {
-	Runtime   Runtime
-	Collector observation.Collector
+	Runtime            Runtime
+	Collector          observation.Collector
+	SnapshotRepository SnapshotRepository
+	InputHashChecker   InputHashChecker
 }

@@ -10,6 +10,16 @@ import (
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
 )
 
+type Repository struct{}
+
+func NewRepository() Repository {
+	return Repository{}
+}
+
+func (Repository) Load(path string) (*snapshotdomain.Snapshot, error) {
+	return Load(path)
+}
+
 func Load(path string) (*snapshotdomain.Snapshot, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

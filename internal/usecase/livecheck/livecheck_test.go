@@ -5,14 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
-	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
@@ -85,6 +82,24 @@ type fakeRIBCollector struct {
 	routes    [][]observation.RIBRoute
 	errs      []error
 	polls     int
+}
+
+type fakeSnapshotRepository struct {
+	snap *snapshotdomain.Snapshot
+	err  error
+}
+
+func (f fakeSnapshotRepository) Load(path string) (*snapshotdomain.Snapshot, error) {
+	return f.snap, f.err
+}
+
+type fakeInputHashChecker struct {
+	result snapshotdomain.HashCheckResult
+	err    error
+}
+
+func (f fakeInputHashChecker) CheckHashes(topologyPath string, snap *snapshotdomain.Snapshot) (snapshotdomain.HashCheckResult, error) {
+	return f.result, f.err
 }
 
 func (f *fakeRIBCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
@@ -207,15 +222,9 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("collectRIBRoutes() error = %v", err)
 	}
-	hashes, err := inputhash.InputHashes(topologyPath)
-	if err != nil {
-		t.Fatalf("InputHashes() error = %v", err)
-	}
 	snap := &snapshotdomain.Snapshot{
 		Version:      snapshotdomain.Version,
 		TopologyPath: topologyPath,
-		TopologyHash: hashes.TopologyHash,
-		ConfigHashes: hashes.ConfigHashes,
 		CollectedAt:  time.Now().UTC(),
 		Nodes:        map[string]snapshotdomain.NodeSnapshot{},
 		Network:      observation.NetworkSnapshot{Nodes: make([]observation.NodeSnapshot, 0, len(topo.Nodes))},
@@ -233,15 +242,13 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 		}
 		snap.Network.Nodes = append(snap.Network.Nodes, observation.NodeSnapshot{Node: model.NodeID(node.Name), VRFs: []observation.VRFSnapshot{vrf}})
 	}
-	snapshotPath := filepath.Join(t.TempDir(), "snapshot.json")
-	if err := snapshotfile.Save(snapshotPath, snap); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
 	rt := &fakeRuntime{}
-	opts := Options{Topology: topologyPath, Snapshot: snapshotPath, Offline: true, CheckFIB: false, Out: io.Discard}
+	opts := Options{Topology: topologyPath, Snapshot: "snapshot.json", Offline: true, CheckFIB: false, Out: io.Discard}
 	usecase, err := New(Dependencies{
-		Runtime:   rt,
-		Collector: observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
+		Runtime:            rt,
+		Collector:          observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
+		SnapshotRepository: fakeSnapshotRepository{snap: snap},
+		InputHashChecker:   fakeInputHashChecker{},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

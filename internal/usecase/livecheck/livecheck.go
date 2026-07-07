@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/inputhash"
-	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
@@ -83,11 +81,14 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 
 	var snap *snapshotdomain.Snapshot
 	if opts.Snapshot != "" {
-		snap, err = snapshotfile.Load(opts.Snapshot)
+		if u.deps.SnapshotRepository == nil {
+			return fmt.Errorf("livecheck snapshot repository is required when snapshot is specified")
+		}
+		snap, err = u.deps.SnapshotRepository.Load(opts.Snapshot)
 		if err != nil {
 			return err
 		}
-		if err := checkSnapshotHashes(opts.Topology, snap, opts.HashPolicy, opts.Out); err != nil {
+		if err := checkSnapshotHashes(u.deps.InputHashChecker, opts.Topology, snap, opts.HashPolicy, opts.Out); err != nil {
 			return err
 		}
 		expectedSnapshot, err := observation.CollectSnapshot(ctx, simulator, collectOpts)
@@ -238,7 +239,7 @@ func collectRIBRoutes(ctx context.Context, collector RIBCollector, nodes []model
 	return out, nil
 }
 
-func checkSnapshotHashes(topologyPath string, snap *snapshotdomain.Snapshot, policy snapshotdomain.HashPolicy, out io.Writer) error {
+func checkSnapshotHashes(checker InputHashChecker, topologyPath string, snap *snapshotdomain.Snapshot, policy snapshotdomain.HashPolicy, out io.Writer) error {
 	policy, ok := snapshotdomain.ParseHashPolicy(string(policy))
 	if !ok {
 		return fmt.Errorf("snapshot hash policy must be one of warn, fail, or ignore")
@@ -246,7 +247,10 @@ func checkSnapshotHashes(topologyPath string, snap *snapshotdomain.Snapshot, pol
 	if policy == snapshotdomain.HashPolicyIgnore {
 		return nil
 	}
-	result, err := inputhash.CheckHashes(topologyPath, snap)
+	if checker == nil {
+		return fmt.Errorf("livecheck input hash checker is required when snapshot hash policy is %s", policy)
+	}
+	result, err := checker.CheckHashes(topologyPath, snap)
 	if err != nil {
 		return err
 	}
