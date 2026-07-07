@@ -125,7 +125,7 @@ func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
 	return f.routes[i], nil
 }
 
-func deps(runtime *fakeRuntime, collector observation.Collector) Dependencies {
+func deps(runtime *fakeRuntime, collector collect.Collector) Dependencies {
 	return Dependencies{
 		Runtime:   runtime,
 		Collector: collector,

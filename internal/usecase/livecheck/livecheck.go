@@ -135,7 +135,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 	return nil
 }
 
-func WaitForMatchingCollectors(ctx context.Context, expected, actual observation.Collector, collectOpts observation.CollectOptions, interval time.Duration, maxPolls int, compareOpts observation.SnapshotCompareOptions, checkFIB bool) (observation.SnapshotComparison, error) {
+func WaitForMatchingCollectors(ctx context.Context, expected, actual collect.Collector, collectOpts observation.CollectOptions, interval time.Duration, maxPolls int, compareOpts observation.SnapshotCompareOptions, checkFIB bool) (observation.SnapshotComparison, error) {
 	var lastResult observation.SnapshotComparison
 	var lastErr error
 	bestDiffCount := -1
