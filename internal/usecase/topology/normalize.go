@@ -3,7 +3,6 @@ package topology
 import (
 	"net/netip"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -40,7 +39,7 @@ func normalizeNodeRouting(node *model.Node) {
 	}
 }
 
-func parsedOSPFEnabled(parsed configparse.ParsedConfig) bool {
+func parsedOSPFEnabled(parsed ParsedConfig) bool {
 	if parsed.OSPF.Enabled {
 		return true
 	}

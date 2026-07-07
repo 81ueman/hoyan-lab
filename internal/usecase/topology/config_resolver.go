@@ -3,11 +3,9 @@ package topology
 import (
 	"path/filepath"
 	"strings"
-
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 )
 
-func resolveConfigPath(n labfile.Node) string {
+func resolveConfigPath(n LabNode) string {
 	if n.StartupConfig != "" {
 		return n.StartupConfig
 	}
@@ -23,7 +21,7 @@ func resolveConfigPath(n labfile.Node) string {
 	return ""
 }
 
-func resolveNftablesConfigPath(n labfile.Node) string {
+func resolveNftablesConfigPath(n LabNode) string {
 	for _, bind := range n.Binds {
 		parts := strings.Split(bind, ":")
 		if len(parts) >= 2 && parts[1] == "/etc/hoyan/nftables.conf" {

@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -15,9 +13,9 @@ type aclAttachments struct {
 	Bindings []model.ACLBinding
 }
 
-func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigParser) ([]model.Node, RuntimeTopology, aclAttachments, map[string]bool, []configparse.UnsupportedStatement, error) {
-	names := make([]string, 0, len(raw.Topology.Nodes))
-	for name := range raw.Topology.Nodes {
+func buildNodes(raw LabFile, root string, opts LoadOptions, parser ConfigParser) ([]model.Node, RuntimeTopology, aclAttachments, map[string]bool, []UnsupportedStatement, error) {
+	names := make([]string, 0, len(raw.Nodes))
+	for name := range raw.Nodes {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -25,16 +23,16 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigPa
 	var nodes []model.Node
 	runtime := RuntimeTopology{
 		Name:             raw.Name,
-		ManagementSubnet: raw.Mgmt.IPv4Subnet,
-		Nodes:            make(map[string]RuntimeNode, len(raw.Topology.Nodes)),
+		ManagementSubnet: raw.ManagementSubnet,
+		Nodes:            make(map[string]RuntimeNode, len(raw.Nodes)),
 	}
 	var attachments aclAttachments
-	var warnings []configparse.UnsupportedStatement
+	var warnings []UnsupportedStatement
 	transitNodes := map[string]bool{}
 	collectWarnings := opts.CollectWarnings || opts.StrictConfig
 
 	for _, name := range names {
-		cnode := raw.Topology.Nodes[name]
+		cnode := raw.Nodes[name]
 		if isL2TransitNode(cnode) {
 			transitNodes[name] = true
 			continue
@@ -54,14 +52,14 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigPa
 	return nodes, runtime, attachments, transitNodes, warnings, nil
 }
 
-func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectWarnings bool, parser ConfigParser) (model.Node, RuntimeNode, aclAttachments, []configparse.UnsupportedStatement, error) {
+func buildNode(raw LabFile, root, name string, cnode LabNode, collectWarnings bool, parser ConfigParser) (model.Node, RuntimeNode, aclAttachments, []UnsupportedStatement, error) {
 	kind := normalizeKind(cnode.Kind)
 	configPath := resolveConfigPath(cnode)
 	if configPath == "" {
 		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("node %s has no startup config or frr.conf bind", name)
 	}
 
-	result, err := parser.Parse(kind, absolutePath(root, configPath), configparse.ParseOptions{CollectWarnings: collectWarnings})
+	result, err := parser.Parse(kind, absolutePath(root, configPath), ParseOptions{CollectWarnings: collectWarnings})
 	if err != nil {
 		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
 	}
@@ -113,7 +111,7 @@ func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectW
 	return node, runtimeNode, attachments, result.Warnings, nil
 }
 
-func buildACLAttachments(root, name string, cnode labfile.Node, parsed configparse.ParsedConfig, parser ConfigParser) (aclAttachments, error) {
+func buildACLAttachments(root, name string, cnode LabNode, parsed ParsedConfig, parser ConfigParser) (aclAttachments, error) {
 	var attachments aclAttachments
 	for _, acl := range parsed.ACLs {
 		acl.Node = name

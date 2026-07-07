@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -14,7 +13,7 @@ type clabTransitAttachment struct {
 	Intf string
 }
 
-func isL2TransitNode(n labfile.Node) bool {
+func isL2TransitNode(n LabNode) bool {
 	group := strings.ToLower(strings.TrimSpace(n.Group))
 	kind := strings.ToLower(strings.TrimSpace(n.Kind))
 	mode := strings.ToLower(strings.TrimSpace(n.NetworkMode))

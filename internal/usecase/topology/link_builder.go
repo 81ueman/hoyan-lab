@@ -5,11 +5,10 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-func buildDirectLinks(rawLinks []labfile.Link, topo *model.Topology, transitNodes map[string]bool) ([]model.Link, map[string][]clabTransitAttachment, error) {
+func buildDirectLinks(rawLinks []LabLink, topo *model.Topology, transitNodes map[string]bool) ([]model.Link, map[string][]clabTransitAttachment, error) {
 	var links []model.Link
 	transitAttachments := map[string][]clabTransitAttachment{}
 
