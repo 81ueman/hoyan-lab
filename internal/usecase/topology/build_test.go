@@ -107,6 +107,53 @@ func TestBuilderUsesInjectedPorts(t *testing.T) {
 	}
 }
 
+func TestLoadDomainTopologyWithRuntimeSeparatesRuntimeMetadata(t *testing.T) {
+	loader := &fakeLabFileLoader{
+		file: labfile.File{
+			Name: "ports-test",
+			Mgmt: struct {
+				IPv4Subnet string `yaml:"ipv4-subnet"`
+				Network    string `yaml:"network"`
+			}{IPv4Subnet: "172.20.20.0/24"},
+			Topology: struct {
+				Nodes map[string]labfile.Node `yaml:"nodes"`
+				Links []labfile.Link          `yaml:"links"`
+			}{
+				Nodes: map[string]labfile.Node{
+					"r1": {Kind: "linux", MgmtIPv4: "172.20.20.11", StartupConfig: "configs/r1/frr.conf"},
+					"r2": {Kind: "linux", MgmtIPv4: "172.20.20.12", StartupConfig: "configs/r2/frr.conf"},
+				},
+				Links: []labfile.Link{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
+			},
+		},
+	}
+	parser := &fakeConfigParser{results: map[string]configparse.ParseResult{
+		filepath.Join("/virtual", "configs/r1/frr.conf"): {Config: configparse.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.1/30"}}}},
+		filepath.Join("/virtual", "configs/r2/frr.conf"): {Config: configparse.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30"}}}},
+	}}
+
+	topo, runtime, warnings, err := topology.NewBuilder(loader, parser).LoadDomainTopologyWithRuntime(filepath.Join("/virtual", "lab.clab.yml"), topology.LoadOptions{CollectWarnings: true})
+	if err != nil {
+		t.Fatalf("LoadDomainTopologyWithRuntime() error = %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v, want none", warnings)
+	}
+	r1, ok := topo.Node("r1")
+	if !ok {
+		t.Fatalf("r1 not found")
+	}
+	if r1.ContainerName != "" || r1.MgmtIPv4 != "" || r1.ConfigPath != "" {
+		t.Fatalf("domain node contains runtime metadata: %#v", r1)
+	}
+	if got := runtime.Nodes["r1"].ConfigPath; got != "configs/r1/frr.conf" {
+		t.Fatalf("runtime r1 config path = %q", got)
+	}
+	if got := runtime.RuntimeName("r1"); got != "clab-ports-test-r1" {
+		t.Fatalf("runtime r1 name = %q", got)
+	}
+}
+
 func TestLoadLabTopologyIncludesRouteMaps(t *testing.T) {
 	topo, err := topology.LoadTopology(filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"))
 	if err != nil {

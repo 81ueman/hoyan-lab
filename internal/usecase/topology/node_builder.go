@@ -15,7 +15,7 @@ type aclAttachments struct {
 	Bindings []model.ACLBinding
 }
 
-func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigParser) ([]model.Node, aclAttachments, map[string]bool, []configparse.UnsupportedStatement, error) {
+func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigParser) ([]model.Node, RuntimeTopology, aclAttachments, map[string]bool, []configparse.UnsupportedStatement, error) {
 	names := make([]string, 0, len(raw.Topology.Nodes))
 	for name := range raw.Topology.Nodes {
 		names = append(names, name)
@@ -23,6 +23,11 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigPa
 	sort.Strings(names)
 
 	var nodes []model.Node
+	runtime := RuntimeTopology{
+		Name:             raw.Name,
+		ManagementSubnet: raw.Mgmt.IPv4Subnet,
+		Nodes:            make(map[string]RuntimeNode, len(raw.Topology.Nodes)),
+	}
 	var attachments aclAttachments
 	var warnings []configparse.UnsupportedStatement
 	transitNodes := map[string]bool{}
@@ -35,53 +40,57 @@ func buildNodes(raw labfile.File, root string, opts LoadOptions, parser ConfigPa
 			continue
 		}
 
-		node, nodeAttachments, nodeWarnings, err := buildNode(raw, root, name, cnode, collectWarnings, parser)
+		node, runtimeNode, nodeAttachments, nodeWarnings, err := buildNode(raw, root, name, cnode, collectWarnings, parser)
 		if err != nil {
-			return nil, aclAttachments{}, nil, nil, err
+			return nil, RuntimeTopology{}, aclAttachments{}, nil, nil, err
 		}
 		nodes = append(nodes, node)
+		runtime.Nodes[name] = runtimeNode
 		attachments.ACLs = append(attachments.ACLs, nodeAttachments.ACLs...)
 		attachments.Bindings = append(attachments.Bindings, nodeAttachments.Bindings...)
 		warnings = append(warnings, nodeWarnings...)
 	}
 
-	return nodes, attachments, transitNodes, warnings, nil
+	return nodes, runtime, attachments, transitNodes, warnings, nil
 }
 
-func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectWarnings bool, parser ConfigParser) (model.Node, aclAttachments, []configparse.UnsupportedStatement, error) {
+func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectWarnings bool, parser ConfigParser) (model.Node, RuntimeNode, aclAttachments, []configparse.UnsupportedStatement, error) {
 	kind := normalizeKind(cnode.Kind)
 	configPath := resolveConfigPath(cnode)
 	if configPath == "" {
-		return model.Node{}, aclAttachments{}, nil, fmt.Errorf("node %s has no startup config or frr.conf bind", name)
+		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("node %s has no startup config or frr.conf bind", name)
 	}
 
 	result, err := parser.Parse(kind, absolutePath(root, configPath), configparse.ParseOptions{CollectWarnings: collectWarnings})
 	if err != nil {
-		return model.Node{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
+		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
 	}
 	parsed := result.Config
 
 	prefixes, err := parsePrefixes(parsed.Prefixes)
 	if err != nil {
-		return model.Node{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
+		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if parsedOSPFEnabled(parsed) && parsed.Loopback != "" {
 		loopbackPrefix, err := model.ParsePrefix(parsed.Loopback)
 		if err != nil {
-			return model.Node{}, aclAttachments{}, nil, fmt.Errorf("%s loopback: %w", name, err)
+			return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, fmt.Errorf("%s loopback: %w", name, err)
 		}
 		prefixes = appendUniquePrefix(prefixes, loopbackPrefix)
 	}
 
+	runtimeNode := RuntimeNode{
+		Name:          name,
+		ContainerName: containerlabContainerName(raw.Prefix, raw.Name, name),
+		MgmtIPv4:      cnode.MgmtIPv4,
+		ConfigPath:    configPath,
+	}
 	node := model.Node{
 		Name:           name,
-		ContainerName:  containerlabContainerName(raw.Prefix, raw.Name, name),
 		Kind:           kind,
 		Role:           cnode.Group,
 		ASN:            parsed.ASN,
-		MgmtIPv4:       cnode.MgmtIPv4,
 		Loopback:       parsed.Loopback,
-		ConfigPath:     configPath,
 		Prefixes:       prefixes,
 		Routes:         parsed.Routes,
 		Interfaces:     parsed.Interfaces,
@@ -98,10 +107,10 @@ func buildNode(raw labfile.File, root, name string, cnode labfile.Node, collectW
 
 	attachments, err := buildACLAttachments(root, name, cnode, parsed, parser)
 	if err != nil {
-		return model.Node{}, aclAttachments{}, nil, err
+		return model.Node{}, RuntimeNode{}, aclAttachments{}, nil, err
 	}
 
-	return node, attachments, result.Warnings, nil
+	return node, runtimeNode, attachments, result.Warnings, nil
 }
 
 func buildACLAttachments(root, name string, cnode labfile.Node, parsed configparse.ParsedConfig, parser ConfigParser) (aclAttachments, error) {

@@ -1,36 +1,44 @@
 package model
 
 type Topology struct {
-	Name             string       `yaml:"name"`
-	ManagementSubnet string       `yaml:"management_subnet"`
-	Nodes            []Node       `yaml:"nodes"`
-	Links            []Link       `yaml:"links"`
-	ACLs             []ACL        `yaml:"acls,omitempty" json:"acls,omitempty"`
-	ACLBindings      []ACLBinding `yaml:"acl_bindings,omitempty" json:"acl_bindings,omitempty"`
+	Name             string
+	ManagementSubnet string
+	Nodes            []Node
+	Links            []Link
+	ACLs             []ACL
+	ACLBindings      []ACLBinding
 }
 
 type Node struct {
-	Name           string              `yaml:"name"`
-	ContainerName  string              `yaml:"container_name"`
-	Kind           DeviceKind          `yaml:"kind"`
-	Role           string              `yaml:"role"`
-	ASN            uint32              `yaml:"asn"`
-	MgmtIPv4       string              `yaml:"mgmt_ipv4"`
-	Loopback       string              `yaml:"loopback"`
-	ConfigPath     string              `yaml:"config_path"`
-	Prefixes       []Prefix            `yaml:"prefixes"`
-	Routes         []ConfiguredRoute   `yaml:"routes,omitempty"`
-	Interfaces     []Interface         `yaml:"interfaces"`
-	Neighbors      []BGPNeighbor       `yaml:"neighbors"`
-	Redistribute   []BGPRedistribution `yaml:"redistribute,omitempty"`
-	OSPF           OSPFProcess         `yaml:"ospf,omitempty"`
-	OSPFProcesses  []OSPFProcess       `yaml:"ospf_processes,omitempty" json:"ospf_processes,omitempty"`
-	PrefixLists    []PrefixList        `yaml:"prefix_lists"`
-	ASPathLists    []ASPathList        `yaml:"as_path_lists"`
-	CommunityLists []CommunityList     `yaml:"community_lists"`
-	RoutePolicies  []RoutePolicy       `yaml:"route_policies"`
+	Name string
+	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
+	ContainerName string
+	Kind          DeviceKind
+	Role          string
+	ASN           uint32
+	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
+	MgmtIPv4 string
+	Loopback string
+	// Compatibility: config source metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
+	ConfigPath     string
+	Prefixes       []Prefix
+	Routes         []ConfiguredRoute
+	Interfaces     []Interface
+	Neighbors      []BGPNeighbor
+	Redistribute   []BGPRedistribution
+	OSPF           OSPFProcess
+	OSPFProcesses  []OSPFProcess
+	PrefixLists    []PrefixList
+	ASPathLists    []ASPathList
+	CommunityLists []CommunityList
+	RoutePolicies  []RoutePolicy
 }
 
+// RuntimeName is retained for compatibility while live adapters migrate from
+// model.Node.ContainerName to adapter/usecase DTOs.
 func (n Node) RuntimeName() string {
 	if n.ContainerName != "" {
 		return n.ContainerName
@@ -39,20 +47,20 @@ func (n Node) RuntimeName() string {
 }
 
 type Link struct {
-	Name   string `yaml:"name"`
-	A      string `yaml:"a"`
-	B      string `yaml:"b"`
-	Role   string `yaml:"role,omitempty"`
-	Cost   int    `yaml:"cost"`
-	Subnet string `yaml:"subnet"`
-	AIntf  string `yaml:"a_intf"`
-	BIntf  string `yaml:"b_intf"`
+	Name   string
+	A      string
+	B      string
+	Role   string
+	Cost   int
+	Subnet string
+	AIntf  string
+	BIntf  string
 }
 
 type Interface struct {
-	Name    string            `yaml:"name"`
-	Address string            `yaml:"address"`
-	VRF     NetworkInstanceID `yaml:"vrf,omitempty" json:"vrf,omitempty"`
+	Name    string
+	Address string
+	VRF     NetworkInstanceID
 }
 
 func (t *Topology) Node(name string) (Node, bool) {
