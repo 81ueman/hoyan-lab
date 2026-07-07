@@ -11,18 +11,18 @@ type Topology struct {
 
 type Node struct {
 	Name string
-	// Deprecated: runtime metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for compatibility with callers that still use LoadTopology.
+	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
 	ContainerName string
 	Kind          DeviceKind
 	Role          string
 	ASN           uint32
-	// Deprecated: runtime metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for compatibility with callers that still use LoadTopology.
+	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
 	MgmtIPv4 string
 	Loopback string
-	// Deprecated: config source metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for compatibility with callers that still use LoadTopology.
+	// Compatibility: config source metadata belongs in usecase/topology.RuntimeNode.
+	// Kept temporarily for callers that still use LoadTopology.
 	ConfigPath     string
 	Prefixes       []Prefix
 	Routes         []ConfiguredRoute
@@ -37,8 +37,8 @@ type Node struct {
 	RoutePolicies  []RoutePolicy
 }
 
-// Deprecated: runtime naming belongs in adapter/usecase DTOs. Kept for
-// compatibility while live adapters migrate from model.Node.ContainerName.
+// RuntimeName is retained for compatibility while live adapters migrate from
+// model.Node.ContainerName to adapter/usecase DTOs.
 func (n Node) RuntimeName() string {
 	if n.ContainerName != "" {
 		return n.ContainerName
