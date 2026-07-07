@@ -18,6 +18,10 @@ type Simulator struct {
 var _ Collector = Simulator{}
 
 func NewSimulator(topo *model.Topology) (Simulator, error) {
+	return NewSimulatorWithGraphOptions(topo)
+}
+
+func NewSimulatorWithGraphOptions(topo *model.Topology, graphOpts ...sim.GraphOption) (Simulator, error) {
 	if topo == nil {
 		return Simulator{}, fmt.Errorf("simulator topology is required")
 	}
@@ -25,7 +29,7 @@ func NewSimulator(topo *model.Topology) (Simulator, error) {
 	if err != nil {
 		return Simulator{}, err
 	}
-	return Simulator{idx: idx, graph: sim.NewGraph(topo), failures: sim.NoFailures()}, nil
+	return Simulator{idx: idx, graph: sim.NewGraph(topo, graphOpts...), failures: sim.NoFailures()}, nil
 }
 
 func (s Simulator) Graph() *sim.Graph {

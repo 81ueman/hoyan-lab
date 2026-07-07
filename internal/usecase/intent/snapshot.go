@@ -20,6 +20,10 @@ type SnapshotContext struct {
 }
 
 func BuildSnapshot(labPath, snapshotName string) (SnapshotContext, error) {
+	return BuildSnapshotWithGraphOptions(labPath, snapshotName)
+}
+
+func BuildSnapshotWithGraphOptions(labPath, snapshotName string, graphOpts ...sim.GraphOption) (SnapshotContext, error) {
 	if snapshotName == "" {
 		snapshotName = "current"
 	}
@@ -27,7 +31,7 @@ func BuildSnapshot(labPath, snapshotName string) (SnapshotContext, error) {
 	if err != nil {
 		return SnapshotContext{}, err
 	}
-	simulator, err := collect.NewSimulator(topo)
+	simulator, err := collect.NewSimulatorWithGraphOptions(topo, graphOpts...)
 	if err != nil {
 		return SnapshotContext{}, err
 	}

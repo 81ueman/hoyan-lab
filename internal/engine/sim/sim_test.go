@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -15,7 +16,7 @@ func loadGraph(t *testing.T) *Graph {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	return NewGraph(topo)
+	return NewGraph(topo, WithSolverBackend(enumerate.Backend{}))
 }
 
 func TestRouteReachable(t *testing.T) {

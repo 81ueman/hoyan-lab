@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver"
 	domainintent "github.com/81ueman/hoyan-lab/internal/domain/intent"
+	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 	"github.com/81ueman/hoyan-lab/internal/usecase/intent"
 	"github.com/spf13/cobra"
 )
@@ -110,7 +112,9 @@ func NewIntentVerifyCommand() *cobra.Command {
 			if err := resolveIntentSnapshotLabs(doc); err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
-			report, err := intent.Verify(doc)
+			report, err := intent.VerifyWithProvider(doc, intent.DefaultSnapshotProvider{
+				GraphOptions: []sim.GraphOption{sim.WithSolverBackend(solveradapter.DefaultBackend())},
+			})
 			if err != nil {
 				return ExitError{Code: 2, Err: err}
 			}
