@@ -91,7 +91,7 @@ func (u Usecase) Run(ctx context.Context, opts Options) (err error) {
 		if err := checkSnapshotHashes(u.deps.InputHashChecker, opts.Topology, snap, opts.HashPolicy, opts.Out); err != nil {
 			return err
 		}
-		expectedSnapshot, err := observation.CollectSnapshot(ctx, simulator, collectOpts)
+		expectedSnapshot, err := collect.CollectSnapshot(ctx, simulator, collectOpts)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func WaitForMatchingCollectors(ctx context.Context, expected, actual observation
 	polls := 0
 	err := poll(ctx, interval, func() (bool, error) {
 		polls++
-		result, err := observation.CompareCollectors(ctx, expected, actual, collectOpts, compareOpts)
+		result, err := collect.CompareCollectors(ctx, expected, actual, collectOpts, compareOpts)
 		if err != nil {
 			lastErr = err
 			if maxPolls > 0 && polls >= maxPolls {

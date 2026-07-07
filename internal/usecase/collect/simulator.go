@@ -15,7 +15,7 @@ type Simulator struct {
 	failures sim.FailureSet
 }
 
-var _ observation.Collector = Simulator{}
+var _ Collector = Simulator{}
 
 func NewSimulator(topo *model.Topology) (Simulator, error) {
 	if topo == nil {
@@ -32,7 +32,7 @@ func (s Simulator) Graph() *sim.Graph {
 	return s.graph
 }
 
-func (s Simulator) CollectorFor(failures sim.FailureSet) observation.Collector {
+func (s Simulator) CollectorFor(failures sim.FailureSet) Collector {
 	s.failures = failures
 	return s
 }

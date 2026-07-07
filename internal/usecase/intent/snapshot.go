@@ -31,7 +31,7 @@ func BuildSnapshot(labPath, snapshotName string) (SnapshotContext, error) {
 	if err != nil {
 		return SnapshotContext{}, err
 	}
-	network, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	network, err := collect.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
 		return SnapshotContext{}, err
 	}

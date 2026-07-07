@@ -13,6 +13,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/adapter/snapshotfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	collectusecase "github.com/81ueman/hoyan-lab/internal/usecase/collect"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
 )
@@ -92,11 +93,11 @@ func runCompare(ctx context.Context, opts compareOptions, out io.Writer) error {
 	if err != nil {
 		return ExitError{Code: 2, Err: fmt.Errorf("right target: %w", err)}
 	}
-	leftSnapshot, err := observation.CollectSnapshot(ctx, leftCollector, collectOpts)
+	leftSnapshot, err := collectusecase.CollectSnapshot(ctx, leftCollector, collectOpts)
 	if err != nil {
 		return ExitError{Code: 2, Err: fmt.Errorf("collect left target: %w", err)}
 	}
-	rightSnapshot, err := observation.CollectSnapshot(ctx, rightCollector, collectOpts)
+	rightSnapshot, err := collectusecase.CollectSnapshot(ctx, rightCollector, collectOpts)
 	if err != nil {
 		return ExitError{Code: 2, Err: fmt.Errorf("collect right target: %w", err)}
 	}

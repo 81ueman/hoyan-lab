@@ -189,7 +189,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSimulator() error = %v", err)
 	}
-	expected, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	expected, err := collect.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
 		t.Fatalf("CollectSnapshot() error = %v", err)
 	}
@@ -405,7 +405,7 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSimulator() error = %v", err)
 	}
-	expected, err := observation.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
+	expected, err := collect.CollectSnapshot(context.Background(), simulator, observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true})
 	if err != nil {
 		t.Fatalf("CollectSnapshot() error = %v", err)
 	}

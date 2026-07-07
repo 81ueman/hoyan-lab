@@ -8,6 +8,7 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	snapshotdomain "github.com/81ueman/hoyan-lab/internal/domain/snapshot"
+	"github.com/81ueman/hoyan-lab/internal/usecase/collect"
 )
 
 type Runtime interface {
@@ -39,7 +40,7 @@ type InputHashChecker interface {
 
 type Dependencies struct {
 	Runtime            Runtime
-	Collector          observation.Collector
+	Collector          collect.Collector
 	SnapshotRepository SnapshotRepository
 	InputHashChecker   InputHashChecker
 }
