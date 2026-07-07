@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/configparse"
-	"github.com/81ueman/hoyan-lab/internal/adapter/labfile"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -37,32 +35,27 @@ func TestLoadLabTopology(t *testing.T) {
 
 func TestBuilderUsesInjectedPorts(t *testing.T) {
 	loader := &fakeLabFileLoader{
-		file: labfile.File{
+		file: topology.LabFile{
 			Name: "ports-test",
-			Topology: struct {
-				Nodes map[string]labfile.Node `yaml:"nodes"`
-				Links []labfile.Link          `yaml:"links"`
-			}{
-				Nodes: map[string]labfile.Node{
-					"r1": {
-						Kind:          "linux",
-						MgmtIPv4:      "172.20.20.11",
-						StartupConfig: "configs/r1/frr.conf",
-					},
-					"r2": {
-						Kind:          "linux",
-						MgmtIPv4:      "172.20.20.12",
-						StartupConfig: "configs/r2/frr.conf",
-					},
+			Nodes: map[string]topology.LabNode{
+				"r1": {
+					Kind:          "linux",
+					MgmtIPv4:      "172.20.20.11",
+					StartupConfig: "configs/r1/frr.conf",
 				},
-				Links: []labfile.Link{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
+				"r2": {
+					Kind:          "linux",
+					MgmtIPv4:      "172.20.20.12",
+					StartupConfig: "configs/r2/frr.conf",
+				},
 			},
+			Links: []topology.LabLink{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
 		},
 	}
 	parser := &fakeConfigParser{
-		results: map[string]configparse.ParseResult{
+		results: map[string]topology.ParseResult{
 			filepath.Join("/virtual", "configs/r1/frr.conf"): {
-				Config: configparse.ParsedConfig{
+				Config: topology.ParsedConfig{
 					ASN: 65001,
 					Interfaces: []model.Interface{{
 						Name:    "eth1",
@@ -71,7 +64,7 @@ func TestBuilderUsesInjectedPorts(t *testing.T) {
 				},
 			},
 			filepath.Join("/virtual", "configs/r2/frr.conf"): {
-				Config: configparse.ParsedConfig{
+				Config: topology.ParsedConfig{
 					ASN: 65002,
 					Interfaces: []model.Interface{{
 						Name:    "eth1",
@@ -109,27 +102,19 @@ func TestBuilderUsesInjectedPorts(t *testing.T) {
 
 func TestLoadDomainTopologyWithRuntimeSeparatesRuntimeMetadata(t *testing.T) {
 	loader := &fakeLabFileLoader{
-		file: labfile.File{
-			Name: "ports-test",
-			Mgmt: struct {
-				IPv4Subnet string `yaml:"ipv4-subnet"`
-				Network    string `yaml:"network"`
-			}{IPv4Subnet: "172.20.20.0/24"},
-			Topology: struct {
-				Nodes map[string]labfile.Node `yaml:"nodes"`
-				Links []labfile.Link          `yaml:"links"`
-			}{
-				Nodes: map[string]labfile.Node{
-					"r1": {Kind: "linux", MgmtIPv4: "172.20.20.11", StartupConfig: "configs/r1/frr.conf"},
-					"r2": {Kind: "linux", MgmtIPv4: "172.20.20.12", StartupConfig: "configs/r2/frr.conf"},
-				},
-				Links: []labfile.Link{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
+		file: topology.LabFile{
+			Name:             "ports-test",
+			ManagementSubnet: "172.20.20.0/24",
+			Nodes: map[string]topology.LabNode{
+				"r1": {Kind: "linux", MgmtIPv4: "172.20.20.11", StartupConfig: "configs/r1/frr.conf"},
+				"r2": {Kind: "linux", MgmtIPv4: "172.20.20.12", StartupConfig: "configs/r2/frr.conf"},
 			},
+			Links: []topology.LabLink{{Endpoints: []string{"r1:eth1", "r2:eth1"}}},
 		},
 	}
-	parser := &fakeConfigParser{results: map[string]configparse.ParseResult{
-		filepath.Join("/virtual", "configs/r1/frr.conf"): {Config: configparse.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.1/30"}}}},
-		filepath.Join("/virtual", "configs/r2/frr.conf"): {Config: configparse.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30"}}}},
+	parser := &fakeConfigParser{results: map[string]topology.ParseResult{
+		filepath.Join("/virtual", "configs/r1/frr.conf"): {Config: topology.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.1/30"}}}},
+		filepath.Join("/virtual", "configs/r2/frr.conf"): {Config: topology.ParsedConfig{Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30"}}}},
 	}}
 
 	topo, runtime, warnings, err := topology.NewBuilder(loader, parser).LoadDomainTopologyWithRuntime(filepath.Join("/virtual", "lab.clab.yml"), topology.LoadOptions{CollectWarnings: true})
@@ -604,21 +589,21 @@ func writeFile(t *testing.T, path, text string) {
 }
 
 type fakeLabFileLoader struct {
-	file       labfile.File
+	file       topology.LabFile
 	loadedPath string
 }
 
-func (l *fakeLabFileLoader) Load(path string) (labfile.File, error) {
+func (l *fakeLabFileLoader) Load(path string) (topology.LabFile, error) {
 	l.loadedPath = path
 	return l.file, nil
 }
 
 type fakeConfigParser struct {
-	results    map[string]configparse.ParseResult
+	results    map[string]topology.ParseResult
 	parseCalls int
 }
 
-func (p *fakeConfigParser) Parse(_ model.DeviceKind, path string, _ configparse.ParseOptions) (configparse.ParseResult, error) {
+func (p *fakeConfigParser) Parse(_ model.DeviceKind, path string, _ topology.ParseOptions) (topology.ParseResult, error) {
 	p.parseCalls++
 	return p.results[path], nil
 }
