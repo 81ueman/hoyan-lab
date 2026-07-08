@@ -339,19 +339,21 @@ func TestNormalizeFIBEntryPreservesNewFields(t *testing.T) {
 	}
 }
 
-func TestNormalizeFIBEntryDefaultAction(t *testing.T) {
-	// When action is empty and protocol is blackhole, should default to drop.
+func TestNormalizeFIBEntryNoDefaultAction(t *testing.T) {
+	// Action defaulting has been removed from compare-time normalization.
+	// New producers must emit explicit Action; old snapshots are migrated
+	// at file-load boundary via migrateSnapshotForCompare.
 	entry := FIBEntry{
 		AFI:    model.AFIIPv4,
 		Prefix: "203.0.113.0/24",
 		Source: RouteSource{Protocol: model.RouteSourceBlackhole},
 	}
 	normalized := normalizeFIBEntryForCompare(entry)
-	if normalized.Action != ActionDrop {
-		t.Fatalf("expected ActionDrop for blackhole, got %q", normalized.Action)
+	if normalized.Action != "" {
+		t.Fatalf("expected empty Action (no defaulting), got %q", normalized.Action)
 	}
 
-	// When action is explicitly set (e.g. discard), defaulting should not override.
+	// When action is explicitly set, normalization preserves it.
 	entry.Action = ActionDiscard
 	normalized = normalizeFIBEntryForCompare(entry)
 	if normalized.Action != ActionDiscard {
@@ -398,6 +400,64 @@ func TestMergeDuplicateRouteNewFields(t *testing.T) {
 	}
 	if len(merged.NextHops) != 2 {
 		t.Errorf("expected 2 next-hops after merge, got %d", len(merged.NextHops))
+	}
+}
+
+// --- Migration ---
+
+func TestMigrateSnapshotForCompare(t *testing.T) {
+	snapshot := NetworkSnapshot{
+		Nodes: []NodeSnapshot{{
+			Node: "r1",
+			VRFs: []VRFSnapshot{{
+				VRF: "default",
+				RIB: RIB{
+					Routes: []RIBRoute{
+						{Common: RIBRouteCommon{Prefix: "10.0.0.0/24", Protocol: model.RouteSourceBGP}}, // missing AFI
+						{Common: RIBRouteCommon{AFI: model.AFIIPv6, Prefix: "2001::/32", Protocol: model.RouteSourceBGP}},
+					},
+				},
+				FIB: FIB{
+					Entries: []FIBEntry{
+						{Prefix: "10.0.0.0/24", Source: RouteSource{Protocol: model.RouteSourceBlackhole}}, // missing AFI+Action
+						{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Source: RouteSource{Protocol: model.RouteSourceConnected}, Action: ActionForward},
+						{Prefix: "10.0.1.0/24", Source: RouteSource{Protocol: model.RouteSourceConnected}},                                           // missing Action, no next-hops
+						{Prefix: "10.0.2.0/24", Source: RouteSource{Protocol: model.RouteSourceStatic}, NextHops: []NextHop{{Address: "192.0.2.1"}}}, // missing Action
+					},
+				},
+			}},
+		}},
+	}
+	migrated := migrateSnapshotForCompare(snapshot)
+
+	// RIB: empty AFI should be set to IPv4
+	if migrated.Nodes[0].VRFs[0].RIB.Routes[0].Common.AFI != model.AFIIPv4 {
+		t.Errorf("expected AFI=ipv4 for RIB route with empty AFI, got %q", migrated.Nodes[0].VRFs[0].RIB.Routes[0].Common.AFI)
+	}
+	// RIB: explicit AFI should be preserved
+	if migrated.Nodes[0].VRFs[0].RIB.Routes[1].Common.AFI != model.AFIIPv6 {
+		t.Errorf("expected AFI=ipv6 for RIB route, got %q", migrated.Nodes[0].VRFs[0].RIB.Routes[1].Common.AFI)
+	}
+
+	// FIB: empty AFI should be set to IPv4
+	if migrated.Nodes[0].VRFs[0].FIB.Entries[0].AFI != model.AFIIPv4 {
+		t.Errorf("expected AFI=ipv4 for FIB entry with empty AFI, got %q", migrated.Nodes[0].VRFs[0].FIB.Entries[0].AFI)
+	}
+	// FIB: empty Action for blackhole should be set to drop
+	if migrated.Nodes[0].VRFs[0].FIB.Entries[0].Action != ActionDrop {
+		t.Errorf("expected Action=drop for blackhole, got %q", migrated.Nodes[0].VRFs[0].FIB.Entries[0].Action)
+	}
+	// FIB: explicit Action should be preserved
+	if migrated.Nodes[0].VRFs[0].FIB.Entries[1].Action != ActionForward {
+		t.Errorf("expected Action=forward (preserved), got %q", migrated.Nodes[0].VRFs[0].FIB.Entries[1].Action)
+	}
+	// FIB: empty Action for connected without next-hops → receive
+	if migrated.Nodes[0].VRFs[0].FIB.Entries[2].Action != ActionReceive {
+		t.Errorf("expected Action=receive for connected without next-hops, got %q", migrated.Nodes[0].VRFs[0].FIB.Entries[2].Action)
+	}
+	// FIB: empty Action for static with next-hops → forward
+	if migrated.Nodes[0].VRFs[0].FIB.Entries[3].Action != ActionForward {
+		t.Errorf("expected Action=forward for static with next-hops, got %q", migrated.Nodes[0].VRFs[0].FIB.Entries[3].Action)
 	}
 }
 

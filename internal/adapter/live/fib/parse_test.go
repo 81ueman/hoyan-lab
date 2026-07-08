@@ -3,6 +3,8 @@ package fib
 import (
 	"reflect"
 	"testing"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func TestParseLinuxIPRoute(t *testing.T) {
@@ -18,7 +20,8 @@ func TestParseLinuxIPRoute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseLinuxIPRoute() error = %v", err)
 	}
-	if len(routes) != 5 {
+	// Now includes IPv6 routes (was 5 before AFI-awareness change)
+	if len(routes) != 6 {
 		t.Fatalf("routes = %#v", routes)
 	}
 	if host := routeByPrefix(routes, "10.0.0.10/32"); host == nil {
@@ -36,6 +39,14 @@ func TestParseLinuxIPRoute(t *testing.T) {
 	}
 	if blackhole := routeByPrefix(routes, "203.0.113.0/24"); blackhole == nil || blackhole.Source.Protocol != "blackhole" || len(blackhole.NextHops) != 0 {
 		t.Fatalf("blackhole route = %#v", blackhole)
+	}
+	// Verify IPv6 route inclusion
+	if v6 := routeByPrefix(routes, "2001:db8::/64"); v6 == nil {
+		t.Fatalf("IPv6 route missing from parsed routes")
+	} else if v6.AFI != model.AFIIPv6 {
+		t.Fatalf("IPv6 route AFI = %q, want %q", v6.AFI, model.AFIIPv6)
+	} else if v6.Source.Protocol != "connected" {
+		t.Fatalf("IPv6 route protocol = %q, want connected", v6.Source.Protocol)
 	}
 }
 

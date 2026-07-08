@@ -18,7 +18,7 @@ func TestSimulatorCollectorCanCompareWithSnapshotBackedCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectSnapshot(simulator) error = %v", err)
 	}
-	snapshotCollector := AdaptCollector(observation.NewSnapshotBackedCollector(snapshot))
+	snapshotCollector := observation.NewSnapshotBackedCollector(snapshot)
 
 	result, err := CompareCollectors(ctx, simulator, snapshotCollector, observation.CollectOptions{}, observation.SnapshotCompareOptions{IgnoreMetadata: true})
 	if err != nil {
@@ -57,8 +57,8 @@ func TestSnapshotBackedCollectorsCanCompareWithEachOther(t *testing.T) {
 		}},
 	}
 
-	a := AdaptCollector(observation.NewSnapshotBackedCollector(snapshot))
-	b := AdaptCollector(observation.NewSnapshotBackedCollector(snapshot))
+	a := observation.NewSnapshotBackedCollector(snapshot)
+	b := observation.NewSnapshotBackedCollector(snapshot)
 	result, err := CompareCollectors(ctx, a, b, observation.CollectOptions{}, observation.SnapshotCompareOptions{IgnoreMetadata: true})
 	if err != nil {
 		t.Fatalf("CompareCollectors() error = %v", err)

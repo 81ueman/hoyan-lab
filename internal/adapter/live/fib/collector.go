@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/live/device"
 	"github.com/81ueman/hoyan-lab/internal/adapter/srlinuxjson"
@@ -41,7 +42,11 @@ func (c LiveCollector) CollectFIB(ctx context.Context, node model.Node, vrf mode
 	if !ok || collectors[collectorID] == nil {
 		return FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
 	}
-	fib, err := collectors[collectorID].CollectFIB(ctx, node, vrf)
+	afi := opts.AFI
+	if afi == "" {
+		afi = model.AFIIPv4
+	}
+	fib, err := collectors[collectorID].CollectFIB(ctx, node, vrf, afi)
 	if err != nil {
 		return FIB{}, err
 	}
@@ -66,7 +71,7 @@ type ceosCollector struct{ device.VendorCollector }
 type srlinuxCollector struct{ device.VendorCollector }
 
 type collector interface {
-	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID) (FIB, error)
+	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error)
 }
 
 func (c LiveCollector) fibCollectorsByID() map[model.LiveCollectorID]collector {
@@ -84,15 +89,21 @@ func (c LiveCollector) fibCollectorsByID() map[model.LiveCollectorID]collector {
 	})
 }
 
-func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	fib := FIB{Node: model.NodeID(n.Name), VRF: vrf}
 	session := c.SessionForNode(n)
+	ipArgs := []string{"ip", "-j", "route"}
+	if afi == model.AFIIPv6 {
+		ipArgs = []string{"ip", "-j", "-6", "route"}
+	}
+	cmdStr := strings.Join(ipArgs, " ")
 	if vrf == model.NetworkInstanceDefault {
 		for _, table := range []string{"main", "local"} {
-			data, err := session.Exec(ctx, "ip", "-j", "route", "show", "table", table)
+			args := append(append([]string(nil), ipArgs...), "show", "table", table)
+			data, err := session.Exec(ctx, args...)
 			if err != nil {
-				return FIB{}, fmt.Errorf("node %s ip -j route show table %s: %w", n.Name, table, err)
+				return FIB{}, fmt.Errorf("node %s %s show table %s: %w", n.Name, cmdStr, table, err)
 			}
 			routes, err := ParseLinuxIPRoute(n.Name, data)
 			if err != nil {
@@ -103,9 +114,10 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 		SortRoutes(fib.Entries)
 		return fib, nil
 	}
-	data, err := session.Exec(ctx, "ip", "-j", "route", "show", "vrf", string(vrf))
+	args := append(append([]string(nil), ipArgs...), "show", "vrf", string(vrf))
+	data, err := session.Exec(ctx, args...)
 	if err != nil {
-		return FIB{}, fmt.Errorf("node %s ip -j route show vrf %s: %w", n.Name, vrf, err)
+		return FIB{}, fmt.Errorf("node %s %s show vrf %s: %w", n.Name, cmdStr, vrf, err)
 	}
 	routes, err := ParseLinuxIPRouteVRF(n.Name, string(vrf), data)
 	if err != nil {
@@ -116,12 +128,16 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 	return fib, nil
 }
 
-func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	session := c.SessionForNode(n)
-	data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
+	fibCmd := "show ip route vrf all | json"
+	if afi == model.AFIIPv6 {
+		fibCmd = "show ipv6 route vrf all | json"
+	}
+	data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", fibCmd)
 	if err != nil {
-		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, "show ip route vrf all | json", err)
+		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, fibCmd, err)
 	}
 	fibs, err := ParseCEOSFIBs(n.Name, data)
 	if err != nil {
@@ -130,13 +146,17 @@ func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.N
 	return fibByVRF(fibs, model.NodeID(n.Name), vrf), nil
 }
 
-func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
+func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	session := c.SessionForNode(n)
 	ni := string(vrf)
-	data, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+	afiStr := "ipv4-unicast"
+	if afi == model.AFIIPv6 {
+		afiStr = "ipv6-unicast"
+	}
+	data, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "summary")
 	if err != nil {
-		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", n.Name, ni, err)
+		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", n.Name, ni, afiStr, err)
 	}
 	routes, err := ParseSRLinuxRoutesNetworkInstance(n.Name, ni, data)
 	if err != nil {
@@ -146,9 +166,9 @@ func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf mode
 		if !srlinuxNeedsRouteDetail(routes[i]) {
 			continue
 		}
-		detail, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+		detail, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "prefix", routes[i].Prefix, "detail")
 		if err != nil {
-			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", n.Name, ni, routes[i].Prefix, err)
+			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s prefix %s detail: %w", n.Name, ni, afiStr, routes[i].Prefix, err)
 		}
 		detailRoutes, err := ParseSRLinuxRouteDetailsNetworkInstance(n.Name, ni, detail)
 		if err != nil {

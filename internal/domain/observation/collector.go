@@ -1,24 +1,11 @@
 package observation
 
 import (
-	"context"
 	"net/netip"
 	"sort"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
-
-// Collector is the legacy domain-level collection port.
-//
-// Deprecated: collection orchestration belongs to the collect usecase. New code
-// should depend on internal/usecase/collect.Collector instead.
-type Collector interface {
-	RIBCollector
-	FIBCollector
-
-	Nodes(ctx context.Context) ([]model.NodeID, error)
-	VRFs(ctx context.Context, node model.NodeID) ([]model.NetworkInstanceID, error)
-}
 
 type CollectOptions struct {
 	AFI       model.AFI
@@ -32,14 +19,6 @@ type CollectOptions struct {
 type CollectorMetadata struct {
 	Source string            `json:"source,omitempty"`
 	Labels map[string]string `json:"labels,omitempty"`
-}
-
-// MetadataProvider is the legacy optional metadata collection port.
-//
-// Deprecated: collection orchestration belongs to the collect usecase. New code
-// should depend on internal/usecase/collect.MetadataProvider instead.
-type MetadataProvider interface {
-	Metadata(ctx context.Context) CollectorMetadata
 }
 
 func FilterRIB(route RIB, opts CollectOptions) RIB {

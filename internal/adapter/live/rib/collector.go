@@ -28,12 +28,13 @@ func NewCollectorWithResolver(runner Runner, resolveContainerName func(string) s
 	return LiveCollector{runner: runner, containerNameFor: resolveContainerName}
 }
 
-func (c LiveCollector) collectRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
-	out, err := c.collectBGPRoutes(ctx, nodes)
+func (c LiveCollector) collectRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
+	out, err := c.collectBGPRoutes(ctx, nodes, afi)
+
 	if err != nil {
 		return nil, err
 	}
-	nonBGP, err := c.collectRouteTableRoutes(ctx, nodes)
+	nonBGP, err := c.collectRouteTableRoutes(ctx, nodes, afi)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +45,11 @@ func (c LiveCollector) collectRoutes(ctx context.Context, nodes []model.Node) ([
 
 func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	routes, err := c.collectRoutes(ctx, []model.Node{node})
+	afi := opts.AFI
+	if afi == "" {
+		afi = model.AFIIPv4
+	}
+	routes, err := c.collectRoutes(ctx, []model.Node{node}, afi)
 	if err != nil {
 		return observation.RIB{}, err
 	}
@@ -79,7 +84,7 @@ func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf mode
 	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: vrfRoutes}, opts), nil
 }
 
-func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -96,7 +101,7 @@ func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node)
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.collectBGPRoutes(ctx, selected)
+		routes, err := collector.collectBGPRoutes(ctx, selected, afi)
 		if err != nil {
 			return nil, err
 		}
@@ -129,9 +134,9 @@ type ceosCollector struct{ device.VendorCollector }
 type srlinuxCollector struct{ device.VendorCollector }
 
 type routeCollector interface {
-	collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
-	collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
-	collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
+	collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error)
+	collectOSPFRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error)
+	collectRouteTableRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error)
 }
 
 func (c LiveCollector) collectorsByID() map[model.LiveCollectorID]routeCollector {
@@ -149,16 +154,22 @@ func (c LiveCollector) collectorsByID() map[model.LiveCollectorID]routeCollector
 	})
 }
 
-func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
+	bgpCmd := "show ip bgp json"
+	vrfBGPCmd := "ipv4"
+	if afi == model.AFIIPv6 {
+		bgpCmd = "show bgp ipv6 unicast json"
+		vrfBGPCmd = "ipv6"
+	}
 	for _, n := range nodes {
 		session := c.SessionForNode(n)
-		data, err := session.Exec(ctx, "vtysh", "-c", "show ip bgp json")
+		data, err := session.Exec(ctx, "vtysh", "-c", bgpCmd)
 		if err != nil {
 			if strings.Contains(string(data), "bgpd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, "show ip bgp json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, bgpCmd, err)
 		}
 		routes, err := ParseFRR(n.Name, data)
 		if err != nil {
@@ -166,7 +177,7 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) 
 		}
 		out = append(out, routes...)
 		for _, vrf := range frrVRFsFromNode(n) {
-			cmd := fmt.Sprintf("show bgp vrf %s ipv4 unicast json", vrf)
+			cmd := fmt.Sprintf("show bgp vrf %s %s unicast json", vrf, vrfBGPCmd)
 			data, err := session.Exec(ctx, "vtysh", "-c", cmd)
 			if err != nil {
 				if strings.Contains(string(data), "bgpd is not running") {
@@ -200,13 +211,17 @@ func frrVRFsFromNode(n model.Node) []string {
 	return vrfs
 }
 
-func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
+	bgpCmd := "show ip bgp vrf all | json"
+	if afi == model.AFIIPv6 {
+		bgpCmd = "show bgp ipv6 unicast vrf all | json"
+	}
 	for _, n := range nodes {
 		session := c.SessionForNode(n)
-		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip bgp vrf all | json")
+		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", bgpCmd)
 		if err != nil {
-			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, "show ip bgp vrf all | json", err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, bgpCmd, err)
 		}
 		routes, err := ParseCEOS(n.Name, data)
 		if err != nil {
@@ -218,7 +233,7 @@ func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node)
 	return out, nil
 }
 
-func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -234,7 +249,7 @@ func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.collectOSPFRoutes(ctx, selected)
+		routes, err := collector.collectOSPFRoutes(ctx, selected, afi)
 		if err != nil {
 			return nil, err
 		}
@@ -244,7 +259,7 @@ func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node
 	return out, nil
 }
 
-func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
 	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
@@ -260,7 +275,7 @@ func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 		if len(selected) == 0 {
 			continue
 		}
-		routes, err := collector.collectRouteTableRoutes(ctx, selected)
+		routes, err := collector.collectRouteTableRoutes(ctx, selected, afi)
 		if err != nil {
 			return nil, err
 		}
@@ -270,12 +285,16 @@ func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 	return out, nil
 }
 
-func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
+func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
+	afiStr := "ipv4"
+	if afi == model.AFIIPv6 {
+		afiStr = "ipv6"
+	}
 	for _, n := range nodes {
 		session := c.SessionForNode(n)
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			summary, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "summary")
+			summary, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "summary")
 			if err != nil {
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary collection network-instance %s: %w", n.Name, ni, err)
 			}
@@ -284,7 +303,7 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary network-instance %s: %w", n.Name, ni, err)
 			}
 			for _, prefix := range prefixes {
-				detail, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "prefix", prefix, "detail")
+				detail, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "prefix", prefix, "detail")
 				if err != nil {
 					return nil, fmt.Errorf("%s SR Linux BGP RIB network-instance %s prefix %s detail collection: %w", n.Name, ni, prefix, err)
 				}
