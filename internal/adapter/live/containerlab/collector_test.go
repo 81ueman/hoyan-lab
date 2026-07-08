@@ -51,10 +51,10 @@ func TestCollectorRejectsUnknownNode(t *testing.T) {
 	if _, err := collector.VRFs(context.Background(), "missing"); err == nil {
 		t.Fatalf("VRFs() error = nil, want unknown node error")
 	}
-	if _, err := collector.CollectRIB(context.Background(), model.Node{Name: "missing"}, model.NetworkInstanceDefault, observation.CollectOptions{}); err == nil {
+	if _, err := collector.CollectRIB(context.Background(), model.NodeID("missing"), model.NetworkInstanceDefault, observation.CollectOptions{}); err == nil {
 		t.Fatalf("CollectRIB() error = nil, want unknown node error")
 	}
-	if _, err := collector.CollectFIB(context.Background(), model.Node{Name: "missing"}, model.NetworkInstanceDefault, observation.Options{}); err == nil {
+	if _, err := collector.CollectFIB(context.Background(), model.NodeID("missing"), model.NetworkInstanceDefault, observation.Options{}); err == nil {
 		t.Fatalf("CollectFIB() error = nil, want unknown node error")
 	}
 }

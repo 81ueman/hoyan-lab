@@ -102,12 +102,12 @@ func (f fakeInputHashChecker) CheckHashes(topologyPath string, snap *snapshotdom
 	return f.result, f.err
 }
 
-func (f *fakeRIBCollector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+func (f *fakeRIBCollector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	routes, err := f.next()
 	if err != nil {
 		return observation.RIB{}, err
 	}
-	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: model.NormalizeNetworkInstance(string(vrf)), Routes: routes}, opts), nil
+	return observation.FilterRIB(observation.RIB{Node: node, VRF: model.NormalizeNetworkInstance(string(vrf)), Routes: routes}, opts), nil
 }
 
 func (f *fakeRIBCollector) next() ([]observation.RIBRoute, error) {
@@ -132,6 +132,10 @@ func deps(runtime *fakeRuntime, collector collect.Collector) Dependencies {
 	}
 }
 
+func newSnapshotCollector(snap observation.NetworkSnapshot) collect.Collector {
+	return collect.AdaptCollector(observation.NewSnapshotBackedCollector(snap))
+}
+
 func newTestUsecase(t *testing.T, deps Dependencies) Usecase {
 	t.Helper()
 	u, err := New(deps)
@@ -142,7 +146,7 @@ func newTestUsecase(t *testing.T, deps Dependencies) Usecase {
 }
 
 func TestNewRejectsMissingDependencies(t *testing.T) {
-	valid := deps(&fakeRuntime{}, observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}))
+	valid := deps(&fakeRuntime{}, newSnapshotCollector(observation.NetworkSnapshot{}))
 	tests := []struct {
 		name string
 		deps Dependencies
@@ -193,7 +197,7 @@ func TestRunDestroysOnSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectSnapshot() error = %v", err)
 	}
-	collector := observation.NewSnapshotBackedCollector(expected)
+	collector := newSnapshotCollector(expected)
 	opts := Options{
 		Topology:     "testdata/live.clab.yml",
 		Timeout:      time.Second,
@@ -246,7 +250,7 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 	opts := Options{Topology: topologyPath, Snapshot: "snapshot.json", Offline: true, CheckFIB: false, Out: io.Discard}
 	usecase, err := New(Dependencies{
 		Runtime:            rt,
-		Collector:          observation.NewSnapshotBackedCollector(observation.NetworkSnapshot{}),
+		Collector:          newSnapshotCollector(observation.NetworkSnapshot{}),
 		SnapshotRepository: fakeSnapshotRepository{snap: snap},
 		InputHashChecker:   fakeInputHashChecker{},
 	})
@@ -411,7 +415,7 @@ func TestRunCheckFIBUsesInjectedCollector(t *testing.T) {
 	}
 	actual := expected
 	actual.Nodes[0].VRFs[0].FIB = observation.FIB{Node: actual.Nodes[0].Node, VRF: actual.Nodes[0].VRFs[0].VRF, Entries: []observation.FIBEntry{{AFI: "ipv4", Prefix: "10.255.1.1/32", Source: observation.RouteSource{Protocol: model.RouteSourceConnected}, Action: observation.ActionReceive}}}
-	deps := deps(rt, observation.NewSnapshotBackedCollector(actual))
+	deps := deps(rt, newSnapshotCollector(actual))
 	opts := Options{Topology: "testdata/live.clab.yml", Timeout: time.Second, PollInterval: time.Millisecond, CheckFIB: true, FIBOptions: observation.Options{UnresolvedPolicy: observation.UnresolvedPolicyIgnore}, Out: &out}
 	err = newTestUsecase(t, deps).Run(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "collector snapshots did not converge") {
