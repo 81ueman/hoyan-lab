@@ -32,9 +32,6 @@ func Load(path string) (*snapshotdomain.Snapshot, error) {
 	if snap.Version == "" {
 		return nil, fmt.Errorf("snapshot %s has no version", path)
 	}
-	if snap.Nodes == nil {
-		snap.Nodes = map[string]snapshotdomain.NodeSnapshot{}
-	}
 	snap.Network = observation.NormalizeNetworkSnapshot(snap.Network)
 	return &snap, nil
 }

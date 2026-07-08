@@ -27,7 +27,6 @@ func TestInputHashesAndCheckHashesReportConfigMismatch(t *testing.T) {
 		TopologyHash: hashes.TopologyHash,
 		ConfigHashes: hashes.ConfigHashes,
 		CollectedAt:  time.Now().UTC(),
-		Nodes:        map[string]snapshotdomain.NodeSnapshot{},
 	}
 	appendConfig(t, configPath, "\ninterface lo\n")
 	result, err := CheckHashes(topologyPath, snap)

@@ -30,5 +30,3 @@ func (t RuntimeTopology) RuntimeName(nodeName string) string {
 	}
 	return nodeName
 }
-
-

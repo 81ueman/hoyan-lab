@@ -1,12 +1,10 @@
 package snapshot
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
@@ -20,14 +18,8 @@ type Snapshot struct {
 	ConfigHashes map[string]string           `json:"config_hashes,omitempty"`
 	GitCommit    string                      `json:"git_commit,omitempty"`
 	CollectedAt  time.Time                   `json:"collected_at"`
-	Nodes        map[string]NodeSnapshot     `json:"nodes"`
 	Network      observation.NetworkSnapshot `json:"network"`
 	Warnings     []string                    `json:"warnings,omitempty"`
-}
-
-type NodeSnapshot struct {
-	Kind model.DeviceKind           `json:"kind"`
-	Raw  map[string]json.RawMessage `json:"raw,omitempty"`
 }
 
 type HashPolicy string
