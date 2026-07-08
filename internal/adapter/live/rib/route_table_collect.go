@@ -16,18 +16,19 @@ func (c frrCollector) collectRouteTableRoutes(ctx context.Context, nodes []model
 		routeCmd = "show ipv6 route vrf all json"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", routeCmd)
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "vtysh", "-c", routeCmd)
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, routeCmd, err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), routeCmd, err)
 		}
 		var ospfData []byte
 		if afi != model.AFIIPv6 {
-			ospfData, err = c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip ospf route json")
-			if err != nil && strings.Contains(string(ospfData), "ospfd is not running") {
+			var ospfErr error
+			ospfData, ospfErr = session.Exec(ctx, "vtysh", "-c", "show ip ospf route json")
+			if ospfErr != nil && strings.Contains(string(ospfData), "ospfd is not running") {
 				ospfData = nil
-			} else if err != nil {
-				return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip ospf route json", err)
+			} else if ospfErr != nil {
+				return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip ospf route json", ospfErr)
 			}
 		}
 		routes, err := ParseFRRRouteTableWithOSPF(n.Name, data, ospfData)
@@ -47,10 +48,10 @@ func (c ceosCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 		routeCmd = "show ipv6 route vrf all | json"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", routeCmd)
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", routeCmd)
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, routeCmd, err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), routeCmd, err)
 		}
 		routes, err := ParseCEOSRouteTable(n.Name, data)
 		if err != nil {
@@ -69,11 +70,11 @@ func (c srlinuxCollector) collectRouteTableRoutes(ctx context.Context, nodes []m
 		afiStr = "ipv6-unicast"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
+		session := c.SessionForNode(n)
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			data, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", afiStr, "summary")
+			data, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "summary")
 			if err != nil {
-				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", containerName, ni, afiStr, err)
+				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", n.RuntimeName(), ni, afiStr, err)
 			}
 			routes, err := ParseSRLinuxRouteTableNetworkInstance(n.Name, ni, data)
 			if err != nil {
@@ -90,16 +91,16 @@ func (c srlinuxCollector) collectRouteTableRoutes(ctx context.Context, nodes []m
 func (c frrCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
 		if afi == model.AFIIPv6 {
 			return nil, fmt.Errorf("%s: OSPFv3 (IPv6) not supported; FRR OSPF collection only supports IPv4 (use the general IPv6 route-table collection for OSPFv3 routes)", n.Name)
 		}
-		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip ospf route json")
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "vtysh", "-c", "show ip ospf route json")
 		if err != nil {
 			if strings.Contains(string(data), "ospfd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip ospf route json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip ospf route json", err)
 		}
 		routes, err := ParseFRROSPFRouteTable(n.Name, data)
 		if err != nil {

@@ -102,6 +102,33 @@ func mergeDuplicateRoute(a, b FIBEntry) (FIBEntry, string, bool) {
 	if merged.Metric == 0 {
 		merged.Metric = b.Metric
 	}
+	if merged.SAFI == "" {
+		merged.SAFI = b.SAFI
+	}
+	if merged.TableID == "" {
+		merged.TableID = b.TableID
+	}
+	if merged.TableName == "" {
+		merged.TableName = b.TableName
+	}
+	if merged.ProtocolInstance == "" {
+		merged.ProtocolInstance = b.ProtocolInstance
+	}
+	if merged.Age == "" {
+		merged.Age = b.Age
+	}
+	if merged.AgeSeconds == 0 {
+		merged.AgeSeconds = b.AgeSeconds
+	}
+	if merged.Tag == 0 {
+		merged.Tag = b.Tag
+	}
+	if merged.InstalledReason == "" {
+		merged.InstalledReason = b.InstalledReason
+	}
+	if merged.Raw == nil {
+		merged.Raw = b.Raw
+	}
 	merged.NextHops = unionNextHops(a.NextHops, b.NextHops)
 	return merged, "", true
 }

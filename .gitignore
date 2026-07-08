@@ -2,3 +2,9 @@ clab*
 hoyan-sigcomm20.pdf
 .worktree/
 hoyan
+
+# pi orchestration files
+.pi-task.md
+.pi-review-*.md
+.pi-fix-request.md
+.pi-review-state.json

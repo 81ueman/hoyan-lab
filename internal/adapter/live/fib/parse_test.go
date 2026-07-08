@@ -31,8 +31,8 @@ func TestParseLinuxIPRoute(t *testing.T) {
 	if ecmp == nil || len(ecmp.NextHops) != 2 {
 		t.Fatalf("ecmp route = %#v", ecmp)
 	}
-	if got, want := ecmp.NextHops[0], (NextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}); got != want {
-		t.Fatalf("first next-hop = %#v, want %#v", got, want)
+	if !reflect.DeepEqual(ecmp.NextHops[0], NextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1}) {
+		t.Fatalf("first next-hop = %#v, want %#v", ecmp.NextHops[0], NextHop{Address: "192.0.2.1", Interface: "eth1", Weight: 1})
 	}
 	if def := routeByPrefix(routes, "0.0.0.0/0"); def == nil || def.Source.Protocol != "static" || def.Metric != 100 {
 		t.Fatalf("default route = %#v", def)

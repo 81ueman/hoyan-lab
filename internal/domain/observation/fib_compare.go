@@ -73,6 +73,12 @@ func compareFIBEntries(expected, actual []FIBEntry, keyFunc func(FIBEntry) strin
 			return
 		}
 		compareNextHops(key, e.NextHops, a.NextHops, &result)
+		// Only preference is compared here. New optional metadata fields (SAFI,
+		// TableID, TableName, ProtocolInstance, Age, AgeSeconds, Tag,
+		// InstalledReason, Raw) are intentionally excluded from FIB entry
+		// comparison to avoid noisy diffs when one source populates them
+		// and another does not. They remain available for callers that
+		// want to inspect them via the raw structs.
 		if e.Preference != 0 && a.Preference != 0 && e.Preference != a.Preference {
 			result.Mismatched = append(result.Mismatched, FIBAttributeMismatch{RouteKey: key, Field: "preference", Expected: e.Preference, Actual: a.Preference})
 		}

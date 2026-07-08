@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
-	"github.com/81ueman/hoyan-lab/internal/adapter/solver/z3"
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
@@ -36,6 +34,15 @@ type Graph struct {
 	topoIndex *model.TopologyIndex
 	rib       domainroute.RIBTable
 	fib       dataplane.FIBTable
+	solver    solver.Backend
+}
+
+type GraphOption func(*Graph)
+
+func WithSolverBackend(backend solver.Backend) GraphOption {
+	return func(g *Graph) {
+		g.solver = backend
+	}
 }
 
 func NoFailures() FailureSet { return failure.None() }
@@ -70,7 +77,7 @@ func And(cs ...Cond) Cond { return failure.And(cs...) }
 func Or(cs ...Cond) Cond  { return failure.Or(cs...) }
 func Not(c Cond) Cond     { return failure.Not(c) }
 
-func NewGraph(topo *model.Topology) *Graph {
+func NewGraph(topo *model.Topology, opts ...GraphOption) *Graph {
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		panic(err)
@@ -80,6 +87,11 @@ func NewGraph(topo *model.Topology) *Graph {
 		topoIndex: idx,
 		rib:       domainroute.RIBTable{},
 		fib:       dataplane.FIBTable{},
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(g)
+		}
 	}
 	controlplane.NewEngine(idx, g.rib).Simulate()
 	dataplane.NewEngine(idx, g.rib, g.fib).DeriveFIB()
@@ -273,7 +285,7 @@ func (g *Graph) FindBreakingFailuresSymbolic(from string, target SymbolicTarget,
 		return FailureSearchResult{Solver: trace}, fmt.Errorf("failure search has no candidate failure elements")
 	}
 	problem := g.symbolicFailureProblem(from, target, opts, elements)
-	ans, err := solveSymbolicFailureProblem(problem)
+	ans, err := g.solveSymbolicFailureProblem(problem)
 	if ans.Backend != "" {
 		trace.Backend = ans.Backend
 	}
@@ -308,12 +320,11 @@ func (g *Graph) symbolicFailureProblem(from string, target SymbolicTarget, opts 
 	}
 }
 
-func solveSymbolicFailureProblem(problem solver.SymbolicFailureProblem) (solver.Answer, error) {
-	ans, err := z3.DefaultBackend().SolveSymbolic(problem)
-	if err == nil {
-		return ans, nil
+func (g *Graph) solveSymbolicFailureProblem(problem solver.SymbolicFailureProblem) (solver.Answer, error) {
+	if g.solver == nil {
+		return solver.Answer{}, fmt.Errorf("symbolic failure solver backend is not configured")
 	}
-	return (enumerate.Backend{}).SolveSymbolic(problem)
+	return g.solver.SolveSymbolic(problem)
 }
 
 type Target interface {

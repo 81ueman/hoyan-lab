@@ -44,7 +44,35 @@ func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf mode
 	if err != nil {
 		return observation.RIB{}, err
 	}
-	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: routes}, opts), nil
+	// Filter by requested VRF to prevent cross-VRF leakage from commands
+	// that return routes from all VRFs (e.g. "show ip route vrf all json").
+	var vrfRoutes []observation.RIBRoute
+	for _, r := range routes {
+		routeVRF := model.NormalizeNetworkInstance(string(r.Common.VRF))
+		if routeVRF == vrf {
+			r.Common.VRF = vrf
+			vrfRoutes = append(vrfRoutes, r)
+		}
+	}
+	// Backward compatibility: if no routes matched by VRF (e.g. snapshots
+	// without VRF field), return all routes unfiltered (legacy behavior).
+	// NormalizeNetworkInstance("") returns "default", so old snapshots where
+	// VRF was never set will match when collecting the default VRF above.
+	// This fallback handles the case where the requested VRF is non-default
+	// but routes lack VRF metadata entirely.
+	if len(vrfRoutes) == 0 && len(routes) > 0 {
+		hasVRF := false
+		for _, r := range routes {
+			if r.Common.VRF != "" {
+				hasVRF = true
+				break
+			}
+		}
+		if !hasVRF {
+			vrfRoutes = routes
+		}
+	}
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: vrfRoutes}, opts), nil
 }
 
 func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, afi model.AFI) ([]RIBRoute, error) {
@@ -126,13 +154,13 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, 
 		vrfBGPCmd = "ipv6"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", bgpCmd)
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "vtysh", "-c", bgpCmd)
 		if err != nil {
 			if strings.Contains(string(data), "bgpd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, bgpCmd, err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), bgpCmd, err)
 		}
 		routes, err := ParseFRR(n.Name, data)
 		if err != nil {
@@ -141,12 +169,12 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node, 
 		out = append(out, routes...)
 		for _, vrf := range frrVRFsFromNode(n) {
 			cmd := fmt.Sprintf("show bgp vrf %s %s unicast json", vrf, vrfBGPCmd)
-			data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", cmd)
+			data, err := session.Exec(ctx, "vtysh", "-c", cmd)
 			if err != nil {
 				if strings.Contains(string(data), "bgpd is not running") {
 					continue
 				}
-				return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, cmd, err)
+				return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), cmd, err)
 			}
 			routes, err := ParseFRRVRF(n.Name, vrf, data)
 			if err != nil {
@@ -181,10 +209,10 @@ func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node,
 		bgpCmd = "show bgp ipv6 unicast vrf all | json"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", bgpCmd)
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", bgpCmd)
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, bgpCmd, err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), bgpCmd, err)
 		}
 		routes, err := ParseCEOS(n.Name, data)
 		if err != nil {
@@ -255,9 +283,9 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 		afiStr = "ipv6"
 	}
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
+		session := c.SessionForNode(n)
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			summary, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "summary")
+			summary, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "summary")
 			if err != nil {
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary collection network-instance %s: %w", n.Name, ni, err)
 			}
@@ -266,7 +294,7 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary network-instance %s: %w", n.Name, ni, err)
 			}
 			for _, prefix := range prefixes {
-				detail, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "prefix", prefix, "detail")
+				detail, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", afiStr, "prefix", prefix, "detail")
 				if err != nil {
 					return nil, fmt.Errorf("%s SR Linux BGP RIB network-instance %s prefix %s detail collection: %w", n.Name, ni, prefix, err)
 				}
@@ -282,6 +310,8 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 	return out, nil
 }
 
-func RunSRLinuxJSON(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	return srlinuxjson.ExecJSON(ctx, runner, containerName, showArgs...)
+// RunSRLinuxJSON runs an SR Linux CLI command and returns JSON output.
+// It uses the provided DeviceSession to communicate with the target node.
+func RunSRLinuxJSON(ctx context.Context, session device.DeviceSession, showArgs ...string) ([]byte, error) {
+	return srlinuxjson.ExecJSON(ctx, session, showArgs...)
 }

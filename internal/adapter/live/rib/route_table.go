@@ -96,8 +96,7 @@ func parseFRRRouteTableMap(node, vrf string, routesMap map[string]any, ospfRoute
 				protocol = "blackhole"
 				hops = nil
 			}
-			_, _ = node, vrf
-			out = append(out, nonBGPRoute(prefix, protocol, hops))
+			out = append(out, nonBGPRouteVRF(prefix, vrf, protocol, hops))
 		}
 	}
 	return out
@@ -152,8 +151,7 @@ func ParseFRROSPFRouteTable(node string, data []byte) ([]RIBRoute, error) {
 				protocol = normalized
 			}
 		}
-		_ = node
-		out = append(out, nonBGPRoute(prefix, protocol, frrRouteTableNextHops(m)))
+		out = append(out, nonBGPRouteVRF(prefix, "default", protocol, frrRouteTableNextHops(m)))
 	}
 	SortRoutes(out)
 	return out, nil
@@ -182,8 +180,7 @@ func ParseCEOSRouteTable(node string, data []byte) ([]RIBRoute, error) {
 				protocol = "blackhole"
 				hops = nil
 			}
-			_, _ = node, ni
-			out = append(out, nonBGPRoute(prefix, protocol, hops))
+			out = append(out, nonBGPRouteVRF(prefix, ni, protocol, hops))
 		}
 	}
 	SortRoutes(out)
@@ -223,8 +220,7 @@ func ParseSRLinuxRouteTableNetworkInstance(node, networkInstance string, data []
 				protocol = "blackhole"
 				hops = nil
 			}
-			_, _ = node, networkInstance
-			out = append(out, nonBGPRoute(prefix, protocol, hops))
+			out = append(out, nonBGPRouteVRF(prefix, networkInstance, protocol, hops))
 		}
 	}
 	SortRoutes(out)

@@ -12,7 +12,6 @@ func ParseFRR(node string, data []byte) ([]RIBRoute, error) {
 }
 
 func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
-	_, _ = node, vrf
 	type frrPath struct {
 		Valid            bool     `json:"valid"`
 		Best             bool     `json:"bestpath"`
@@ -87,7 +86,7 @@ func ParseFRRVRF(node, vrf string, data []byte) ([]RIBRoute, error) {
 			})
 		}
 		if len(bgpPaths) > 0 {
-			out = append(out, bgpRoute(prefix, bgpPaths))
+			out = append(out, bgpRouteVRF(prefix, vrf, bgpPaths))
 		}
 	}
 	sortRoutes(out)

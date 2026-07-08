@@ -84,7 +84,7 @@ func fibCollectorsByID(runner Runner) map[model.LiveCollectorID]collector {
 func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	fib := FIB{Node: model.NodeID(n.Name), VRF: vrf}
-	containerName := n.RuntimeName()
+	session := c.SessionForNode(n)
 	ipArgs := []string{"ip", "-j", "route"}
 	if afi == model.AFIIPv6 {
 		ipArgs = []string{"ip", "-j", "-6", "route"}
@@ -93,9 +93,9 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 	if vrf == model.NetworkInstanceDefault {
 		for _, table := range []string{"main", "local"} {
 			args := append(append([]string(nil), ipArgs...), "show", "table", table)
-			data, err := c.Exec.Exec(ctx, containerName, args...)
+			data, err := session.Exec(ctx, args...)
 			if err != nil {
-				return FIB{}, fmt.Errorf("docker exec -i %s %s show table %s: %w", containerName, cmdStr, table, err)
+				return FIB{}, fmt.Errorf("node %s %s show table %s: %w", n.RuntimeName(), cmdStr, table, err)
 			}
 			routes, err := ParseLinuxIPRoute(n.Name, data)
 			if err != nil {
@@ -107,9 +107,9 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 		return fib, nil
 	}
 	args := append(append([]string(nil), ipArgs...), "show", "vrf", string(vrf))
-	data, err := c.Exec.Exec(ctx, containerName, args...)
+	data, err := session.Exec(ctx, args...)
 	if err != nil {
-		return FIB{}, fmt.Errorf("docker exec -i %s %s show vrf %s: %w", containerName, cmdStr, vrf, err)
+		return FIB{}, fmt.Errorf("node %s %s show vrf %s: %w", n.RuntimeName(), cmdStr, vrf, err)
 	}
 	routes, err := ParseLinuxIPRouteVRF(n.Name, string(vrf), data)
 	if err != nil {
@@ -122,14 +122,14 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 
 func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	containerName := n.RuntimeName()
+	session := c.SessionForNode(n)
 	fibCmd := "show ip route vrf all | json"
 	if afi == model.AFIIPv6 {
 		fibCmd = "show ipv6 route vrf all | json"
 	}
-	data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", fibCmd)
+	data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", fibCmd)
 	if err != nil {
-		return FIB{}, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, fibCmd, err)
+		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), fibCmd, err)
 	}
 	fibs, err := ParseCEOSFIBs(n.Name, data)
 	if err != nil {
@@ -140,15 +140,15 @@ func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.N
 
 func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	containerName := n.RuntimeName()
+	session := c.SessionForNode(n)
 	ni := string(vrf)
 	afiStr := "ipv4-unicast"
 	if afi == model.AFIIPv6 {
 		afiStr = "ipv6-unicast"
 	}
-	data, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", afiStr, "summary")
+	data, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "summary")
 	if err != nil {
-		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", containerName, ni, afiStr, err)
+		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", n.RuntimeName(), ni, afiStr, err)
 	}
 	routes, err := ParseSRLinuxRoutesNetworkInstance(n.Name, ni, data)
 	if err != nil {
@@ -158,9 +158,9 @@ func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf mode
 		if !srlinuxNeedsRouteDetail(routes[i]) {
 			continue
 		}
-		detail, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", afiStr, "prefix", routes[i].Prefix, "detail")
+		detail, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "prefix", routes[i].Prefix, "detail")
 		if err != nil {
-			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s prefix %s detail: %w", containerName, ni, afiStr, routes[i].Prefix, err)
+			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s prefix %s detail: %w", n.RuntimeName(), ni, afiStr, routes[i].Prefix, err)
 		}
 		detailRoutes, err := ParseSRLinuxRouteDetailsNetworkInstance(n.Name, ni, detail)
 		if err != nil {

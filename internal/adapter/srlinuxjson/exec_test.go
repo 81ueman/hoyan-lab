@@ -7,10 +7,21 @@ import (
 	"testing"
 )
 
-type runnerFunc func(ctx context.Context, name string, args ...string) ([]byte, error)
+// testSession provides a fake Session for testing ExecJSON.
+type testSession struct {
+	execFn    func(ctx context.Context, args ...string) ([]byte, error)
+	execTTYFn func(ctx context.Context, args ...string) ([]byte, error)
+}
 
-func (f runnerFunc) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return f(ctx, name, args...)
+func (s testSession) Exec(ctx context.Context, args ...string) ([]byte, error) {
+	return s.execFn(ctx, args...)
+}
+
+func (s testSession) ExecTTY(ctx context.Context, args ...string) ([]byte, error) {
+	if s.execTTYFn == nil {
+		return nil, errors.New("ExecTTY not implemented")
+	}
+	return s.execTTYFn(ctx, args...)
 }
 
 func TestExecJSONRetriesMalformedOutput(t *testing.T) {
@@ -19,17 +30,19 @@ func TestExecJSONRetriesMalformedOutput(t *testing.T) {
 	defer func() { retryDelay = oldDelay }()
 
 	calls := 0
-	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		calls++
-		if name != "docker" || strings.Join(args[:4], " ") != "exec -i srl1 sr_cli" {
-			t.Fatalf("unexpected command: %s %v", name, args)
-		}
-		if calls == 1 {
-			return []byte(`{"header":`), nil
-		}
-		return []byte(`{"header":[]}`), nil
-	})
-	data, err := ExecJSON(context.Background(), runner, "srl1", "show", "version")
+	session := testSession{
+		execFn: func(ctx context.Context, args ...string) ([]byte, error) {
+			calls++
+			if len(args) < 4 || args[0] != "sr_cli" || args[1] != "--output-format" {
+				t.Fatalf("unexpected args: %v", args)
+			}
+			if calls == 1 {
+				return []byte(`{"header":`), nil
+			}
+			return []byte(`{"header":[]}`), nil
+		},
+	}
+	data, err := ExecJSON(context.Background(), session, "show", "version")
 	if err != nil {
 		t.Fatalf("ExecJSON() error = %v", err)
 	}
@@ -46,27 +59,27 @@ func TestExecJSONFallsBackToTTY(t *testing.T) {
 	retryDelay = 0
 	defer func() { retryDelay = oldDelay }()
 
-	var ttyCommand string
-	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		cmd := name + " " + strings.Join(args, " ")
-		switch {
-		case cmd == "docker exec -i srl1 sr_cli --output-format json --pagination off -- show version":
+	var ttyCalled bool
+	session := testSession{
+		execFn: func(ctx context.Context, args ...string) ([]byte, error) {
 			return nil, nil
-		case strings.HasPrefix(cmd, "script -q /dev/null -c docker exec -it 'srl1' sr_cli --output-format json --pagination off -- 'show' 'version'"):
-			ttyCommand = cmd
+		},
+		execTTYFn: func(ctx context.Context, args ...string) ([]byte, error) {
+			ttyCalled = true
+			if len(args) < 4 || args[0] != "sr_cli" || args[1] != "--output-format" {
+				t.Fatalf("unexpected TTY args: %v", args)
+			}
 			return []byte(`{"header":[]}`), nil
-		default:
-			return nil, errors.New("unexpected command: " + cmd)
-		}
-	})
-	data, err := ExecJSON(context.Background(), runner, "srl1", "show", "version")
+		},
+	}
+	data, err := ExecJSON(context.Background(), session, "show", "version")
 	if err != nil {
 		t.Fatalf("ExecJSON() error = %v", err)
 	}
 	if string(data) != `{"header":[]}` {
 		t.Fatalf("data = %q", data)
 	}
-	if ttyCommand == "" {
+	if !ttyCalled {
 		t.Fatalf("TTY fallback was not called")
 	}
 }
@@ -76,21 +89,16 @@ func TestExecJSONReportsMalformedOutputPreview(t *testing.T) {
 	retryDelay = 0
 	defer func() { retryDelay = oldDelay }()
 
-	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		switch name {
-		case "docker":
+	session := testSession{
+		execFn: func(ctx context.Context, args ...string) ([]byte, error) {
 			return []byte(`{"header":`), nil
-		case "script":
-			return []byte(`{"tty":`), nil
-		default:
-			return nil, errors.New("unexpected command")
-		}
-	})
-	_, err := ExecJSON(context.Background(), runner, "srl1", "show", "version")
+		},
+	}
+	_, err := ExecJSON(context.Background(), session, "show", "version")
 	if err == nil {
 		t.Fatalf("ExecJSON() succeeded unexpectedly")
 	}
-	for _, want := range []string{"malformed JSON", "bytes=7", `preview="{\"tty\":"`} {
+	for _, want := range []string{"malformed JSON", "bytes=10", `preview="{\"header\":"`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err, want)
 		}
