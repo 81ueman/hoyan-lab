@@ -8,14 +8,8 @@ import (
 )
 
 type SnapshotCompareOptions struct {
-	IgnoreMetadata     bool
-	IgnoreModelInfo    bool
-	IgnoreOptionalMeta bool // when true, strips new optional metadata fields
-	// (SAFI, TableID, TableName, ProtocolInstance, Age,
-	// AgeSeconds, Tag, InstalledReason, Raw, Resolved)
-	// before comparing, so a snapshot that has them
-	// populated does not cause noisy diffs against one
-	// that does not.
+	IgnoreMetadata  bool
+	IgnoreModelInfo bool
 }
 
 type SnapshotComparison struct {
@@ -113,45 +107,7 @@ func snapshotForCompare(snapshot NetworkSnapshot, opts SnapshotCompareOptions) N
 			}
 		}
 	}
-	if opts.IgnoreOptionalMeta {
-		for ni := range snapshot.Nodes {
-			for vi := range snapshot.Nodes[ni].VRFs {
-				for ri := range snapshot.Nodes[ni].VRFs[vi].RIB.Routes {
-					c := &snapshot.Nodes[ni].VRFs[vi].RIB.Routes[ri].Common
-					c.SAFI = ""
-					c.TableID = ""
-					c.TableName = ""
-					c.ProtocolInstance = ""
-					c.Age = ""
-					c.AgeSeconds = 0
-					c.Tag = 0
-					c.InstalledReason = ""
-					c.Raw = nil
-					if bgp := snapshot.Nodes[ni].VRFs[vi].RIB.Routes[ri].BGP; bgp != nil {
-						for pi := range bgp.Paths {
-							bgp.Paths[pi].Raw = nil
-						}
-					}
-				}
-				for fi := range snapshot.Nodes[ni].VRFs[vi].FIB.Entries {
-					e := &snapshot.Nodes[ni].VRFs[vi].FIB.Entries[fi]
-					e.SAFI = ""
-					e.TableID = ""
-					e.TableName = ""
-					e.ProtocolInstance = ""
-					e.Age = ""
-					e.AgeSeconds = 0
-					e.Tag = 0
-					e.InstalledReason = ""
-					e.Raw = nil
-					for hi := range e.NextHops {
-						e.NextHops[hi].Resolved = nil
-						e.NextHops[hi].Raw = nil
-					}
-				}
-			}
-		}
-	}
+
 	return snapshot
 }
 
