@@ -298,13 +298,15 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 	}
 }
 
-func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
-	// Topology:
-	// r1 --1-- a --1-- x --1-- d   (cost 3, primary)
-	//           \
-	//            2-- y --2-- d     (cost 5, same first-hop alternate)
-	// r1 --10-- b --1-- d          (cost 11, different first-hop alternate)
-	topo := &model.Topology{
+// alternatePathTopology returns a topology for testing same-first-hop higher-cost
+// OSPF alternates:
+//
+//	r1 --1-- a --1-- x --1-- d   (cost 3, primary)
+//	          \
+//	           2-- y --2-- d     (cost 5, same first-hop alternate)
+//	r1 --10-- b --1-- d          (cost 11, different first-hop alternate)
+func alternatePathTopology() *model.Topology {
+	return &model.Topology{
 		Nodes: []model.Node{
 			ospfNode("r1", "10.255.1.1/32",
 				map[string]string{"eth1": "198.51.100.0/31", "eth2": "198.51.100.10/31"},
@@ -335,6 +337,10 @@ func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
 			{Name: "b-d", A: "b", AIntf: "eth2", B: "d", BIntf: "eth3", Cost: 1, Subnet: "198.51.100.12/31"},
 		},
 	}
+}
+
+func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
+	topo := alternatePathTopology()
 	rib := simulateOSPFTestRIB(t, topo)
 	routes := rib["r1"][model.MustPrefix("10.255.6.6/32")]
 	if len(routes) < 2 {
@@ -375,38 +381,7 @@ func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
 }
 
 func TestOSPFAlternateSelectedUnderPrimaryLinkFailure(t *testing.T) {
-	// Same topology as TestOSPFInstallsSameFirstHopAlternate
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			ospfNode("r1", "10.255.1.1/32",
-				map[string]string{"eth1": "198.51.100.0/31", "eth2": "198.51.100.10/31"},
-				map[string]int{"eth1": 1, "eth2": 10}),
-			ospfNode("a", "10.255.2.2/32",
-				map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31", "eth3": "198.51.100.4/31"},
-				map[string]int{"eth1": 1, "eth2": 1, "eth3": 2}),
-			ospfNode("x", "10.255.4.4/32",
-				map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.6/31"},
-				map[string]int{"eth1": 1, "eth2": 1}),
-			ospfNode("y", "10.255.5.5/32",
-				map[string]string{"eth1": "198.51.100.5/31", "eth2": "198.51.100.8/31"},
-				map[string]int{"eth1": 2, "eth2": 2}),
-			ospfNode("b", "10.255.3.3/32",
-				map[string]string{"eth1": "198.51.100.11/31", "eth2": "198.51.100.12/31"},
-				map[string]int{"eth1": 10, "eth2": 1}),
-			ospfNode("d", "10.255.6.6/32",
-				map[string]string{"eth1": "198.51.100.7/31", "eth2": "198.51.100.9/31", "eth3": "198.51.100.13/31"},
-				map[string]int{"eth1": 1, "eth2": 2, "eth3": 1}),
-		},
-		Links: []model.Link{
-			{Name: "r1-a", A: "r1", AIntf: "eth1", B: "a", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
-			{Name: "a-x", A: "a", AIntf: "eth2", B: "x", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
-			{Name: "a-y", A: "a", AIntf: "eth3", B: "y", BIntf: "eth1", Cost: 2, Subnet: "198.51.100.4/31"},
-			{Name: "x-d", A: "x", AIntf: "eth2", B: "d", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.6/31"},
-			{Name: "y-d", A: "y", AIntf: "eth2", B: "d", BIntf: "eth2", Cost: 2, Subnet: "198.51.100.8/31"},
-			{Name: "r1-b", A: "r1", AIntf: "eth2", B: "b", BIntf: "eth1", Cost: 10, Subnet: "198.51.100.10/31"},
-			{Name: "b-d", A: "b", AIntf: "eth2", B: "d", BIntf: "eth3", Cost: 1, Subnet: "198.51.100.12/31"},
-		},
-	}
+	topo := alternatePathTopology()
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)

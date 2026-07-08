@@ -76,7 +76,7 @@ func (q *pathQueue) Pop() any {
 func (e *Engine) ospfCandidatePathsBounded(src string, states map[string]map[string]InterfaceState, allowed AdjacencyFilter) map[string][]Path {
 	out := map[string][]Path{}
 	found := map[string]int{}    // paths recorded per destination
-	expanded := map[string]int{} // expansions performed per node
+	expanded := map[string]int{} // expansions performed per node (best-effort bounding)
 	maxHops := len(e.idx.Topology.Nodes)
 
 	q := &pathQueue{}
@@ -110,9 +110,15 @@ func (e *Engine) ospfCandidatePathsBounded(src string, states map[string]map[str
 			found[dst]++
 		}
 
-		// Per-node expansion cap: only expand the first MaxPathsPerDestination
-		// paths ending at this node to prevent factorial queue explosion.
-		if expanded[dst] >= MaxPathsPerDestination {
+		// Per-node expansion cap: only expand the first MaxPathsPerDestination * 2
+		// paths ending at each node. This prevents factorial queue explosion in
+		// dense topologies while being generous enough (up to 16 expansions per
+		// node) to cover all valid alternates in practical OSPF deployments.
+		// A transit router in OSPF typically has 2-5 adjacencies, so even with
+		// MaxPathsPerDestination=8 alternates per destination, 16 expansions per
+		// node provides ample margin to reach every destination via every
+		// applicable next-hop.
+		if expanded[dst] >= MaxPathsPerDestination*2 {
 			continue
 		}
 		expanded[dst]++
