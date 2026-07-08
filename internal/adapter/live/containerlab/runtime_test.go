@@ -76,6 +76,9 @@ func TestBuildLocalImagesBuildsMissingImage(t *testing.T) {
 }
 
 func TestRuntimeWaitContainersAndNftables(t *testing.T) {
+	resolve := func(name string) string {
+		return "clab-test-" + name
+	}
 	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch cmd {
@@ -87,14 +90,14 @@ func TestRuntimeWaitContainersAndNftables(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	runtime := Runtime{Runner: runner}
-	if err := runtime.WaitContainers(context.Background(), []model.Node{{Name: "r1", ContainerName: "clab-test-r1"}}, time.Millisecond); err != nil {
+	runtime := NewRuntime(runner, resolve)
+	if err := runtime.WaitContainers(context.Background(), []model.Node{{Name: "r1"}}, time.Millisecond); err != nil {
 		t.Fatalf("WaitContainers() error = %v", err)
 	}
 	topo := &model.Topology{
 		Nodes: []model.Node{
-			{Name: "core-hz", ContainerName: "clab-test-core-hz", Kind: model.KindFRR},
-			{Name: "core-bj", ContainerName: "clab-test-core-bj", Kind: model.KindFRR},
+			{Name: "core-hz", Kind: model.KindFRR},
+			{Name: "core-bj", Kind: model.KindFRR},
 		},
 		ACLs: []model.ACL{
 			{Name: "BLOCK-HTTP-TO-HZ", Node: "core-hz", Source: model.ConfigSource{Vendor: "nftables"}},
@@ -110,8 +113,11 @@ func TestRuntimeWaitContainersAndNftables(t *testing.T) {
 }
 
 func TestRuntimeFailureCommands(t *testing.T) {
+	resolve := func(name string) string {
+		return "clab-test-" + name
+	}
 	runner := &fakeRunner{fn: func(name string, args ...string) ([]byte, error) { return []byte("ok"), nil }}
-	runtime := Runtime{Runner: runner}
+	runtime := NewRuntime(runner, resolve)
 	topo := &model.Topology{Name: "test-lab"}
 	if err := runtime.SetLinkLoss(context.Background(), topo, "a", "eth1", 100); err != nil {
 		t.Fatalf("SetLinkLoss() error = %v", err)
@@ -119,7 +125,7 @@ func TestRuntimeFailureCommands(t *testing.T) {
 	if err := runtime.ResetLinkLoss(context.Background(), topo, "b", "eth2"); err != nil {
 		t.Fatalf("ResetLinkLoss() error = %v", err)
 	}
-	if err := runtime.StopNode(context.Background(), model.Node{Name: "r1", ContainerName: "clab-test-r1"}); err != nil {
+	if err := runtime.StopNode(context.Background(), "r1"); err != nil {
 		t.Fatalf("StopNode() error = %v", err)
 	}
 	want := []string{

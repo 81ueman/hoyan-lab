@@ -13,11 +13,19 @@ import (
 )
 
 type LiveCollector struct {
-	runner Runner
+	runner           Runner
+	containerNameFor func(string) string
 }
 
 func NewCollector(runner Runner) LiveCollector {
 	return LiveCollector{runner: runner}
+}
+
+// NewCollectorWithResolver creates a LiveCollector that resolves container names
+// via the given function. When the resolver is nil or returns empty, node names
+// are used as container names directly.
+func NewCollectorWithResolver(runner Runner, resolveContainerName func(string) string) LiveCollector {
+	return LiveCollector{runner: runner, containerNameFor: resolveContainerName}
 }
 
 func (c LiveCollector) collectRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
@@ -73,7 +81,7 @@ func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf mode
 
 func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
-	collectors := collectorsByID(c.runner)
+	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
 		profile := model.ProfileFor(kind).LiveProfile()
 		collectorID, ok := profile.BGPRIBCollector()
@@ -126,8 +134,8 @@ type routeCollector interface {
 	collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error)
 }
 
-func collectorsByID(runner Runner) map[model.LiveCollectorID]routeCollector {
-	return device.NewRegistry[routeCollector](runner, func(id model.LiveCollectorID, base device.VendorCollector) routeCollector {
+func (c LiveCollector) collectorsByID() map[model.LiveCollectorID]routeCollector {
+	return device.NewRegistryWithResolver[routeCollector](c.runner, c.containerNameFor, func(id model.LiveCollectorID, base device.VendorCollector) routeCollector {
 		switch id {
 		case model.LiveCollectorFRR:
 			return frrCollector{VendorCollector: base}
@@ -150,7 +158,7 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) 
 			if strings.Contains(string(data), "bgpd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip bgp json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, "show ip bgp json", err)
 		}
 		routes, err := ParseFRR(n.Name, data)
 		if err != nil {
@@ -164,7 +172,7 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) 
 				if strings.Contains(string(data), "bgpd is not running") {
 					continue
 				}
-				return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), cmd, err)
+				return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, cmd, err)
 			}
 			routes, err := ParseFRRVRF(n.Name, vrf, data)
 			if err != nil {
@@ -198,7 +206,7 @@ func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node)
 		session := c.SessionForNode(n)
 		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip bgp vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), "show ip bgp vrf all | json", err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, "show ip bgp vrf all | json", err)
 		}
 		routes, err := ParseCEOS(n.Name, data)
 		if err != nil {
@@ -212,7 +220,7 @@ func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node)
 
 func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
-	collectors := collectorsByID(c.runner)
+	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
 		collectorID, ok := model.ProfileFor(kind).LiveProfile().RouteTableCollector()
 		if !ok {
@@ -238,7 +246,7 @@ func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node
 
 func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
-	collectors := collectorsByID(c.runner)
+	collectors := c.collectorsByID()
 	for _, kind := range model.RegisteredDeviceKinds() {
 		collectorID, ok := model.ProfileFor(kind).LiveProfile().RouteTableCollector()
 		if !ok {

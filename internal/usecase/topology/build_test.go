@@ -92,7 +92,7 @@ func TestBuilderUsesInjectedPorts(t *testing.T) {
 		t.Fatalf("topology nodes=%d links=%d, want 2 nodes and 1 link", len(topo.Nodes), len(topo.Links))
 	}
 	r1, ok := topo.Node("r1")
-	if !ok || r1.ASN != 65001 || r1.ConfigPath != "configs/r1/frr.conf" {
+	if !ok || r1.ASN != 65001 {
 		t.Fatalf("r1 = %#v, want injected config data", r1)
 	}
 	if topo.Links[0].Subnet != "192.0.2.0/30" {
@@ -124,13 +124,11 @@ func TestLoadDomainTopologyWithRuntimeSeparatesRuntimeMetadata(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("warnings = %#v, want none", warnings)
 	}
-	r1, ok := topo.Node("r1")
-	if !ok {
+	if _, ok := topo.Node("r1"); !ok {
 		t.Fatalf("r1 not found")
 	}
-	if r1.ContainerName != "" || r1.MgmtIPv4 != "" || r1.ConfigPath != "" {
-		t.Fatalf("domain node contains runtime metadata: %#v", r1)
-	}
+	// Domain node should not contain runtime metadata fields.
+	// They are only available via the RuntimeTopology DTO.
 	if got := runtime.Nodes["r1"].ConfigPath; got != "configs/r1/frr.conf" {
 		t.Fatalf("runtime r1 config path = %q", got)
 	}
@@ -473,16 +471,16 @@ func TestLoadVendorVRFLabs(t *testing.T) {
 }
 
 func TestLoadLabTopologyContainerNames(t *testing.T) {
-	topo, err := topology.LoadTopology(filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"))
+	topo, runtimeMeta, _, err := topology.LoadDomainTopologyWithRuntime(filepath.Join("..", "..", "..", "labs", "base-wan", "hoyan.clab.yml"), topology.LoadOptions{})
 	if err != nil {
-		t.Fatalf("topology.LoadTopology() error = %v", err)
+		t.Fatalf("topology.LoadDomainTopologyWithRuntime() error = %v", err)
 	}
-	node, ok := topo.Node("bj-edge1")
-	if !ok {
+	var ok bool
+	if _, ok = topo.Node("bj-edge1"); !ok {
 		t.Fatalf("bj-edge1 not found")
 	}
-	if node.ContainerName != "clab-hoyan-base-wan-bj-edge1" {
-		t.Fatalf("original topology container name = %q, want containerlab default name", node.ContainerName)
+	if got := runtimeMeta.Nodes["bj-edge1"].ContainerName; got != "clab-hoyan-base-wan-bj-edge1" {
+		t.Fatalf("original topology container name = %q, want containerlab default name", got)
 	}
 
 	sourceDir := absPath(t, filepath.Join("..", "..", "..", "labs", "base-wan"))
@@ -494,19 +492,18 @@ func TestLoadLabTopologyContainerNames(t *testing.T) {
 		t.Fatalf("rendered topology did not absolute config paths")
 	}
 	path := writeTempTopology(t, data)
-	topo, err = topology.LoadTopology(path)
+	topo2, runtimeMeta2, _, err := topology.LoadDomainTopologyWithRuntime(path, topology.LoadOptions{})
 	if err != nil {
-		t.Fatalf("topology.LoadTopology(rendered) error = %v", err)
+		t.Fatalf("topology.LoadDomainTopologyWithRuntime(rendered) error = %v", err)
 	}
-	node, ok = topo.Node("bj-edge1")
-	if !ok {
+	if _, ok = topo2.Node("bj-edge1"); !ok {
 		t.Fatalf("bj-edge1 not found in rendered topology")
 	}
-	if node.ContainerName != "clab-hoyan-base-wan-issue-21-bj-edge1" {
-		t.Fatalf("rendered topology container name = %q", node.ContainerName)
+	if got := runtimeMeta2.Nodes["bj-edge1"].ContainerName; got != "clab-hoyan-base-wan-issue-21-bj-edge1" {
+		t.Fatalf("rendered topology container name = %q", got)
 	}
-	if node.MgmtIPv4 != "172.86.21.11" {
-		t.Fatalf("rendered topology management IP = %q", node.MgmtIPv4)
+	if got := runtimeMeta2.Nodes["bj-edge1"].MgmtIPv4; got != "172.86.21.11" {
+		t.Fatalf("rendered topology management IP = %q", got)
 	}
 }
 

@@ -10,20 +10,11 @@ type Topology struct {
 }
 
 type Node struct {
-	Name string
-	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for callers that still use LoadTopology.
-	ContainerName string
-	Kind          DeviceKind
-	Role          string
-	ASN           uint32
-	// Compatibility: runtime metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for callers that still use LoadTopology.
-	MgmtIPv4 string
-	Loopback string
-	// Compatibility: config source metadata belongs in usecase/topology.RuntimeNode.
-	// Kept temporarily for callers that still use LoadTopology.
-	ConfigPath     string
+	Name           string
+	Kind           DeviceKind
+	Role           string
+	ASN            uint32
+	Loopback       string
 	Prefixes       []Prefix
 	Routes         []ConfiguredRoute
 	Interfaces     []Interface
@@ -35,15 +26,6 @@ type Node struct {
 	ASPathLists    []ASPathList
 	CommunityLists []CommunityList
 	RoutePolicies  []RoutePolicy
-}
-
-// RuntimeName is retained for compatibility while live adapters migrate from
-// model.Node.ContainerName to adapter/usecase DTOs.
-func (n Node) RuntimeName() string {
-	if n.ContainerName != "" {
-		return n.ContainerName
-	}
-	return n.Name
 }
 
 type Link struct {

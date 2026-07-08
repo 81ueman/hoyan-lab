@@ -82,9 +82,14 @@ func TestVendorCollectorSessionForNode(t *testing.T) {
 	runner := fakeRunner{fn: func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return nil, errors.New("unused")
 	}}
-	vc := NewVendorCollector(runner)
+	vc := NewVendorCollectorWithResolver(runner, func(name string) string {
+		if name == "r1" {
+			return "clab-test-r1"
+		}
+		return name
+	})
 
-	node := model.Node{Name: "r1", ContainerName: "clab-test-r1"}
+	node := model.Node{Name: "r1"}
 	session := vc.SessionForNode(node)
 
 	ds, ok := session.(*DockerSession)
@@ -102,7 +107,7 @@ func TestVendorCollectorSessionForNodeFallsBackToName(t *testing.T) {
 	}}
 	vc := NewVendorCollector(runner)
 
-	node := model.Node{Name: "r1-alone", ContainerName: ""}
+	node := model.Node{Name: "r1-alone"}
 	session := vc.SessionForNode(node)
 
 	ds, ok := session.(*DockerSession)

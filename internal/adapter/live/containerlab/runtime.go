@@ -18,8 +18,25 @@ import (
 
 const containerNftablesConfig = "/etc/hoyan/nftables.conf"
 
+// Runtime controls containerlab containers.
+// The optional containerNameFor resolver maps logical node names to Docker container names.
+// When nil, node names are used as container names directly.
 type Runtime struct {
-	Runner liveadapter.Runner
+	Runner           liveadapter.Runner
+	containerNameFor func(string) string
+}
+
+func NewRuntime(runner liveadapter.Runner, containerNameFor func(string) string) Runtime {
+	return Runtime{Runner: runner, containerNameFor: containerNameFor}
+}
+
+func (r Runtime) containerName(nodeName string) string {
+	if r.containerNameFor != nil {
+		if cn := r.containerNameFor(nodeName); cn != "" {
+			return cn
+		}
+	}
+	return nodeName
 }
 
 func (r Runtime) Start(ctx context.Context, topologyPath string, topo *model.Topology, pollInterval time.Duration, out io.Writer) error {
@@ -91,7 +108,7 @@ func (r Runtime) WaitContainers(ctx context.Context, nodes []model.Node, interva
 	var lastErr error
 	return poll(ctx, interval, func() (bool, error) {
 		for _, n := range nodes {
-			containerName := n.RuntimeName()
+			containerName := r.containerName(n.Name)
 			out, err := r.Runner.Run(ctx, "docker", "inspect", "-f", "{{.State.Running}}", containerName)
 			if err != nil {
 				lastErr = fmt.Errorf("docker inspect -f {{.State.Running}} %s: %w", containerName, err)
@@ -119,7 +136,7 @@ func (r Runtime) WaitSRLinuxCLI(ctx context.Context, nodes []model.Node, interva
 	var lastErr error
 	return poll(ctx, interval, func() (bool, error) {
 		for _, n := range srlinuxNodes {
-			containerName := n.RuntimeName()
+			containerName := r.containerName(n.Name)
 			session := device.NewDockerSession(r.Runner, containerName)
 			if _, err := liverib.RunSRLinuxJSON(ctx, session, "show", "version"); err != nil {
 				lastErr = fmt.Errorf("%s SR Linux CLI is not ready: %w", n.Name, err)
@@ -142,8 +159,9 @@ func (r Runtime) ApplyNftablesPolicies(ctx context.Context, topo *model.Topology
 		if out != nil {
 			fmt.Fprintf(out, "applying nftables policy on %s\n", node.Name)
 		}
+		containerName := r.containerName(node.Name)
 		script := "command -v nft >/dev/null && nft -f " + containerNftablesConfig
-		if _, err := r.Runner.Run(ctx, "docker", "exec", node.RuntimeName(), "sh", "-lc", script); err != nil {
+		if _, err := r.Runner.Run(ctx, "docker", "exec", containerName, "sh", "-lc", script); err != nil {
 			return fmt.Errorf("apply nftables policy on %s: %w", node.Name, err)
 		}
 	}
@@ -164,8 +182,8 @@ func (r Runtime) ResetLinkLoss(ctx context.Context, topo *model.Topology, node, 
 	return nil
 }
 
-func (r Runtime) StopNode(ctx context.Context, node model.Node) error {
-	containerName := node.RuntimeName()
+func (r Runtime) StopNode(ctx context.Context, nodeName string) error {
+	containerName := r.containerName(nodeName)
 	if _, err := r.Runner.Run(ctx, "docker", "stop", containerName); err != nil {
 		return fmt.Errorf("docker stop %s: %w", containerName, err)
 	}

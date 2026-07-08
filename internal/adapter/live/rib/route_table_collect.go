@@ -15,13 +15,13 @@ func (c frrCollector) collectRouteTableRoutes(ctx context.Context, nodes []model
 		session := c.SessionForNode(n)
 		data, err := session.Exec(ctx, "vtysh", "-c", "show ip route vrf all json")
 		if err != nil {
-			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip route vrf all json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, "show ip route vrf all json", err)
 		}
 		ospfData, ospfErr := session.Exec(ctx, "vtysh", "-c", "show ip ospf route json")
 		if ospfErr != nil && strings.Contains(string(ospfData), "ospfd is not running") {
 			ospfData = nil
 		} else if ospfErr != nil {
-			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip ospf route json", ospfErr)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, "show ip ospf route json", ospfErr)
 		}
 		routes, err := ParseFRRRouteTableWithOSPF(n.Name, data, ospfData)
 		if err != nil {
@@ -39,7 +39,7 @@ func (c ceosCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 		session := c.SessionForNode(n)
 		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), "show ip route vrf all | json", err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, "show ip route vrf all | json", err)
 		}
 		routes, err := ParseCEOSRouteTable(n.Name, data)
 		if err != nil {
@@ -58,7 +58,7 @@ func (c srlinuxCollector) collectRouteTableRoutes(ctx context.Context, nodes []m
 		for _, ni := range model.NetworkInstancesForNode(n) {
 			data, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 			if err != nil {
-				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", n.RuntimeName(), ni, err)
+				return nil, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", n.Name, ni, err)
 			}
 			routes, err := ParseSRLinuxRouteTableNetworkInstance(n.Name, ni, data)
 			if err != nil {
@@ -81,7 +81,7 @@ func (c frrCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node)
 			if strings.Contains(string(data), "ospfd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip ospf route json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.Name, "show ip ospf route json", err)
 		}
 		routes, err := ParseFRROSPFRouteTable(n.Name, data)
 		if err != nil {

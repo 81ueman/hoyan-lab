@@ -44,16 +44,32 @@ func (s *DockerSession) ExecTTY(ctx context.Context, args ...string) ([]byte, er
 // Vendor-specific collectors embed this and call SessionForNode to get a session
 // for each target node, rather than constructing docker exec commands directly.
 type VendorCollector struct {
-	Runner Runner
+	Runner           Runner
+	containerNameFor func(string) string // resolves container name from node name, nil = use node name directly
 }
 
 func NewVendorCollector(runner Runner) VendorCollector {
 	return VendorCollector{Runner: runner}
 }
 
-// SessionForNode creates a DeviceSession for the given node using its runtime name.
+// NewVendorCollectorWithResolver creates a VendorCollector that resolves container
+// names via the given function. When nil or when the resolver returns an empty
+// string, the node's Name is used as the container name.
+func NewVendorCollectorWithResolver(runner Runner, resolveContainerName func(string) string) VendorCollector {
+	return VendorCollector{Runner: runner, containerNameFor: resolveContainerName}
+}
+
+// SessionForNode creates a DeviceSession for the given node.
+// The container name is resolved from the node name using the optional resolver,
+// falling back to the node name itself.
 func (c VendorCollector) SessionForNode(node model.Node) DeviceSession {
-	return NewDockerSession(c.Runner, node.RuntimeName())
+	containerName := node.Name
+	if c.containerNameFor != nil {
+		if cn := c.containerNameFor(node.Name); cn != "" {
+			containerName = cn
+		}
+	}
+	return NewDockerSession(c.Runner, containerName)
 }
 
 // NewRegistry builds the standard FRR/cEOS/SR Linux live collector registry.
@@ -61,6 +77,16 @@ type Factory[T any] func(VendorCollector) T
 
 func NewRegistry[T any](runner Runner, factory func(model.LiveCollectorID, VendorCollector) T) map[model.LiveCollectorID]T {
 	base := NewVendorCollector(runner)
+	return newRegistryFromBase(base, factory)
+}
+
+// NewRegistryWithResolver builds the standard registry with a container name resolver.
+func NewRegistryWithResolver[T any](runner Runner, resolveContainerName func(string) string, factory func(model.LiveCollectorID, VendorCollector) T) map[model.LiveCollectorID]T {
+	base := NewVendorCollectorWithResolver(runner, resolveContainerName)
+	return newRegistryFromBase(base, factory)
+}
+
+func newRegistryFromBase[T any](base VendorCollector, factory func(model.LiveCollectorID, VendorCollector) T) map[model.LiveCollectorID]T {
 	return map[model.LiveCollectorID]T{
 		model.LiveCollectorFRR:     factory(model.LiveCollectorFRR, base),
 		model.LiveCollectorCEOS:    factory(model.LiveCollectorCEOS, base),

@@ -413,7 +413,7 @@ func TestCollectIncludesInstalledStaticAndConnectedRoutes(t *testing.T) {
 			return nil, nil
 		}
 	})
-	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB() error = %v", err)
 	}
@@ -433,14 +433,14 @@ func TestCollectSkipsBGPCommandsForNodesWithoutASN(t *testing.T) {
 			t.Fatalf("unexpected BGP collection command for OSPF-only node: %s", cmd)
 		}
 		switch cmd {
-		case "docker exec -i ceos1 Cli -p 15 -c show ip route vrf all | json":
+		case "docker exec -i ceos Cli -p 15 -c show ip route vrf all | json":
 			return []byte(`{"vrfs":{"default":{"routes":{"10.255.2.2/32":{"routeType":"ospfInternal","vias":[{"nexthopAddr":"198.51.100.2","interface":"Ethernet2"}]}}}}}`), nil
 		default:
 			t.Fatalf("unexpected command: %s", cmd)
 			return nil, nil
 		}
 	})
-	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	rib, err := NewCollector(runner).CollectRIB(context.Background(), model.Node{Name: "ceos", Kind: model.KindCEOS}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB() error = %v", err)
 	}
@@ -618,7 +618,7 @@ func TestCollectRIB_FRR_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
 	collector := NewCollector(runner)
 
 	// Collect for "default" VRF - should only get 10.0.0.0/24
-	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB(default) error = %v", err)
 	}
@@ -633,7 +633,7 @@ func TestCollectRIB_FRR_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
 	}
 
 	// Collect for "tenant-a" VRF - should only get 10.1.0.0/24
-	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceID("tenant-a"), observation.CollectOptions{IncludeInactive: true})
+	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR}, model.NetworkInstanceID("tenant-a"), observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB(tenant-a) error = %v", err)
 	}
@@ -642,7 +642,7 @@ func TestCollectRIB_FRR_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
 	}
 
 	// Collect for "tenant-b" VRF - should only get 10.2.0.0/24
-	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceID("tenant-b"), observation.CollectOptions{IncludeInactive: true})
+	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR}, model.NetworkInstanceID("tenant-b"), observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB(tenant-b) error = %v", err)
 	}
@@ -693,7 +693,7 @@ func TestCollectRIB_CEOS_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
 		}
 	})
 	collector := NewCollector(runner)
-	ceosNode := model.Node{Name: "ceos1", Kind: model.KindCEOS, ContainerName: "ceos1", ASN: 65000}
+	ceosNode := model.Node{Name: "ceos1", Kind: model.KindCEOS, ASN: 65000}
 
 	// Collect for "default" VRF - should only get 10.0.0.0/24
 	rib, err := collector.CollectRIB(context.Background(), ceosNode, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
@@ -882,7 +882,7 @@ func TestCollectRIB_SRLinux_FiltersByVRF(t *testing.T) {
 		}
 	})
 	collector := NewCollector(runner)
-	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "srl1", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "srl1", Kind: model.KindSRLinux}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
 	if err != nil {
 		t.Fatalf("CollectRIB(default) error = %v", err)
 	}
@@ -922,7 +922,7 @@ func TestCollectRIB_FRR_BGP_PerVRFCommandSetsVRF(t *testing.T) {
 
 	// Collect default VRF
 	rib, err := collector.CollectRIB(context.Background(), model.Node{
-		Name: "r1", Kind: model.KindFRR, ContainerName: "r1",
+		Name: "r1", Kind: model.KindFRR,
 		Interfaces: []model.Interface{{
 			Name: "eth1", VRF: model.NetworkInstanceID("tenant-a"),
 		}},
@@ -940,7 +940,7 @@ func TestCollectRIB_FRR_BGP_PerVRFCommandSetsVRF(t *testing.T) {
 
 	// Collect tenant-a VRF
 	rib, err = collector.CollectRIB(context.Background(), model.Node{
-		Name: "r1", Kind: model.KindFRR, ContainerName: "r1",
+		Name: "r1", Kind: model.KindFRR,
 		Interfaces: []model.Interface{{
 			Name: "eth1", VRF: model.NetworkInstanceID("tenant-a"),
 		}},

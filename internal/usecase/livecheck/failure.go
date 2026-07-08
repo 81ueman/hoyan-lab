@@ -127,8 +127,7 @@ func linkEndpointClabInterfaces(topo *model.Topology, link model.Link) (string, 
 }
 
 func NodeFailureScenario(topo *model.Topology, nodeName string) (RIBFailureScenario, error) {
-	node, ok := topo.Node(nodeName)
-	if !ok {
+	if _, ok := topo.Node(nodeName); !ok {
 		return RIBFailureScenario{}, fmt.Errorf("node %s not found", nodeName)
 	}
 	return RIBFailureScenario{
@@ -136,7 +135,7 @@ func NodeFailureScenario(topo *model.Topology, nodeName string) (RIBFailureScena
 		Failures:    sim.NodeFailures(model.NodeID(nodeName)),
 		ActiveNodes: activeSupportedNodes(topo.Nodes, map[string]bool{nodeName: true}),
 		Inject: func(ctx context.Context, runtime FailureRuntime) error {
-			return runtime.StopNode(ctx, node)
+			return runtime.StopNode(ctx, nodeName)
 		},
 	}, nil
 }

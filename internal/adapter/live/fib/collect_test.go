@@ -33,15 +33,15 @@ func TestCollectFRRKernelRoutes(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		got := name + " " + strings.Join(args, " ")
 		switch got {
-		case "docker exec -i clab-test-r1 ip -j route show table main":
+		case "docker exec -i r1 ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
-		case "docker exec -i clab-test-r1 ip -j route show table local":
+		case "docker exec -i r1 ip -j route show table local":
 			return []byte(`[]`), nil
 		default:
 			return nil, errors.New("unexpected command: " + got)
 		}
 	}}
-	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "clab-test-r1"}, model.NetworkInstanceDefault, observation.Options{})
+	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "r1", Kind: model.KindFRR}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
 		t.Fatalf("CollectFIB() error = %v", err)
 	}
@@ -55,15 +55,15 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch {
-		case cmd == "docker exec -i frr1 ip -j route show table main":
+		case cmd == "docker exec -i frr ip -j route show table main":
 			return []byte(`[{"dst":"10.0.0.0/24","gateway":"192.0.2.1","dev":"eth1","protocol":"bgp"}]`), nil
-		case cmd == "docker exec -i frr1 ip -j route show table local":
+		case cmd == "docker exec -i frr ip -j route show table local":
 			return []byte(`[]`), nil
-		case cmd == "docker exec -i ceos1 Cli -p 15 -c show ip route vrf all | json":
+		case cmd == "docker exec -i ceos Cli -p 15 -c show ip route vrf all | json":
 			return []byte(`{"vrfs":{"default":{"routes":{"10.0.1.0/24":{"kernelProgrammed":true,"routeType":"eBGP","vias":[{"nexthopAddr":"192.0.2.2","interface":"Ethernet1"}]}}}}}`), nil
-		case cmd == "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary":
+		case cmd == "docker exec -i srl sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary":
 			return []byte(`{"instance":[{"ip route":[{"Prefix":"10.0.2.0/24","Route Type":"bgp","Active":"True","Next-hop (Type)":"192.0.2.3/31 (indirect/local)","Next-hop Interface":"ethernet-1/1.0 "}]}]}`), nil
-		case cmd == "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast prefix 10.0.2.0/24 detail":
+		case cmd == "docker exec -i srl sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast prefix 10.0.2.0/24 detail":
 			return []byte(`{"instance":[{"ip route":[{"Destination":"10.0.2.0/24","Route Type":"bgp","Active":true,"ip route nexthop":{"Next hops":"192.0.2.2 (indirect) resolved by route to 192.0.2.3/31 (local)\n  via 192.0.2.2 (direct) via [ethernet-1/1.0]"}}]}]}`), nil
 		default:
 			return nil, errors.New("unexpected command: " + cmd)
@@ -71,9 +71,9 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 	}}
 	var fibs []FIB
 	for _, node := range []model.Node{
-		{Name: "frr", Kind: model.KindFRR, ContainerName: "frr1"},
-		{Name: "ceos", Kind: model.KindCEOS, ContainerName: "ceos1"},
-		{Name: "srl", Kind: model.KindSRLinux, ContainerName: "srl1"},
+		{Name: "frr", Kind: model.KindFRR},
+		{Name: "ceos", Kind: model.KindCEOS},
+		{Name: "srl", Kind: model.KindSRLinux},
 	} {
 		fib, err := CollectFIB(context.Background(), runner, node, model.NetworkInstanceDefault, observation.Options{})
 		if err != nil {
@@ -89,6 +89,12 @@ func TestCollectAllSupportedKinds(t *testing.T) {
 }
 
 func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
+	resolve := func(name string) string {
+		if name == "core-gz" {
+			return "srl1"
+		}
+		return name
+	}
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch cmd {
@@ -103,7 +109,7 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.Options{})
+	fib, err := NewCollectorWithResolver(runner, resolve).CollectFIB(context.Background(), model.Node{Name: "core-gz", Kind: model.KindSRLinux}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
 		t.Fatalf("CollectFIB() error = %v", err)
 	}
@@ -118,6 +124,12 @@ func TestCollectSRLinuxUsesRouteDetailPeerGateway(t *testing.T) {
 }
 
 func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
+	resolve := func(name string) string {
+		if name == "core-gz" {
+			return "srl1"
+		}
+		return name
+	}
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		cmd := name + " " + strings.Join(args, " ")
 		switch {
@@ -129,7 +141,7 @@ func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
 			return nil, errors.New("unexpected command: " + cmd)
 		}
 	}}
-	fib, err := CollectFIB(context.Background(), runner, model.Node{Name: "core-gz", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.Options{})
+	fib, err := NewCollectorWithResolver(runner, resolve).CollectFIB(context.Background(), model.Node{Name: "core-gz", Kind: model.KindSRLinux}, model.NetworkInstanceDefault, observation.Options{})
 	if err != nil {
 		t.Fatalf("CollectFIB() error = %v", err)
 	}
