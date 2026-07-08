@@ -571,3 +571,154 @@ func TestRunSRLinuxJSONReportsMalformedOutput(t *testing.T) {
 		}
 	}
 }
+
+// TestCollectBGPAFICommandSelection verifies that the vendor BGP collectors
+// select the correct CLI command based on the requested AFI.
+func TestCollectBGPAFICommandSelection(t *testing.T) {
+	tests := []struct {
+		name         string
+		kind         model.DeviceKind
+		afi          model.AFI
+		wantCmdMatch string
+	}{
+		{
+			name:         "FRR IPv4 uses show ip bgp json",
+			kind:         model.KindFRR,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "show ip bgp json",
+		},
+		{
+			name:         "FRR IPv6 uses show bgp ipv6 unicast json",
+			kind:         model.KindFRR,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "show bgp ipv6 unicast json",
+		},
+		{
+			name:         "cEOS IPv4 uses show ip bgp vrf all",
+			kind:         model.KindCEOS,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "show ip bgp vrf all | json",
+		},
+		{
+			name:         "cEOS IPv6 uses show bgp ipv6 unicast vrf all",
+			kind:         model.KindCEOS,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "show bgp ipv6 unicast vrf all | json",
+		},
+		{
+			name:         "SR Linux IPv4 uses protocols bgp routes ipv4",
+			kind:         model.KindSRLinux,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "protocols bgp routes ipv4",
+		},
+		{
+			name:         "SR Linux IPv6 uses protocols bgp routes ipv6",
+			kind:         model.KindSRLinux,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "protocols bgp routes ipv6",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seenBGP := false
+			runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				cmd := name + " " + strings.Join(args, " ")
+				if strings.Contains(cmd, "bgp") {
+					seenBGP = true
+					if !strings.Contains(cmd, tt.wantCmdMatch) {
+						t.Errorf("BGP command = %q, want containing %q", cmd, tt.wantCmdMatch)
+					}
+				}
+				return []byte(`{}`), nil
+			})
+			collector := NewCollector(runner)
+			// Some profiles (cEOS, SR Linux) require ASN for BGP collection
+			node := model.Node{Name: "test-afi", Kind: tt.kind, ContainerName: "clab-test-afi", ASN: 65001}
+			opts := observation.CollectOptions{AFI: tt.afi}
+			_, err := collector.CollectRIB(context.Background(), node, model.NetworkInstanceDefault, opts)
+			if err != nil {
+				t.Fatalf("CollectRIB() error = %v", err)
+			}
+			if !seenBGP {
+				t.Errorf("no BGP command was executed")
+			}
+		})
+	}
+}
+
+// TestCollectRouteTableAFICommandSelection verifies route table command selection per AFI.
+func TestCollectRouteTableAFICommandSelection(t *testing.T) {
+	tests := []struct {
+		name         string
+		kind         model.DeviceKind
+		afi          model.AFI
+		wantCmdMatch string
+	}{
+		{
+			name:         "FRR IPv4 route table uses show ip route",
+			kind:         model.KindFRR,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "show ip route vrf all json",
+		},
+		{
+			name:         "FRR IPv6 route table uses show ipv6 route",
+			kind:         model.KindFRR,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "show ipv6 route vrf all json",
+		},
+		{
+			name:         "cEOS IPv4 route table uses show ip route",
+			kind:         model.KindCEOS,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "show ip route vrf all | json",
+		},
+		{
+			name:         "cEOS IPv6 route table uses show ipv6 route",
+			kind:         model.KindCEOS,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "show ipv6 route vrf all | json",
+		},
+		{
+			name:         "SR Linux IPv4 uses ipv4-unicast",
+			kind:         model.KindSRLinux,
+			afi:          model.AFIIPv4,
+			wantCmdMatch: "route-table ipv4-unicast",
+		},
+		{
+			name:         "SR Linux IPv6 uses ipv6-unicast",
+			kind:         model.KindSRLinux,
+			afi:          model.AFIIPv6,
+			wantCmdMatch: "route-table ipv6-unicast",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seenRoute := false
+			runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+				cmd := name + " " + strings.Join(args, " ")
+				if strings.Contains(cmd, tt.wantCmdMatch) {
+					seenRoute = true
+				}
+				// Return empty route table data to avoid parse errors
+				if tt.kind == model.KindSRLinux && strings.Contains(cmd, "route-table") {
+					return []byte(`{"instance":[{"ip route":[]}]}`), nil
+				}
+				return []byte(`{}`), nil
+			})
+			collector := NewCollector(runner)
+			node := model.Node{Name: "test-afi", Kind: tt.kind, ContainerName: "clab-test-afi"}
+			opts := observation.CollectOptions{AFI: tt.afi}
+			_, err := collector.CollectRIB(context.Background(), node, model.NetworkInstanceDefault, opts)
+			if err != nil {
+				t.Fatalf("CollectRIB() error = %v", err)
+			}
+			if !seenRoute {
+				t.Errorf("no route table command was executed for %s", tt.kind)
+			}
+		})
+	}
+}
+
+

@@ -15,6 +15,7 @@ type FIBCollector interface {
 type Options struct {
 	AllowUnsupported bool
 	UnresolvedPolicy UnresolvedPolicy
+	AFI              model.AFI
 }
 
 type UnresolvedPolicy string

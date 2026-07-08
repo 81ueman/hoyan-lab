@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 var srlinuxDetailNextHopRE = regexp.MustCompile(`(?m)(?:^|\s)(?:via\s+)?([0-9A-Fa-f:.]+)\s+\([^)]*\)\s+via\s+\[([^\]]+)\]`)
@@ -85,7 +87,7 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, boo
 	}
 	protocol := canonicalProtocol(stringValue(m["Route Type"]))
 	route := FIBEntry{
-		AFI:        "ipv4",
+		AFI:        model.AFIFromPrefix(prefix),
 		Prefix:     prefix,
 		Source:     canonicalRouteSource(protocol),
 		Action:     forwardingAction(protocol, nil),
@@ -128,7 +130,7 @@ func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (FIBEntr
 		return FIBEntry{}, false
 	}
 	route := FIBEntry{
-		AFI:        "ipv4",
+		AFI:        model.AFIFromPrefix(prefix),
 		Prefix:     prefix,
 		Source:     canonicalRouteSource(stringValue(m["Route Type"])),
 		Preference: firstIntValue(m["Preference"], m["Pref"]),

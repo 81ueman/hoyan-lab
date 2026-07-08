@@ -44,7 +44,7 @@ func ParseCEOSFIBs(node string, data []byte) ([]FIB, error) {
 				nextHops = nil
 			}
 			route := FIBEntry{
-				AFI:        "ipv4",
+				AFI:        model.AFIFromPrefix(prefix),
 				Prefix:     prefix,
 				NextHops:   nextHops,
 				Source:     canonicalRouteSource(protocol),

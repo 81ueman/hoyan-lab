@@ -120,7 +120,7 @@ func appendCommunities(out []string, values ...any) []string {
 }
 
 func normalizeLocalNextHop(nextHop string) string {
-	if nextHop == "0.0.0.0" {
+	if nextHop == "0.0.0.0" || nextHop == "::" {
 		return ""
 	}
 	return nextHop

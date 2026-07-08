@@ -57,3 +57,5 @@ func TestDeprecatedCollectSnapshotCompatibility(t *testing.T) {
 		t.Fatalf("len(snapshot.Nodes[0].VRFs) = %d, want 1", len(snapshot.Nodes[0].VRFs))
 	}
 }
+
+
