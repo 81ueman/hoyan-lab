@@ -17,6 +17,13 @@ type NextHop struct {
 	Weight    int          `json:"weight,omitempty"`
 
 	Resolution *NextHopResolution `json:"resolution,omitempty"`
+
+	// Resolved contains the resolved next-hop chain for recursively
+	// resolved routes (e.g. a BGP next-hop that resolves through an IGP).
+	Resolved []NextHop `json:"resolved,omitempty"`
+	// Raw holds vendor-specific attributes that do not have a dedicated
+	// field in this schema. It is never compared by default.
+	Raw map[string]any `json:"raw,omitempty"`
 }
 
 type NextHopResolution struct {
