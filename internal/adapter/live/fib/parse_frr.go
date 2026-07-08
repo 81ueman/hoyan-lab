@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/netip"
 	"strconv"
+
+	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
 func ParseLinuxIPRoute(node string, data []byte) ([]FIBEntry, error) {
@@ -33,7 +35,7 @@ func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]FIBEntry, error) {
 			nextHops = nil
 		}
 		route := FIBEntry{
-			AFI:        "ipv4",
+			AFI:        model.AFIFromPrefix(prefix),
 			Prefix:     prefix,
 			NextHops:   nextHops,
 			Source:     canonicalRouteSource(protocol),
@@ -46,6 +48,58 @@ func ParseLinuxIPRouteVRF(node, vrf string, data []byte) ([]FIBEntry, error) {
 	}
 	sortRoutes(out)
 	return out, nil
+}
+
+// routePrefix extracts the prefix from a Linux kernel route JSON item.
+// It detects whether the route is IPv6 by checking the gateway/nexthop addresses
+// so that "default" is correctly mapped to 0.0.0.0/0 or ::/0.
+func routePrefix(item map[string]any) (string, bool, error) {
+	dst := stringValue(item["dst"])
+	if dst == "" {
+		return "", false, nil
+	}
+	if dst == "default" {
+		// Determine if this is an IPv6 default route by inspecting gateway/nexthop
+		if isIPv6Route(item) {
+			return "::/0", true, nil
+		}
+		return "0.0.0.0/0", true, nil
+	}
+	if dst == "::/0" {
+		return "::/0", true, nil
+	}
+	if addr, err := netip.ParseAddr(dst); err == nil {
+		if addr.Is4() {
+			return netip.PrefixFrom(addr, 32).String(), true, nil
+		}
+		return netip.PrefixFrom(addr, 128).String(), true, nil
+	}
+	pfx, err := netip.ParsePrefix(dst)
+	if err != nil {
+		return "", false, err
+	}
+	return pfx.Masked().String(), true, nil
+}
+
+// isIPv6Route checks if the route item appears to be IPv6 by scanning gateway addresses.
+func isIPv6Route(item map[string]any) bool {
+	if gateway := stringValue(item["gateway"]); gateway != "" {
+		if addr, err := netip.ParseAddr(gateway); err == nil && !addr.Is4() {
+			return true
+		}
+	}
+	if raw, ok := item["nexthops"].([]any); ok {
+		for _, elem := range raw {
+			if m, ok := elem.(map[string]any); ok {
+				if gw := stringValue(m["gateway"]); gw != "" {
+					if addr, err := netip.ParseAddr(gw); err == nil && !addr.Is4() {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func linuxRouteProtocol(item map[string]any) string {
@@ -63,30 +117,6 @@ func discardLinuxRoute(item map[string]any, hops []NextHop) bool {
 		return true
 	}
 	return discardNextHops(hops)
-}
-
-func routePrefix(item map[string]any) (string, bool, error) {
-	dst := stringValue(item["dst"])
-	if dst == "" {
-		return "", false, nil
-	}
-	if dst == "default" {
-		return "0.0.0.0/0", true, nil
-	}
-	if addr, err := netip.ParseAddr(dst); err == nil {
-		if !addr.Is4() {
-			return "", false, nil
-		}
-		return netip.PrefixFrom(addr, 32).String(), true, nil
-	}
-	pfx, err := netip.ParsePrefix(dst)
-	if err != nil {
-		return "", false, err
-	}
-	if !pfx.Addr().Is4() {
-		return "", false, nil
-	}
-	return pfx.Masked().String(), true, nil
 }
 
 func discardNextHops(hops []NextHop) bool {

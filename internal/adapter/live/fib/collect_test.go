@@ -29,6 +29,88 @@ func TestCollectRejectsUnsupportedNodes(t *testing.T) {
 	}
 }
 
+func TestCollectFIBAFICommandSelectionFRR(t *testing.T) {
+	tests := []struct {
+		name    string
+		afi     model.AFI
+		wantV4  bool
+		wantV6  bool
+	}{
+		{name: "default (empty) AFI uses IPv4", afi: "", wantV4: true, wantV6: false},
+		{name: "IPv4 AFI uses IPv4 commands", afi: model.AFIIPv4, wantV4: true, wantV6: false},
+		{name: "IPv6 AFI uses IPv6 commands", afi: model.AFIIPv6, wantV4: false, wantV6: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seenV4 := false
+			seenV6 := false
+			runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
+				cmd := name + " " + strings.Join(args, " ")
+				if strings.Contains(cmd, "ip -j route show") && !strings.Contains(cmd, "-6") {
+					seenV4 = true
+				}
+				if strings.Contains(cmd, "ip -j -6 route show") {
+					seenV6 = true
+				}
+				return []byte(`[]`), nil
+			}}
+			opts := observation.Options{AFI: tt.afi}
+			_, err := CollectFIB(context.Background(), runner, model.Node{Name: "frr", Kind: model.KindFRR, ContainerName: "clab-frr"}, model.NetworkInstanceDefault, opts)
+			if err != nil {
+				t.Fatalf("CollectFIB() error = %v", err)
+			}
+			if seenV4 != tt.wantV4 {
+				t.Errorf("IPv4 command seen = %v, want %v", seenV4, tt.wantV4)
+			}
+			if seenV6 != tt.wantV6 {
+				t.Errorf("IPv6 command seen = %v, want %v", seenV6, tt.wantV6)
+			}
+		})
+	}
+}
+
+func TestCollectFIBAFICommandSelectionSRLinux(t *testing.T) {
+	tests := []struct {
+		name     string
+		afi      model.AFI
+		wantIPv4 bool
+		wantIPv6 bool
+	}{
+		{name: "default AFI uses ipv4-unicast", afi: "", wantIPv4: true, wantIPv6: false},
+		{name: "IPv4 AFI uses ipv4-unicast", afi: model.AFIIPv4, wantIPv4: true, wantIPv6: false},
+		{name: "IPv6 AFI uses ipv6-unicast", afi: model.AFIIPv6, wantIPv4: false, wantIPv6: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seenIPv4 := false
+			seenIPv6 := false
+			runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
+				cmd := name + " " + strings.Join(args, " ")
+				if strings.Contains(cmd, "route-table ipv4-unicast") {
+					seenIPv4 = true
+				}
+				if strings.Contains(cmd, "route-table ipv6-unicast") {
+					seenIPv6 = true
+				}
+				return []byte(`{"instance":[{"ip route":[]}]}`), nil
+			}}
+			opts := observation.Options{AFI: tt.afi}
+			_, err := CollectFIB(context.Background(), runner, model.Node{Name: "srl", Kind: model.KindSRLinux, ContainerName: "clab-srl"}, model.NetworkInstanceDefault, opts)
+			if err != nil {
+				t.Fatalf("CollectFIB() error = %v", err)
+			}
+			if seenIPv4 != tt.wantIPv4 {
+				t.Errorf("IPv4 command seen = %v, want %v", seenIPv4, tt.wantIPv4)
+			}
+			if seenIPv6 != tt.wantIPv6 {
+				t.Errorf("IPv6 command seen = %v, want %v", seenIPv6, tt.wantIPv6)
+			}
+		})
+	}
+}
+
 func TestCollectFRRKernelRoutes(t *testing.T) {
 	runner := fakeRunner{fn: func(name string, args ...string) ([]byte, error) {
 		got := name + " " + strings.Join(args, " ")

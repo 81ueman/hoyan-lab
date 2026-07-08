@@ -58,13 +58,17 @@ func (c Collector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.
 	return liverib.NewCollector(c.runner).CollectRIB(ctx, n, vrf, opts)
 }
 
-func (c Collector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
+func (c Collector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
 	n, ok := c.node(node)
 	if !ok {
 		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)
 	}
 	fibOpts := c.fibOptions
 	fibOpts.AllowUnsupported = true
+	// Merge AFI from caller opts if set
+	if opts.AFI != "" {
+		fibOpts.AFI = opts.AFI
+	}
 	fib, err := livefib.NewCollector(c.runner).CollectFIB(ctx, n, vrf, fibOpts)
 	if err != nil {
 		return observation.FIB{}, err

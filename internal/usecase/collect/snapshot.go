@@ -95,7 +95,7 @@ func CollectSnapshot(ctx context.Context, collector Collector, opts observation.
 			if err != nil {
 				return observation.NetworkSnapshot{}, err
 			}
-			fib, err := collector.CollectFIB(ctx, node, vrf, observation.Options{})
+			fib, err := collector.CollectFIB(ctx, node, vrf, observation.Options{AFI: opts.AFI})
 			if err != nil {
 				return observation.NetworkSnapshot{}, err
 			}

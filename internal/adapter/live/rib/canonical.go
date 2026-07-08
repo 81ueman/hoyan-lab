@@ -9,7 +9,7 @@ func bgpRouteVRF(prefix, vrf string, paths []observation.BGPPath) RIBRoute {
 	observation.SortBGPPaths(paths, observation.DefaultCompareOptions())
 	return RIBRoute{
 		Common: observation.RIBRouteCommon{
-			AFI:      model.AFIIPv4,
+			AFI:      model.AFIFromPrefix(prefix),
 			VRF:      model.NetworkInstanceID(vrf),
 			Prefix:   prefix,
 			Protocol: model.RouteSourceBGP,
@@ -23,7 +23,7 @@ func bgpRouteVRF(prefix, vrf string, paths []observation.BGPPath) RIBRoute {
 func nonBGPRouteVRF(prefix, vrf, protocol string, hops []routeTableNextHop) RIBRoute {
 	routeProtocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(protocol))
 	common := observation.RIBRouteCommon{
-		AFI:      model.AFIIPv4,
+		AFI:      model.AFIFromPrefix(prefix),
 		VRF:      model.NetworkInstanceID(vrf),
 		Prefix:   prefix,
 		Protocol: routeProtocol,
@@ -90,7 +90,7 @@ func nextHopsFromRouteTableHops(hops []routeTableNextHop) []observation.NextHop 
 }
 
 func nextHopFromRouteTableHop(hop routeTableNextHop) observation.NextHop {
-	if hop.Address == "0.0.0.0" {
+	if hop.Address == "0.0.0.0" || hop.Address == "::" {
 		hop.Address = ""
 	}
 	return observation.NextHop{Address: hop.Address, Interface: hop.Interface}
