@@ -133,7 +133,7 @@ func deps(runtime *fakeRuntime, collector collect.Collector) Dependencies {
 }
 
 func newSnapshotCollector(snap observation.NetworkSnapshot) collect.Collector {
-	return collect.AdaptCollector(observation.NewSnapshotBackedCollector(snap))
+	return observation.NewSnapshotBackedCollector(snap)
 }
 
 func newTestUsecase(t *testing.T, deps Dependencies) Usecase {

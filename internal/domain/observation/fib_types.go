@@ -1,16 +1,11 @@
 package observation
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
-
-type FIBCollector interface {
-	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts Options) (FIB, error)
-}
 
 type Options struct {
 	AllowUnsupported bool

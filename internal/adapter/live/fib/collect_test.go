@@ -31,10 +31,10 @@ func TestCollectRejectsUnsupportedNodes(t *testing.T) {
 
 func TestCollectFIBAFICommandSelectionFRR(t *testing.T) {
 	tests := []struct {
-		name    string
-		afi     model.AFI
-		wantV4  bool
-		wantV6  bool
+		name   string
+		afi    model.AFI
+		wantV4 bool
+		wantV6 bool
 	}{
 		{name: "default (empty) AFI uses IPv4", afi: "", wantV4: true, wantV6: false},
 		{name: "IPv4 AFI uses IPv4 commands", afi: model.AFIIPv4, wantV4: true, wantV6: false},

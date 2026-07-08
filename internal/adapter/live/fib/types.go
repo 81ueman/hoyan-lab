@@ -10,7 +10,6 @@ import (
 type FIBEntry = observation.FIBEntry
 type FIB = observation.FIB
 type NextHop = observation.NextHop
-type Collector = observation.FIBCollector
 type Options = observation.Options
 type UnsupportedNodesError = observation.UnsupportedNodesError
 

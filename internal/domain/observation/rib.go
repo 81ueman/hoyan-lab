@@ -1,7 +1,6 @@
 package observation
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,10 +13,6 @@ type RIB struct {
 	Node   model.NodeID            `json:"node"`
 	VRF    model.NetworkInstanceID `json:"vrf"`
 	Routes []RIBRoute              `json:"routes"`
-}
-
-type RIBCollector interface {
-	CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts CollectOptions) (RIB, error)
 }
 
 type RIBRoute struct {
