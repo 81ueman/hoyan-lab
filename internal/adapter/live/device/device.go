@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
@@ -11,34 +12,51 @@ type Runner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
-// DockerExecutor centralizes docker exec invocation used by live collectors.
-type DockerExecutor struct {
-	runner Runner
+// DeviceSession represents a session to a network device for running commands.
+// Implementations abstract how commands reach the device (docker exec, SSH, etc.).
+type DeviceSession interface {
+	Exec(ctx context.Context, args ...string) ([]byte, error)
 }
 
-func NewDockerExecutor(runner Runner) DockerExecutor {
-	return DockerExecutor{runner: runner}
+// DockerSession implements DeviceSession using docker exec.
+type DockerSession struct {
+	runner        Runner
+	containerName string
 }
 
-func (e DockerExecutor) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return e.runner.Run(ctx, name, args...)
+func NewDockerSession(runner Runner, containerName string) *DockerSession {
+	return &DockerSession{runner: runner, containerName: containerName}
 }
 
-func (e DockerExecutor) Exec(ctx context.Context, containerName string, args ...string) ([]byte, error) {
-	dockerArgs := append([]string{"exec", "-i", containerName}, args...)
-	return e.runner.Run(ctx, "docker", dockerArgs...)
+func (s *DockerSession) Exec(ctx context.Context, args ...string) ([]byte, error) {
+	dockerArgs := append([]string{"exec", "-i", s.containerName}, args...)
+	return s.runner.Run(ctx, "docker", dockerArgs...)
 }
 
-// VendorCollector carries the shared live command executor for a vendor collector.
+// ExecTTY runs a command with a pseudo-TTY, using script(1) to force TTY allocation.
+// Used for SR Linux CLI fallback where non-TTY exec may return empty/malformed output.
+func (s *DockerSession) ExecTTY(ctx context.Context, args ...string) ([]byte, error) {
+	command := "docker exec -it " + shellQuote(s.containerName) + " " + shellJoin(args)
+	return s.runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
+}
+
+// VendorCollector carries a Runner and creates per-node DeviceSessions.
+// Vendor-specific collectors embed this and call SessionForNode to get a session
+// for each target node, rather than constructing docker exec commands directly.
 type VendorCollector struct {
-	Exec DockerExecutor
+	Runner Runner
 }
 
 func NewVendorCollector(runner Runner) VendorCollector {
-	return VendorCollector{Exec: NewDockerExecutor(runner)}
+	return VendorCollector{Runner: runner}
 }
 
-// Registry builds the standard FRR/cEOS/SR Linux live collector registry.
+// SessionForNode creates a DeviceSession for the given node using its runtime name.
+func (c VendorCollector) SessionForNode(node model.Node) DeviceSession {
+	return NewDockerSession(c.Runner, node.RuntimeName())
+}
+
+// NewRegistry builds the standard FRR/cEOS/SR Linux live collector registry.
 type Factory[T any] func(VendorCollector) T
 
 func NewRegistry[T any](runner Runner, factory func(model.LiveCollectorID, VendorCollector) T) map[model.LiveCollectorID]T {
@@ -58,4 +76,16 @@ func NodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
 		}
 	}
 	return out
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = shellQuote(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

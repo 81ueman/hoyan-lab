@@ -11,6 +11,7 @@ import (
 	"time"
 
 	liveadapter "github.com/81ueman/hoyan-lab/internal/adapter/live"
+	device "github.com/81ueman/hoyan-lab/internal/adapter/live/device"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
@@ -119,7 +120,8 @@ func (r Runtime) WaitSRLinuxCLI(ctx context.Context, nodes []model.Node, interva
 	return poll(ctx, interval, func() (bool, error) {
 		for _, n := range srlinuxNodes {
 			containerName := n.RuntimeName()
-			if _, err := liverib.RunSRLinuxJSON(ctx, r.Runner, containerName, "show", "version"); err != nil {
+			session := device.NewDockerSession(r.Runner, containerName)
+			if _, err := liverib.RunSRLinuxJSON(ctx, session, "show", "version"); err != nil {
 				lastErr = fmt.Errorf("%s SR Linux CLI is not ready: %w", n.Name, err)
 				return false, nil
 			}

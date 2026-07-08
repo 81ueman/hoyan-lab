@@ -123,7 +123,7 @@ func TestCollectSRLinuxFallsBackToTTYWhenJSONIsEmpty(t *testing.T) {
 		switch {
 		case cmd == "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary":
 			return []byte{}, nil
-		case strings.HasPrefix(cmd, "script -q /dev/null -c docker exec -it 'srl1' sr_cli --output-format json --pagination off -- 'show' 'network-instance' 'default' 'route-table' 'ipv4-unicast' 'summary'"):
+		case strings.HasPrefix(cmd, "script -q /dev/null -c docker exec -it 'srl1' 'sr_cli' '--output-format' 'json' '--pagination' 'off' '--' 'show' 'network-instance' 'default' 'route-table' 'ipv4-unicast' 'summary'"):
 			return []byte(`{"instance":[{"ip route":[{"Prefix":"198.18.20.4/31","Route Type":"local","Active":"True","Next-hop (Type)":"198.18.20.4 (direct)","Next-hop Interface":"ethernet-1/4.0 "}]}]}`), nil
 		default:
 			return nil, errors.New("unexpected command: " + cmd)
