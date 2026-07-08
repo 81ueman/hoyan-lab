@@ -26,13 +26,13 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	}
 
 	topologyPath := filepath.Join("..", "..", "..", "..", "labs", "base-wan", "hoyan.clab.yml")
-	topo, err := topology.LoadTopology(topologyPath)
+	topo, runtimeMeta, _, err := topology.LoadDomainTopologyWithRuntime(topologyPath, topology.LoadOptions{})
 	if err != nil {
-		t.Fatalf("LoadLabTopology() error = %v", err)
+		t.Fatalf("LoadDomainTopologyWithRuntime() error = %v", err)
 	}
 	runner := liveexec.ExecRunner{}
-	runtime := clabruntime.Runtime{Runner: runner}
-	ribCollector := clabruntime.NewCollector(topo.Nodes, runner, observation.Options{})
+	runtime := clabruntime.NewRuntime(runner, runtimeMeta.RuntimeName)
+	ribCollector := clabruntime.NewCollector(topo.Nodes, runner, observation.Options{}, runtimeMeta.RuntimeName)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 

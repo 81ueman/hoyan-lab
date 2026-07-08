@@ -230,7 +230,6 @@ func formatCompareChecks(checks map[compareCheck]bool) string {
 
 func startCompareClabTargets(ctx context.Context, targets []CollectorTarget, out io.Writer, pollInterval time.Duration, runner liveadapter.Runner) error {
 	started := map[string]bool{}
-	runtime := clabruntime.Runtime{Runner: runner}
 	for _, target := range targets {
 		if target.Type != TargetClab {
 			continue
@@ -239,10 +238,11 @@ func startCompareClabTargets(ctx context.Context, targets []CollectorTarget, out
 		if started[path] {
 			continue
 		}
-		topo, err := topology.LoadTopology(target.Path)
+		topo, runtimeMeta, _, err := topology.LoadDomainTopologyWithRuntime(target.Path, topology.LoadOptions{})
 		if err != nil {
 			return fmt.Errorf("load containerlab topology %s: %w", target.Path, err)
 		}
+		runtime := clabruntime.NewRuntime(runner, runtimeMeta.RuntimeName)
 		if err := runtime.Start(ctx, target.Path, topo, pollInterval, out); err != nil {
 			return fmt.Errorf("start containerlab topology %s: %w", target.Path, err)
 		}
