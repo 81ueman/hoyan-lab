@@ -5,11 +5,12 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
 
-func bgpRoute(prefix string, paths []observation.BGPPath) RIBRoute {
+func bgpRouteVRF(prefix, vrf string, paths []observation.BGPPath) RIBRoute {
 	observation.SortBGPPaths(paths, observation.DefaultCompareOptions())
 	return RIBRoute{
 		Common: observation.RIBRouteCommon{
 			AFI:      model.AFIIPv4,
+			VRF:      model.NetworkInstanceID(vrf),
 			Prefix:   prefix,
 			Protocol: model.RouteSourceBGP,
 			Eligible: bgpHasEligiblePath(paths),
@@ -19,10 +20,11 @@ func bgpRoute(prefix string, paths []observation.BGPPath) RIBRoute {
 	}
 }
 
-func nonBGPRoute(prefix, protocol string, hops []routeTableNextHop) RIBRoute {
+func nonBGPRouteVRF(prefix, vrf, protocol string, hops []routeTableNextHop) RIBRoute {
 	routeProtocol := model.NormalizeRouteSourceKind(model.RouteSourceKind(protocol))
 	common := observation.RIBRouteCommon{
 		AFI:      model.AFIIPv4,
+		VRF:      model.NetworkInstanceID(vrf),
 		Prefix:   prefix,
 		Protocol: routeProtocol,
 		Eligible: true,

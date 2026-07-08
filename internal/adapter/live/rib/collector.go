@@ -40,7 +40,35 @@ func (c LiveCollector) CollectRIB(ctx context.Context, node model.Node, vrf mode
 	if err != nil {
 		return observation.RIB{}, err
 	}
-	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: routes}, opts), nil
+	// Filter by requested VRF to prevent cross-VRF leakage from commands
+	// that return routes from all VRFs (e.g. "show ip route vrf all json").
+	var vrfRoutes []observation.RIBRoute
+	for _, r := range routes {
+		routeVRF := model.NormalizeNetworkInstance(string(r.Common.VRF))
+		if routeVRF == vrf {
+			r.Common.VRF = vrf
+			vrfRoutes = append(vrfRoutes, r)
+		}
+	}
+	// Backward compatibility: if no routes matched by VRF (e.g. snapshots
+	// without VRF field), return all routes unfiltered (legacy behavior).
+	// NormalizeNetworkInstance("") returns "default", so old snapshots where
+	// VRF was never set will match when collecting the default VRF above.
+	// This fallback handles the case where the requested VRF is non-default
+	// but routes lack VRF metadata entirely.
+	if len(vrfRoutes) == 0 && len(routes) > 0 {
+		hasVRF := false
+		for _, r := range routes {
+			if r.Common.VRF != "" {
+				hasVRF = true
+				break
+			}
+		}
+		if !hasVRF {
+			vrfRoutes = routes
+		}
+	}
+	return observation.FilterRIB(observation.RIB{Node: model.NodeID(node.Name), VRF: vrf, Routes: vrfRoutes}, opts), nil
 }
 
 func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {

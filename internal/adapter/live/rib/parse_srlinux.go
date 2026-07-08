@@ -37,7 +37,6 @@ func ParseSRLinuxDetail(node, prefix string, data []byte) ([]RIBRoute, error) {
 }
 
 func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, data []byte) ([]RIBRoute, error) {
-	_, _ = node, networkInstance
 	var root any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -74,5 +73,5 @@ func ParseSRLinuxDetailNetworkInstance(node, networkInstance, prefix string, dat
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	return []RIBRoute{bgpRoute(prefix, paths)}, nil
+	return []RIBRoute{bgpRouteVRF(prefix, networkInstance, paths)}, nil
 }

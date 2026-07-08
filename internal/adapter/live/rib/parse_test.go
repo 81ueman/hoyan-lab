@@ -470,9 +470,10 @@ func routeByPrefixProtocol(routes []RIBRoute, prefix, protocol string) *RIBRoute
 }
 
 func routeByVRFPrefixProtocol(routes []RIBRoute, vrf, prefix, protocol string) *RIBRoute {
-	_ = vrf
+	normalizedVRF := string(model.NormalizeNetworkInstance(vrf))
 	for i := range routes {
-		if routes[i].Common.Prefix == prefix && string(routes[i].Common.Protocol) == protocol {
+		routeVRF := string(model.NormalizeNetworkInstance(string(routes[i].Common.VRF)))
+		if routeVRF == normalizedVRF && routes[i].Common.Prefix == prefix && string(routes[i].Common.Protocol) == protocol {
 			return &routes[i]
 		}
 	}
@@ -572,5 +573,386 @@ func TestRunSRLinuxJSONReportsMalformedOutput(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q missing %q", err, want)
 		}
+	}
+}
+
+// --- Cross-VRF leakage tests ---
+
+func TestCollectRIB_FRR_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
+	// FRR "show ip route vrf all json" returns routes from multiple VRFs.
+	// CollectRIB must only return routes for the requested VRF.
+	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		switch cmd {
+		case "docker exec -i r1 vtysh -c show ip bgp json":
+			return []byte(`{}`), nil
+		case "docker exec -i r1 ip -j link show type vrf":
+			return []byte(`[]`), nil
+		case "docker exec -i r1 vtysh -c show ip route vrf all json":
+			return []byte(`{
+			  "vrfs": {
+			    "default": {
+			      "routes": {
+			        "10.0.0.0/24": [{"protocol":"connected","interfaceName":"eth0"}]
+			      }
+			    },
+			    "tenant-a": {
+			      "routes": {
+			        "10.1.0.0/24": [{"protocol":"static","nexthops":[{"ip":"192.0.2.1"}]}]
+			      }
+			    },
+			    "tenant-b": {
+			      "routes": {
+			        "10.2.0.0/24": [{"protocol":"static","nexthops":[{"ip":"192.0.2.2"}]}]
+			      }
+			    }
+			  }
+			}`), nil
+		case "docker exec -i r1 vtysh -c show ip ospf route json":
+			return []byte(`{}`), nil
+		default:
+			t.Fatalf("unexpected command: %s", cmd)
+			return nil, nil
+		}
+	})
+	collector := NewCollector(runner)
+
+	// Collect for "default" VRF - should only get 10.0.0.0/24
+	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(default) error = %v", err)
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.0.0.0/24", "connected") == nil {
+		t.Fatalf("default VRF: connected route 10.0.0.0/24 missing")
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.1.0.0/24", "static") != nil {
+		t.Fatalf("default VRF: tenant-a route 10.1.0.0/24 leaked!")
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.2.0.0/24", "static") != nil {
+		t.Fatalf("default VRF: tenant-b route 10.2.0.0/24 leaked!")
+	}
+
+	// Collect for "tenant-a" VRF - should only get 10.1.0.0/24
+	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceID("tenant-a"), observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(tenant-a) error = %v", err)
+	}
+	if len(rib.Routes) != 1 || rib.Routes[0].Common.Prefix != "10.1.0.0/24" {
+		t.Fatalf("tenant-a VRF: expected 1 route (10.1.0.0/24), got %d: %#v", len(rib.Routes), rib.Routes)
+	}
+
+	// Collect for "tenant-b" VRF - should only get 10.2.0.0/24
+	rib, err = collector.CollectRIB(context.Background(), model.Node{Name: "r1", Kind: model.KindFRR, ContainerName: "r1"}, model.NetworkInstanceID("tenant-b"), observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(tenant-b) error = %v", err)
+	}
+	if len(rib.Routes) != 1 || rib.Routes[0].Common.Prefix != "10.2.0.0/24" {
+		t.Fatalf("tenant-b VRF: expected 1 route (10.2.0.0/24), got %d: %#v", len(rib.Routes), rib.Routes)
+	}
+}
+
+func TestCollectRIB_CEOS_FiltersByVRF_NoCrossVRFLeakage(t *testing.T) {
+	// cEOS "show ip bgp vrf all | json" returns routes from multiple VRFs.
+	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		switch cmd {
+		case "docker exec -i ceos1 Cli -p 15 -c show ip bgp vrf all | json":
+			return []byte(`{
+			  "vrfs": {
+			    "default": {
+			      "bgpRouteEntries": {
+			        "10.0.0.0/24": {
+			          "bgpRoutePaths": [{
+			            "routeType": {"active": true, "valid": true},
+			            "nextHop": "192.0.2.1",
+			            "peerEntry": {"peerAddr": "192.0.2.1", "peerAS": 65001},
+			            "routeOrigin": "igp"
+			          }]
+			        }
+			      }
+			    },
+			    "tenant-a": {
+			      "bgpRouteEntries": {
+			        "10.1.0.0/24": {
+			          "bgpRoutePaths": [{
+			            "routeType": {"active": true, "valid": true},
+			            "nextHop": "192.0.2.2",
+			            "peerEntry": {"peerAddr": "192.0.2.2", "peerAS": 65002},
+			            "routeOrigin": "igp"
+			          }]
+			        }
+			      }
+			    }
+			  }
+			}`), nil
+		case "docker exec -i ceos1 Cli -p 15 -c show ip route vrf all | json":
+			return []byte(`{"vrfs":{"default":{"routes":{}}}}`), nil
+		default:
+			t.Fatalf("unexpected command: %s", cmd)
+			return nil, nil
+		}
+	})
+	collector := NewCollector(runner)
+	ceosNode := model.Node{Name: "ceos1", Kind: model.KindCEOS, ContainerName: "ceos1", ASN: 65000}
+
+	// Collect for "default" VRF - should only get 10.0.0.0/24
+	rib, err := collector.CollectRIB(context.Background(), ceosNode, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(default) error = %v", err)
+	}
+	bgp := routeByPrefixProtocol(rib.Routes, "10.0.0.0/24", "bgp")
+	if bgp == nil {
+		t.Fatalf("default VRF: BGP route 10.0.0.0/24 missing in %#v", rib.Routes)
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.1.0.0/24", "bgp") != nil {
+		t.Fatalf("default VRF: tenant-a route 10.1.0.0/24 leaked!")
+	}
+
+	// Collect for "tenant-a" VRF - should only get 10.1.0.0/24
+	rib, err = collector.CollectRIB(context.Background(), ceosNode, model.NetworkInstanceID("tenant-a"), observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(tenant-a) error = %v", err)
+	}
+	if len(rib.Routes) != 1 || rib.Routes[0].Common.Prefix != "10.1.0.0/24" {
+		t.Fatalf("tenant-a VRF: expected 1 route (10.1.0.0/24), got %d: %#v", len(rib.Routes), rib.Routes)
+	}
+}
+
+func TestParseFRRRouteTableMultipleVRFs(t *testing.T) {
+	// Test that ParseFRRRouteTable returns routes with correct VRF set when
+	// the JSON has a "vrfs" key (from "show ip route vrf all json").
+	data := []byte(`{
+	  "vrfs": {
+	    "default": {
+	      "routes": {
+	        "10.0.0.0/24": [{"protocol":"connected","interfaceName":"eth0"}]
+	      }
+	    },
+	    "tenant-a": {
+	      "routes": {
+	        "10.1.0.0/24": [{"protocol":"static","nexthops":[{"ip":"192.0.2.1"}]}]
+	      }
+	    }
+	  }
+	}`)
+	routes, err := ParseFRRRouteTable("r1", data)
+	if err != nil {
+		t.Fatalf("ParseFRRRouteTable() error = %v", err)
+	}
+	// Check default VRF route
+	defRoute := routeByVRFPrefixProtocol(routes, "default", "10.0.0.0/24", "connected")
+	if defRoute == nil {
+		t.Fatalf("default route missing: %#v", routes)
+	}
+	// Check tenant-a route
+	tenantRoute := routeByVRFPrefixProtocol(routes, "tenant-a", "10.1.0.0/24", "static")
+	if tenantRoute == nil {
+		t.Fatalf("tenant-a route missing: %#v", routes)
+	}
+	// Ensure no route leaks between VRFs
+	if routeByVRFPrefixProtocol(routes, "default", "10.1.0.0/24", "static") != nil {
+		t.Fatalf("tenant-a route leaked into default VRF")
+	}
+	if routeByVRFPrefixProtocol(routes, "tenant-a", "10.0.0.0/24", "connected") != nil {
+		t.Fatalf("default route leaked into tenant-a VRF")
+	}
+}
+
+func TestParseCEOSRouteTableMultipleVRFs_VRFAware(t *testing.T) {
+	data := []byte(`{"vrfs":{
+	  "default": {"routes":{"10.0.0.0/24":{"routeType":"connected","vias":[{"interface":"eth0"}]}}},
+	  "tenant-a": {"routes":{"10.1.0.0/24":{"routeType":"static","vias":[{"nexthopAddr":"192.0.2.1","interface":"eth1"}]}}},
+	  "tenant-b": {"routes":{"10.2.0.0/24":{"routeType":"static","vias":[{"nexthopAddr":"192.0.2.2","interface":"eth2"}]}}}
+	}}`)
+	routes, err := ParseCEOSRouteTable("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOSRouteTable() error = %v", err)
+	}
+	// Each route should have its correct VRF
+	if r := routeByVRFPrefixProtocol(routes, "default", "10.0.0.0/24", "connected"); r == nil {
+		t.Fatalf("default route missing or wrong VRF")
+	}
+	if r := routeByVRFPrefixProtocol(routes, "tenant-a", "10.1.0.0/24", "static"); r == nil {
+		t.Fatalf("tenant-a route missing or wrong VRF")
+	}
+	if r := routeByVRFPrefixProtocol(routes, "tenant-b", "10.2.0.0/24", "static"); r == nil {
+		t.Fatalf("tenant-b route missing or wrong VRF")
+	}
+	// Cross-VRF negative checks
+	if routeByVRFPrefixProtocol(routes, "default", "10.1.0.0/24", "static") != nil {
+		t.Fatalf("tenant-a route leaked into default VRF")
+	}
+	if routeByVRFPrefixProtocol(routes, "tenant-a", "10.2.0.0/24", "static") != nil {
+		t.Fatalf("tenant-b route leaked into tenant-a VRF")
+	}
+}
+
+func TestParseCEOSMultipleVREBGP(t *testing.T) {
+	// Test that ParseCEOS correctly sets VRF on BGP routes from multi-VRF output.
+	data := []byte(`{
+	  "vrfs": {
+	    "default": {
+	      "bgpRouteEntries": {
+	        "10.0.0.0/24": {
+	          "bgpRoutePaths": [{
+	            "routeType": {"active": true, "valid": true},
+	            "nextHop": "192.0.2.1",
+	            "peerEntry": {"peerAddr": "192.0.2.1", "peerAS": 65001},
+	            "routeOrigin": "igp"
+	          }]
+	        }
+	      }
+	    },
+	    "tenant-a": {
+	      "bgpRouteEntries": {
+	        "10.1.0.0/24": {
+	          "bgpRoutePaths": [{
+	            "routeType": {"active": true, "valid": true},
+	            "nextHop": "192.0.2.2",
+	            "peerEntry": {"peerAddr": "192.0.2.2", "peerAS": 65002},
+	            "routeOrigin": "igp"
+	          }]
+	        }
+	      }
+	    }
+	  }
+	}`)
+	routes, err := ParseCEOS("ceos1", data)
+	if err != nil {
+		t.Fatalf("ParseCEOS() error = %v", err)
+	}
+	// Check VRF attribution
+	if r := routeByVRFPrefixProtocol(routes, "default", "10.0.0.0/24", "bgp"); r == nil {
+		t.Fatalf("default route missing or wrong VRF")
+	}
+	if r := routeByVRFPrefixProtocol(routes, "tenant-a", "10.1.0.0/24", "bgp"); r == nil {
+		t.Fatalf("tenant-a route missing or wrong VRF")
+	}
+	// Cross-VRF negative check
+	if routeByVRFPrefixProtocol(routes, "default", "10.1.0.0/24", "bgp") != nil {
+		t.Fatalf("tenant-a BGP route leaked into default VRF")
+	}
+}
+
+func TestParseSRLinuxRouteTableVRFSet(t *testing.T) {
+	data := []byte(`{"instance":[{"ip route":[{"Prefix":"10.1.0.0/24","Route Type":"static","Active":"True","Next-hop (Type)":"192.0.2.1/32 (direct)","Next-hop Interface":"ethernet-1/1.0"}]}]}`)
+	routes, err := ParseSRLinuxRouteTableNetworkInstance("srl1", "tenant-a", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRouteTableNetworkInstance() error = %v", err)
+	}
+	// Verify VRF is set correctly
+	if r := routeByVRFPrefixProtocol(routes, "tenant-a", "10.1.0.0/24", "static"); r == nil {
+		t.Fatalf("route not found with VRF tenant-a: %#v", routes)
+	}
+}
+
+func TestParseSRLinuxBGPDetailVRFSet(t *testing.T) {
+	detail := []byte(`{
+	  "routes": [
+	    {"status":"<Best,Valid,Used>","next-hop":"192.0.2.1","neighbor":"192.0.2.1","peer-as":"65001","local pref":"150","as path":"65001","origin":"igp"}
+	  ]
+	}`)
+	routes, err := ParseSRLinuxDetailNetworkInstance("srl1", "tenant-a", "10.1.0.0/24", detail)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxDetailNetworkInstance() error = %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("expected 1 route, got %d", len(routes))
+	}
+	// Verify VRF is set correctly
+	if string(routes[0].Common.VRF) != "tenant-a" {
+		t.Fatalf("expected VRF tenant-a, got %q", routes[0].Common.VRF)
+	}
+}
+
+func TestCollectRIB_SRLinux_FiltersByVRF(t *testing.T) {
+	// The SR Linux collection uses sr_cli --output-format json --pagination off -- ...
+	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		switch cmd {
+		case "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default protocols bgp routes ipv4 summary":
+			return []byte(`{"network-instance":[{"routes":[{"prefix":"10.0.0.0/24"}]}]}`), nil
+		case "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default protocols bgp routes ipv4 prefix 10.0.0.0/24 detail":
+			return []byte(`{"routes":[{"status":"<Best,Valid,Used>","next-hop":"192.0.2.1","neighbor":"192.0.2.1","peer-as":"65001","as path":"65001","origin":"igp"}]}`), nil
+		case "docker exec -i srl1 sr_cli --output-format json --pagination off -- show network-instance default route-table ipv4-unicast summary":
+			return []byte(`{"instance":[{"ip route":[{"Prefix":"10.0.0.0/24","Route Type":"connected","Active":"True","Next-hop Interface":"eth0"}]}]}`), nil
+		default:
+			t.Fatalf("unexpected command: %s", cmd)
+			return nil, nil
+		}
+	})
+	collector := NewCollector(runner)
+	rib, err := collector.CollectRIB(context.Background(), model.Node{Name: "srl1", Kind: model.KindSRLinux, ContainerName: "srl1"}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(default) error = %v", err)
+	}
+	if len(rib.Routes) == 0 {
+		t.Fatalf("expected routes for default VRF, got none")
+	}
+	// All routes should have VRF set to "default" (or empty which we treat as default)
+	for i, r := range rib.Routes {
+		vrf := string(r.Common.VRF)
+		if vrf != "" && vrf != "default" {
+			t.Fatalf("route %d has VRF %q, expected default", i, vrf)
+		}
+	}
+}
+
+// Test that the FRR BGP VRF command also sets VRF correctly.
+func TestCollectRIB_FRR_BGP_PerVRFCommandSetsVRF(t *testing.T) {
+	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		cmd := name + " " + strings.Join(args, " ")
+		switch cmd {
+		case "docker exec -i r1 vtysh -c show ip bgp json":
+			return []byte(`{"routes":{"10.0.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"192.0.2.1"}],"path":"65001","origin":"i"}]}}`), nil
+		case "docker exec -i r1 ip -j link show type vrf":
+			return []byte(`[{"ifindex":10,"link":"eth1","ifname":"tenant-a"}]`), nil
+		case "docker exec -i r1 vtysh -c show bgp vrf tenant-a ipv4 unicast json":
+			return []byte(`{"routes":{"10.1.0.0/24":[{"valid":true,"bestpath":true,"nexthops":[{"ip":"192.0.2.2"}],"path":"65002","origin":"i"}]}}`), nil
+		case "docker exec -i r1 vtysh -c show ip route vrf all json":
+			return []byte(`{}`), nil
+		case "docker exec -i r1 vtysh -c show ip ospf route json":
+			return []byte(`{}`), nil
+		default:
+			t.Fatalf("unexpected command: %s", cmd)
+			return nil, nil
+		}
+	})
+	collector := NewCollector(runner)
+
+	// Collect default VRF
+	rib, err := collector.CollectRIB(context.Background(), model.Node{
+		Name: "r1", Kind: model.KindFRR, ContainerName: "r1",
+		Interfaces: []model.Interface{{
+			Name: "eth1", VRF: model.NetworkInstanceID("tenant-a"),
+		}},
+	}, model.NetworkInstanceDefault, observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(default) error = %v", err)
+	}
+	// Should only have 10.0.0.0/24 (default VRF BGP route)
+	if routeByPrefixProtocol(rib.Routes, "10.0.0.0/24", "bgp") == nil {
+		t.Fatalf("default VRF: BGP route 10.0.0.0/24 missing")
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.1.0.0/24", "bgp") != nil {
+		t.Fatalf("default VRF: tenant-a BGP route leaked!")
+	}
+
+	// Collect tenant-a VRF
+	rib, err = collector.CollectRIB(context.Background(), model.Node{
+		Name: "r1", Kind: model.KindFRR, ContainerName: "r1",
+		Interfaces: []model.Interface{{
+			Name: "eth1", VRF: model.NetworkInstanceID("tenant-a"),
+		}},
+	}, model.NetworkInstanceID("tenant-a"), observation.CollectOptions{IncludeInactive: true})
+	if err != nil {
+		t.Fatalf("CollectRIB(tenant-a) error = %v", err)
+	}
+	// Should only have 10.1.0.0/24 (tenant-a VRF BGP route)
+	if routeByPrefixProtocol(rib.Routes, "10.1.0.0/24", "bgp") == nil {
+		t.Fatalf("tenant-a VRF: BGP route 10.1.0.0/24 missing")
+	}
+	if routeByPrefixProtocol(rib.Routes, "10.0.0.0/24", "bgp") != nil {
+		t.Fatalf("tenant-a VRF: default route leaked!")
 	}
 }

@@ -33,9 +33,10 @@ type RIBRoute struct {
 }
 
 type RIBRouteCommon struct {
-	AFI      model.AFI             `json:"afi"`
-	Prefix   string                `json:"prefix"`
-	Protocol model.RouteSourceKind `json:"protocol"`
+	AFI      model.AFI               `json:"afi"`
+	VRF      model.NetworkInstanceID `json:"vrf,omitempty"`
+	Prefix   string                  `json:"prefix"`
+	Protocol model.RouteSourceKind   `json:"protocol"`
 
 	Preference int `json:"preference,omitempty"`
 	Metric     int `json:"metric,omitempty"`
