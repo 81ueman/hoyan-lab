@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
@@ -297,6 +298,168 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 	}
 }
 
+func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
+	// Topology:
+	// r1 --1-- a --1-- x --1-- d   (cost 3, primary)
+	//           \
+	//            2-- y --2-- d     (cost 5, same first-hop alternate)
+	// r1 --10-- b --1-- d          (cost 11, different first-hop alternate)
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfNode("r1", "10.255.1.1/32",
+				map[string]string{"eth1": "198.51.100.0/31", "eth2": "198.51.100.10/31"},
+				map[string]int{"eth1": 1, "eth2": 10}),
+			ospfNode("a", "10.255.2.2/32",
+				map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31", "eth3": "198.51.100.4/31"},
+				map[string]int{"eth1": 1, "eth2": 1, "eth3": 2}),
+			ospfNode("x", "10.255.4.4/32",
+				map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.6/31"},
+				map[string]int{"eth1": 1, "eth2": 1}),
+			ospfNode("y", "10.255.5.5/32",
+				map[string]string{"eth1": "198.51.100.5/31", "eth2": "198.51.100.8/31"},
+				map[string]int{"eth1": 2, "eth2": 2}),
+			ospfNode("b", "10.255.3.3/32",
+				map[string]string{"eth1": "198.51.100.11/31", "eth2": "198.51.100.12/31"},
+				map[string]int{"eth1": 10, "eth2": 1}),
+			ospfNode("d", "10.255.6.6/32",
+				map[string]string{"eth1": "198.51.100.7/31", "eth2": "198.51.100.9/31", "eth3": "198.51.100.13/31"},
+				map[string]int{"eth1": 1, "eth2": 2, "eth3": 1}),
+		},
+		Links: []model.Link{
+			{Name: "r1-a", A: "r1", AIntf: "eth1", B: "a", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+			{Name: "a-x", A: "a", AIntf: "eth2", B: "x", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
+			{Name: "a-y", A: "a", AIntf: "eth3", B: "y", BIntf: "eth1", Cost: 2, Subnet: "198.51.100.4/31"},
+			{Name: "x-d", A: "x", AIntf: "eth2", B: "d", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.6/31"},
+			{Name: "y-d", A: "y", AIntf: "eth2", B: "d", BIntf: "eth2", Cost: 2, Subnet: "198.51.100.8/31"},
+			{Name: "r1-b", A: "r1", AIntf: "eth2", B: "b", BIntf: "eth1", Cost: 10, Subnet: "198.51.100.10/31"},
+			{Name: "b-d", A: "b", AIntf: "eth2", B: "d", BIntf: "eth3", Cost: 1, Subnet: "198.51.100.12/31"},
+		},
+	}
+	rib := simulateOSPFTestRIB(t, topo)
+	routes := rib["r1"][model.MustPrefix("10.255.6.6/32")]
+	if len(routes) < 2 {
+		t.Fatalf("r1 routes to d = %d, want at least 2 (primary + alternate)", len(routes))
+	}
+
+	// Primary: via a, cost 3
+	best := routes[0].Normalize()
+	if best.RouteSource.Metric != 3 || best.ForwardingNextHop.Node != "a" {
+		t.Fatalf("best route = %#v, want metric 3 via a", best)
+	}
+
+	// Same-first-hop alternate: via a, cost 5
+	var sameFirstHopAlt bool
+	for _, r := range routes {
+		r = r.Normalize()
+		if r.ForwardingNextHop.Node == "a" && r.RouteSource.Metric == 5 {
+			sameFirstHopAlt = true
+			break
+		}
+	}
+	if !sameFirstHopAlt {
+		t.Fatalf("routes = %#v, want same-first-hop alternate via a metric 5", routes)
+	}
+
+	// Different-first-hop alternate: via b, cost 11
+	var diffFirstHopAlt bool
+	for _, r := range routes {
+		r = r.Normalize()
+		if r.ForwardingNextHop.Node == "b" && r.RouteSource.Metric == 11 {
+			diffFirstHopAlt = true
+			break
+		}
+	}
+	if !diffFirstHopAlt {
+		t.Fatalf("routes = %#v, want different-first-hop alternate via b metric 11", routes)
+	}
+}
+
+func TestOSPFAlternateSelectedUnderPrimaryLinkFailure(t *testing.T) {
+	// Same topology as TestOSPFInstallsSameFirstHopAlternate
+	topo := &model.Topology{
+		Nodes: []model.Node{
+			ospfNode("r1", "10.255.1.1/32",
+				map[string]string{"eth1": "198.51.100.0/31", "eth2": "198.51.100.10/31"},
+				map[string]int{"eth1": 1, "eth2": 10}),
+			ospfNode("a", "10.255.2.2/32",
+				map[string]string{"eth1": "198.51.100.1/31", "eth2": "198.51.100.2/31", "eth3": "198.51.100.4/31"},
+				map[string]int{"eth1": 1, "eth2": 1, "eth3": 2}),
+			ospfNode("x", "10.255.4.4/32",
+				map[string]string{"eth1": "198.51.100.3/31", "eth2": "198.51.100.6/31"},
+				map[string]int{"eth1": 1, "eth2": 1}),
+			ospfNode("y", "10.255.5.5/32",
+				map[string]string{"eth1": "198.51.100.5/31", "eth2": "198.51.100.8/31"},
+				map[string]int{"eth1": 2, "eth2": 2}),
+			ospfNode("b", "10.255.3.3/32",
+				map[string]string{"eth1": "198.51.100.11/31", "eth2": "198.51.100.12/31"},
+				map[string]int{"eth1": 10, "eth2": 1}),
+			ospfNode("d", "10.255.6.6/32",
+				map[string]string{"eth1": "198.51.100.7/31", "eth2": "198.51.100.9/31", "eth3": "198.51.100.13/31"},
+				map[string]int{"eth1": 1, "eth2": 2, "eth3": 1}),
+		},
+		Links: []model.Link{
+			{Name: "r1-a", A: "r1", AIntf: "eth1", B: "a", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/31"},
+			{Name: "a-x", A: "a", AIntf: "eth2", B: "x", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.2/31"},
+			{Name: "a-y", A: "a", AIntf: "eth3", B: "y", BIntf: "eth1", Cost: 2, Subnet: "198.51.100.4/31"},
+			{Name: "x-d", A: "x", AIntf: "eth2", B: "d", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.6/31"},
+			{Name: "y-d", A: "y", AIntf: "eth2", B: "d", BIntf: "eth2", Cost: 2, Subnet: "198.51.100.8/31"},
+			{Name: "r1-b", A: "r1", AIntf: "eth2", B: "b", BIntf: "eth1", Cost: 10, Subnet: "198.51.100.10/31"},
+			{Name: "b-d", A: "b", AIntf: "eth2", B: "d", BIntf: "eth3", Cost: 1, Subnet: "198.51.100.12/31"},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(topo)
+	if err != nil {
+		t.Fatalf("BuildTopologyIndex() error = %v", err)
+	}
+	rib := domainroute.RIBTable{}
+	NewEngine(idx, rib).Simulate()
+
+	routes := rib["r1"][model.NetworkInstanceDefault][model.MustPrefix("10.255.6.6/32")]
+	if len(routes) < 2 {
+		t.Fatalf("r1 routes to d = %d, want at least 2", len(routes))
+	}
+
+	// Primary link a-x fails
+	ctx := failure.Context{
+		Failures: failure.Set{
+			Links: map[model.LinkID]bool{"a-x": true},
+			Nodes: map[model.NodeID]bool{},
+		},
+		LinksByName: map[model.LinkID]model.Link{},
+	}
+
+	// The alternate via a-y-d should be selected when a-x fails
+	var alternateSelected bool
+	for _, r := range routes {
+		r = r.Normalize()
+		if r.ForwardingNextHop.Node == "a" && r.RouteSource.Metric == 5 {
+			if r.SelectedCond == nil {
+				t.Fatalf("alternate route via a (metric 5) has nil SelectedCond")
+			}
+			if r.SelectedCond.Eval(ctx) {
+				alternateSelected = true
+			}
+		}
+	}
+	if !alternateSelected {
+		t.Fatalf("alternate route via a-y-d should be selected when a-x fails")
+	}
+
+	// The primary via a-x-d should NOT be selected when a-x fails
+	var primarySelected bool
+	for _, r := range routes {
+		r = r.Normalize()
+		if r.ForwardingNextHop.Node == "a" && r.RouteSource.Metric == 3 {
+			if r.SelectedCond != nil && r.SelectedCond.Eval(ctx) {
+				primarySelected = true
+			}
+		}
+	}
+	if primarySelected {
+		t.Fatalf("primary route via a-x-d should not be selected when a-x fails")
+	}
+}
+
 func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[model.NodeID]map[model.Prefix][]domainroute.RIBEntry {
 	t.Helper()
 	idx, err := model.BuildTopologyIndex(topo)
@@ -321,18 +484,15 @@ func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
 	rib := domainroute.RIBTable{}
 	NewEngine(idx, rib).Simulate()
 	routes := rib["r1"][model.NetworkInstanceDefault][model.MustPrefix("10.255.12.12/32")]
-	if len(routes) != 11 {
-		t.Fatalf("r1 routes to r12 loopback = %d, want one candidate per first hop", len(routes))
+	if len(routes) == 0 {
+		t.Fatalf("r1 routes to r12 loopback missing")
+	}
+	if len(routes) > MaxPathsPerDestination {
+		t.Fatalf("r1 routes to r12 loopback = %d, want at most MaxPathsPerDestination (%d)", len(routes), MaxPathsPerDestination)
 	}
 	best := routes[0].Normalize()
 	if best.ForwardingNextHop.Node != "r12" || best.RouteSource.Metric != 1 {
 		t.Fatalf("best route = %#v, want direct SPF route to r12", best)
-	}
-	for _, route := range routes {
-		route = route.Normalize()
-		if len(route.Provenance.PathNodes) > 3 {
-			t.Fatalf("route path = %#v, want SPF representative path without enumerated detours", route.Provenance.PathNodes)
-		}
 	}
 }
 
