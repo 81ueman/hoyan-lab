@@ -15,10 +15,10 @@ type Environment struct {
 	collector Collector
 }
 
-func NewEnvironment(nodes []model.Node, runner liveadapter.Runner, fibOptions observation.Options) Environment {
+func NewEnvironment(nodes []model.Node, runner liveadapter.Runner, fibOptions observation.Options, containerNameFor func(string) string) Environment {
 	return Environment{
-		runtime:   Runtime{Runner: runner},
-		collector: NewCollector(nodes, runner, fibOptions),
+		runtime:   NewRuntime(runner, containerNameFor),
+		collector: NewCollector(nodes, runner, fibOptions, containerNameFor),
 	}
 }
 
@@ -38,8 +38,8 @@ func (e Environment) ResetLinkLoss(ctx context.Context, topo *model.Topology, no
 	return e.runtime.ResetLinkLoss(ctx, topo, node, intf)
 }
 
-func (e Environment) StopNode(ctx context.Context, node model.Node) error {
-	return e.runtime.StopNode(ctx, node)
+func (e Environment) StopNode(ctx context.Context, nodeName string) error {
+	return e.runtime.StopNode(ctx, nodeName)
 }
 
 func (e Environment) Metadata(ctx context.Context) observation.CollectorMetadata {

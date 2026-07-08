@@ -38,11 +38,10 @@ func (b Builder) LoadTopologyWithWarnings(clabPath string) (*model.Topology, []U
 }
 
 func (b Builder) LoadTopologyWithOptions(clabPath string, opts LoadOptions) (*model.Topology, []UnsupportedStatement, error) {
-	topo, runtime, warnings, err := b.LoadDomainTopologyWithRuntime(clabPath, opts)
+	topo, _, warnings, err := b.LoadDomainTopologyWithRuntime(clabPath, opts)
 	if err != nil {
 		return nil, warnings, err
 	}
-	applyRuntimeMetadata(topo, runtime)
 	return topo, warnings, nil
 }
 

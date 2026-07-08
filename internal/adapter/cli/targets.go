@@ -98,7 +98,7 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (collectuseca
 		}
 		return collectusecase.NewSimulator(topo)
 	case TargetClab:
-		topo, err := topology.LoadTopology(target.Path)
+		topo, runtimeMeta, _, err := topology.LoadDomainTopologyWithRuntime(target.Path, topology.LoadOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -107,6 +107,7 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (collectuseca
 			topo.Nodes,
 			runner,
 			observation.Options{AllowUnsupported: true, UnresolvedPolicy: observation.UnresolvedPolicyWarn},
+			runtimeMeta.RuntimeName,
 		), nil
 	case TargetDevice:
 		return nil, fmt.Errorf("collector type %q is not implemented yet", target.Type)

@@ -21,7 +21,7 @@ func TestCollectorExposesContainerlabTopology(t *testing.T) {
 		Name: "r2",
 		Kind: model.KindFRR,
 	}}
-	collector := NewCollector(nodes, nil, observation.Options{})
+	collector := NewCollector(nodes, nil, observation.Options{}, nil)
 
 	metadata := collector.Metadata(context.Background())
 	if metadata.Source != "containerlab" {
@@ -46,7 +46,7 @@ func TestCollectorExposesContainerlabTopology(t *testing.T) {
 }
 
 func TestCollectorRejectsUnknownNode(t *testing.T) {
-	collector := NewCollector([]model.Node{{Name: "r1", Kind: model.KindFRR}}, nil, observation.Options{})
+	collector := NewCollector([]model.Node{{Name: "r1", Kind: model.KindFRR}}, nil, observation.Options{}, nil)
 
 	if _, err := collector.VRFs(context.Background(), "missing"); err == nil {
 		t.Fatalf("VRFs() error = nil, want unknown node error")

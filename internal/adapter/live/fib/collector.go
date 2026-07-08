@@ -12,11 +12,19 @@ import (
 )
 
 type LiveCollector struct {
-	runner Runner
+	runner           Runner
+	containerNameFor func(string) string
 }
 
 func NewCollector(runner Runner) LiveCollector {
 	return LiveCollector{runner: runner}
+}
+
+// NewCollectorWithResolver creates a LiveCollector that resolves container names
+// via the given function. When the resolver is nil or returns empty, node names
+// are used as container names directly.
+func NewCollectorWithResolver(runner Runner, resolveContainerName func(string) string) LiveCollector {
+	return LiveCollector{runner: runner, containerNameFor: resolveContainerName}
 }
 
 func CollectFIB(ctx context.Context, runner Runner, node model.Node, vrf model.NetworkInstanceID, opts Options) (FIB, error) {
@@ -25,11 +33,11 @@ func CollectFIB(ctx context.Context, runner Runner, node model.Node, vrf model.N
 
 func (c LiveCollector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts Options) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	unsupported := unsupportedNodes([]model.Node{node})
+	unsupported := c.unsupportedNodes([]model.Node{node})
 	if len(unsupported) > 0 {
 		return FIB{}, UnsupportedNodesError{Nodes: unsupported}
 	}
-	collectors := fibCollectorsByID(c.runner)
+	collectors := c.fibCollectorsByID()
 	collectorID, ok := model.ProfileFor(node.Kind).LiveProfile().FIBCollector()
 	if !ok || collectors[collectorID] == nil {
 		return FIB{Node: model.NodeID(node.Name), VRF: vrf}, nil
@@ -45,9 +53,9 @@ func (c LiveCollector) CollectFIB(ctx context.Context, node model.Node, vrf mode
 	return fib, nil
 }
 
-func unsupportedNodes(nodes []model.Node) []string {
+func (c LiveCollector) unsupportedNodes(nodes []model.Node) []string {
 	var out []string
-	collectors := fibCollectorsByID(nil)
+	collectors := c.fibCollectorsByID()
 	for _, n := range nodes {
 		collectorID, ok := model.ProfileFor(n.Kind).LiveProfile().FIBCollector()
 		if !ok || collectors[collectorID] == nil {
@@ -66,8 +74,8 @@ type collector interface {
 	CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, afi model.AFI) (FIB, error)
 }
 
-func fibCollectorsByID(runner Runner) map[model.LiveCollectorID]collector {
-	return device.NewRegistry[collector](runner, func(id model.LiveCollectorID, base device.VendorCollector) collector {
+func (c LiveCollector) fibCollectorsByID() map[model.LiveCollectorID]collector {
+	return device.NewRegistryWithResolver[collector](c.runner, c.containerNameFor, func(id model.LiveCollectorID, base device.VendorCollector) collector {
 		switch id {
 		case model.LiveCollectorFRR:
 			return frrCollector{VendorCollector: base}
@@ -95,7 +103,7 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 			args := append(append([]string(nil), ipArgs...), "show", "table", table)
 			data, err := session.Exec(ctx, args...)
 			if err != nil {
-				return FIB{}, fmt.Errorf("node %s %s show table %s: %w", n.RuntimeName(), cmdStr, table, err)
+				return FIB{}, fmt.Errorf("node %s %s show table %s: %w", n.Name, cmdStr, table, err)
 			}
 			routes, err := ParseLinuxIPRoute(n.Name, data)
 			if err != nil {
@@ -109,7 +117,7 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 	args := append(append([]string(nil), ipArgs...), "show", "vrf", string(vrf))
 	data, err := session.Exec(ctx, args...)
 	if err != nil {
-		return FIB{}, fmt.Errorf("node %s %s show vrf %s: %w", n.RuntimeName(), cmdStr, vrf, err)
+		return FIB{}, fmt.Errorf("node %s %s show vrf %s: %w", n.Name, cmdStr, vrf, err)
 	}
 	routes, err := ParseLinuxIPRouteVRF(n.Name, string(vrf), data)
 	if err != nil {
@@ -129,7 +137,7 @@ func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.N
 	}
 	data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", fibCmd)
 	if err != nil {
-		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), fibCmd, err)
+		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.Name, fibCmd, err)
 	}
 	fibs, err := ParseCEOSFIBs(n.Name, data)
 	if err != nil {
@@ -148,7 +156,7 @@ func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf mode
 	}
 	data, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "summary")
 	if err != nil {
-		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", n.RuntimeName(), ni, afiStr, err)
+		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s summary: %w", n.Name, ni, afiStr, err)
 	}
 	routes, err := ParseSRLinuxRoutesNetworkInstance(n.Name, ni, data)
 	if err != nil {
@@ -160,7 +168,7 @@ func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf mode
 		}
 		detail, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", afiStr, "prefix", routes[i].Prefix, "detail")
 		if err != nil {
-			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s prefix %s detail: %w", n.RuntimeName(), ni, afiStr, routes[i].Prefix, err)
+			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table %s prefix %s detail: %w", n.Name, ni, afiStr, routes[i].Prefix, err)
 		}
 		detailRoutes, err := ParseSRLinuxRouteDetailsNetworkInstance(n.Name, ni, detail)
 		if err != nil {

@@ -152,7 +152,7 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 	for _, lab := range labs {
 		topologyPath := filepath.Join(lab.Path, labTopologyFile)
 		fmt.Fprintf(out, "==> live check %s (%s)\n", lab.Name, lab.Path)
-		topo, _, err := topology.LoadTopologyWithOptions(topologyPath, topology.LoadOptions{StrictConfig: opts.strictConfig})
+		topo, runtimeMeta, _, err := topology.LoadDomainTopologyWithRuntime(topologyPath, topology.LoadOptions{StrictConfig: opts.strictConfig})
 		if err != nil {
 			return err
 		}
@@ -160,6 +160,7 @@ func runLabsLiveCheck(ctx context.Context, args []string, opts labsLiveCheckOpti
 			topo.Nodes,
 			runner,
 			observation.Options{AllowUnsupported: opts.fibAllowUnsupported, UnresolvedPolicy: observation.UnresolvedPolicy(opts.fibUnresolvedPolicy)},
+			runtimeMeta.RuntimeName,
 		)
 		usecase, err := livecheck.New(livecheck.Dependencies{
 			Runtime:            env,

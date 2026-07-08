@@ -72,8 +72,8 @@ func (f *fakeRuntime) ResetLinkLoss(ctx context.Context, topo *model.Topology, n
 	return nil
 }
 
-func (f *fakeRuntime) StopNode(ctx context.Context, node model.Node) error {
-	f.calls = append(f.calls, "stop "+node.Name)
+func (f *fakeRuntime) StopNode(ctx context.Context, nodeName string) error {
+	f.calls = append(f.calls, "stop "+nodeName)
 	return nil
 }
 

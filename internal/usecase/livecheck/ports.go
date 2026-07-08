@@ -19,7 +19,7 @@ type Runtime interface {
 type FailureRuntime interface {
 	SetLinkLoss(ctx context.Context, topo *model.Topology, node, intf string, lossPercent int) error
 	ResetLinkLoss(ctx context.Context, topo *model.Topology, node, intf string) error
-	StopNode(ctx context.Context, node model.Node) error
+	StopNode(ctx context.Context, nodeName string) error
 }
 
 type RIBCollector interface {

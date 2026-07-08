@@ -12,16 +12,18 @@ import (
 )
 
 type Collector struct {
-	nodes      []model.Node
-	runner     liveadapter.Runner
-	fibOptions observation.Options
+	nodes            []model.Node
+	runner           liveadapter.Runner
+	fibOptions       observation.Options
+	containerNameFor func(string) string
 }
 
-func NewCollector(nodes []model.Node, runner liveadapter.Runner, fibOptions observation.Options) Collector {
+func NewCollector(nodes []model.Node, runner liveadapter.Runner, fibOptions observation.Options, containerNameFor func(string) string) Collector {
 	return Collector{
-		nodes:      append([]model.Node(nil), nodes...),
-		runner:     runner,
-		fibOptions: fibOptions,
+		nodes:            append([]model.Node(nil), nodes...),
+		runner:           runner,
+		fibOptions:       fibOptions,
+		containerNameFor: containerNameFor,
 	}
 }
 
@@ -55,7 +57,7 @@ func (c Collector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.
 	if !ok {
 		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
 	}
-	return liverib.NewCollector(c.runner).CollectRIB(ctx, n, vrf, opts)
+	return liverib.NewCollectorWithResolver(c.runner, c.containerNameFor).CollectRIB(ctx, n, vrf, opts)
 }
 
 func (c Collector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
@@ -69,7 +71,7 @@ func (c Collector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.
 	if opts.AFI != "" {
 		fibOpts.AFI = opts.AFI
 	}
-	fib, err := livefib.NewCollector(c.runner).CollectFIB(ctx, n, vrf, fibOpts)
+	fib, err := livefib.NewCollectorWithResolver(c.runner, c.containerNameFor).CollectFIB(ctx, n, vrf, fibOpts)
 	if err != nil {
 		return observation.FIB{}, err
 	}
