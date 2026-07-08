@@ -41,7 +41,7 @@ func (s Simulator) expectedRIB(node model.Node, vrf model.NetworkInstanceID, fai
 			if len(entries) == 0 {
 				continue
 			}
-			rib.Routes = append(rib.Routes, s.expectedRIBRoute(node, prefix.String(), group, entries, ctx))
+			rib.Routes = append(rib.Routes, s.expectedRIBRoute(node, prefix.String(), vrf, group, entries, ctx))
 		}
 	}
 	observation.SortRIBRoutes(rib.Routes)
@@ -203,10 +203,11 @@ func comparableConnectedClass(class model.ConnectedRouteClass) bool {
 	}
 }
 
-func (s Simulator) expectedRIBRoute(node model.Node, prefix string, group routeGroupKey, entries []sim.RIBEntry, ctx sim.FailureContext) observation.RIBRoute {
+func (s Simulator) expectedRIBRoute(node model.Node, prefix string, vrf model.NetworkInstanceID, group routeGroupKey, entries []sim.RIBEntry, ctx sim.FailureContext) observation.RIBRoute {
 	routeProtocol := model.NormalizeRouteSourceKind(group.Protocol)
 	common := observation.RIBRouteCommon{
 		AFI:      model.AFIIPv4,
+		VRF:      vrf,
 		Prefix:   prefix,
 		Protocol: routeProtocol,
 		Eligible: s.expectedEntriesHaveEligiblePath(node, entries),

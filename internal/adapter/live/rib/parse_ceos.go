@@ -7,7 +7,6 @@ import (
 )
 
 func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
-	_ = node
 	var root map[string]any
 	if err := json.Unmarshal(data, &root); err != nil {
 		return nil, err
@@ -18,7 +17,6 @@ func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
 	}
 	var out []RIBRoute
 	for ni, rawVRF := range vrfs {
-		_ = ni
 		vrf := asMap(rawVRF)
 		entries := asMap(vrf["bgpRouteEntries"])
 		for prefix, rawEntry := range entries {
@@ -52,7 +50,7 @@ func ParseCEOS(node string, data []byte) ([]RIBRoute, error) {
 				})
 			}
 			if len(paths) > 0 {
-				out = append(out, bgpRoute(prefix, paths))
+				out = append(out, bgpRouteVRF(prefix, ni, paths))
 			}
 		}
 	}
