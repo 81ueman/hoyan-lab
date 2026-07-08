@@ -428,9 +428,9 @@ func CountExpectedRoutes(expected []observation.RIBRoute, actual []observation.R
 func ribRouteSourceKey(route observation.RIBRoute) string {
 	afi := string(route.Common.AFI)
 	protocol := strings.ToLower(strings.TrimSpace(string(route.Common.Protocol)))
-	if protocol == "" {
-		protocol = "bgp"
-	}
+	// Protocol is always set by current producers; the old fallback defaulting
+	// empty protocol to "bgp" has been removed. New producers must emit
+	// explicit protocol; old snapshots are migrated at file-load boundary.
 	return afi + "|" + protocol + "|" + route.Common.Prefix
 }
 

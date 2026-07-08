@@ -288,9 +288,10 @@ func appendMismatches(routeKey, pathKey string, e, a comparablePath, opts Compar
 func normalizeRoute(r RIBRoute) RIBRoute {
 	r.Common.AFI = model.NormalizeAFI(r.Common.AFI)
 	r.Common.Protocol = model.NormalizeRouteSourceKind(r.Common.Protocol)
-	if r.Common.AFI == "" {
-		r.Common.AFI = model.AFIIPv4
-	}
+	// AFI is NOT defaulted to IPv4 here — model.NormalizeAFI already handles
+	// empty→IPv4 for normalization. Missing AFI should be migrated at
+	// snapshot file-load boundary (see migrateSnapshotForCompare in
+	// snapshot_collector.go), not silently hidden during comparison.
 	return r
 }
 

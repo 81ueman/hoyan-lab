@@ -22,9 +22,9 @@ func SourceSummary(routes []RIBRoute) map[string]int {
 	out := map[string]int{}
 	for _, route := range routes {
 		protocol := strings.ToLower(strings.TrimSpace(string(normalizeRoute(route).Common.Protocol)))
-		if protocol == "" {
-			protocol = "bgp"
-		}
+		// Protocol is always set by current producers; empty protocol is no
+		// longer defaulted to "bgp". Old snapshots migrated at load time will
+		// have protocol set via migration or fail Validate().
 		out[protocol]++
 	}
 	return out
