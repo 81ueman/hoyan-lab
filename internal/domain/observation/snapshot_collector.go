@@ -109,5 +109,43 @@ func NormalizeNetworkSnapshot(snapshot NetworkSnapshot) NetworkSnapshot {
 	sort.SliceStable(out.Nodes, func(i, j int) bool {
 		return out.Nodes[i].Node < out.Nodes[j].Node
 	})
+	// migrateSnapshotForCompare fills in missing canonical fields (AFI, Action)
+	// that older snapshots may lack. This is the file-load migration boundary;
+	// compare-time code no longer defaults these fields.
+	out = migrateSnapshotForCompare(out)
 	return out
+}
+
+// migrateSnapshotForCompare fills in empty AFI/Action on RIB routes and FIB
+// entries loaded from old snapshots. New producers must emit explicit
+// normalized values; compare-time defaults have been removed.
+// This migration runs at the file-load boundary only (snapshotfile.Load,
+// NormalizeNetworkSnapshot) and is documented here as a one-time compat layer.
+func migrateSnapshotForCompare(snapshot NetworkSnapshot) NetworkSnapshot {
+	for ni := range snapshot.Nodes {
+		for vi := range snapshot.Nodes[ni].VRFs {
+			for ri := range snapshot.Nodes[ni].VRFs[vi].RIB.Routes {
+				route := &snapshot.Nodes[ni].VRFs[vi].RIB.Routes[ri]
+				if route.Common.AFI == "" {
+					route.Common.AFI = model.AFIIPv4
+				}
+			}
+			for fi := range snapshot.Nodes[ni].VRFs[vi].FIB.Entries {
+				entry := &snapshot.Nodes[ni].VRFs[vi].FIB.Entries[fi]
+				if entry.AFI == "" {
+					entry.AFI = model.AFIIPv4
+				}
+				if entry.Action == "" {
+					if entry.Source.Protocol == model.RouteSourceBlackhole {
+						entry.Action = ActionDrop
+					} else if entry.Source.Protocol == model.RouteSourceConnected && len(entry.NextHops) == 0 {
+						entry.Action = ActionReceive
+					} else {
+						entry.Action = ActionForward
+					}
+				}
+			}
+		}
+	}
+	return snapshot
 }

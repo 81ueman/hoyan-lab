@@ -51,20 +51,11 @@ func normalizeRoutesForSide(side string, routes []FIBEntry, keyFunc func(FIBEntr
 
 func normalizeFIBEntryForCompare(route FIBEntry) FIBEntry {
 	route.Source.Protocol = model.NormalizeRouteSourceKind(route.Source.Protocol)
-	if route.AFI == "" {
-		route.AFI = model.AFIIPv4
-	} else {
-		route.AFI = model.NormalizeAFI(route.AFI)
-	}
-	if route.Action == "" {
-		if route.Source.Protocol == model.RouteSourceBlackhole {
-			route.Action = ActionDrop
-		} else if route.Source.Protocol == model.RouteSourceConnected && len(route.NextHops) == 0 {
-			route.Action = ActionReceive
-		} else {
-			route.Action = ActionForward
-		}
-	}
+	route.AFI = model.NormalizeAFI(route.AFI)
+	// Action is not defaulted at compare-time. Missing Action must be filled
+	// by producers or migrated at snapshot file-load boundary (see
+	// migrateSnapshotForCompare in snapshot_collector.go). Newly produced
+	// data with empty Action will be flagged by FIBEntry.Validate().
 	return route
 }
 
