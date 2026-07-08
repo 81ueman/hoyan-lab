@@ -353,12 +353,15 @@ func TestOSPFInstallsSameFirstHopAlternate(t *testing.T) {
 		t.Fatalf("best route = %#v, want metric 3 via a", best)
 	}
 
-	// Same-first-hop alternate: via a, cost 5
+	// Same-first-hop alternate: via a, cost 5, path r1-a-y-d
 	var sameFirstHopAlt bool
 	for _, r := range routes {
 		r = r.Normalize()
 		if r.ForwardingNextHop.Node == "a" && r.RouteSource.Metric == 5 {
 			sameFirstHopAlt = true
+			if len(r.Provenance.PathNodes) != 4 || r.Provenance.PathNodes[0] != "r1" || r.Provenance.PathNodes[1] != "a" || r.Provenance.PathNodes[2] != "y" || r.Provenance.PathNodes[3] != "d" {
+				t.Fatalf("same-first-hop alternate path nodes = %v, want [r1 a y d]", r.Provenance.PathNodes)
+			}
 			break
 		}
 	}

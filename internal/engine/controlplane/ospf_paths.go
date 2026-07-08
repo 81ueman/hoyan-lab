@@ -69,14 +69,36 @@ func (q *pathQueue) Pop() any {
 	return item
 }
 
+// frontierEntry tracks a non-dominated path prefix reaching a node.
+type frontierEntry struct {
+	cost    int
+	visited map[string]bool
+}
+
+// frontierDominates reports whether a dominates b.
+// a dominates b if it is cheaper-or-equal AND its visited-node set is a subset.
+// Any extension from b is also possible from a at lower-or-equal cost,
+// so b can be safely pruned without missing any destination candidate.
+func frontierDominates(a, b frontierEntry) bool {
+	if a.cost > b.cost {
+		return false
+	}
+	for k := range a.visited {
+		if !b.visited[k] {
+			return false
+		}
+	}
+	return true
+}
+
 // ospfCandidatePathsBounded enumerates simple paths in increasing OSPF cost order
 // bounded by MaxPathsPerDestination per destination. It uses a priority-queue
 // approach to find multiple paths (not just the SPF shortest) including
 // same-first-hop higher-cost alternates.
 func (e *Engine) ospfCandidatePathsBounded(src string, states map[string]map[string]InterfaceState, allowed AdjacencyFilter) map[string][]Path {
 	out := map[string][]Path{}
-	found := map[string]int{}    // paths recorded per destination
-	expanded := map[string]int{} // expansions performed per node (best-effort bounding)
+	found := map[string]int{}                // paths recorded per destination
+	frontier := map[string][]frontierEntry{} // per-node dominating frontier
 	maxHops := len(e.idx.Topology.Nodes)
 
 	q := &pathQueue{}
@@ -110,34 +132,44 @@ func (e *Engine) ospfCandidatePathsBounded(src string, states map[string]map[str
 			found[dst]++
 		}
 
-		// Per-node expansion cap: only expand the first MaxPathsPerDestination * 2
-		// paths ending at each node. This prevents factorial queue explosion in
-		// dense topologies while being generous enough (up to 16 expansions per
-		// node) to cover all valid alternates in practical OSPF deployments.
-		// A transit router in OSPF typically has 2-5 adjacencies, so even with
-		// MaxPathsPerDestination=8 alternates per destination, 16 expansions per
-		// node provides ample margin to reach every destination via every
-		// applicable next-hop.
-		if expanded[dst] >= MaxPathsPerDestination*2 {
-			continue
-		}
-		expanded[dst]++
-
 		if len(item.Nodes) >= maxHops {
 			continue
 		}
 
+		// Build visited set for domination check
+		visitedSet := make(map[string]bool, len(item.Nodes))
+		for _, n := range item.Nodes {
+			visitedSet[n] = true
+		}
+		curr := frontierEntry{cost: item.Cost, visited: visitedSet}
+
+		// Check if this path is dominated: a cheaper-or-equal path with
+		// a subset of visited nodes already exists for this transit node.
+		// Such a path can reach every destination this one can, at lower cost.
+		dominated := false
+		for _, existing := range frontier[dst] {
+			if frontierDominates(existing, curr) {
+				dominated = true
+				break
+			}
+		}
+		if dominated {
+			continue
+		}
+
+		// Add to frontier; remove any entries now dominated by this one.
+		newFrontier := []frontierEntry{curr}
+		for _, existing := range frontier[dst] {
+			if !frontierDominates(curr, existing) {
+				newFrontier = append(newFrontier, existing)
+			}
+		}
+		frontier[dst] = newFrontier
+
 		// Expand from the last node
 		for _, adj := range e.ospfAdjacencies(item.Last, states, allowed) {
 			// Skip already-visited nodes (loop prevention)
-			visited := false
-			for _, n := range item.Nodes {
-				if n == adj.To {
-					visited = true
-					break
-				}
-			}
-			if visited {
+			if visitedSet[adj.To] {
 				continue
 			}
 
