@@ -421,7 +421,7 @@ func TestMigrateSnapshotForCompare(t *testing.T) {
 					Entries: []FIBEntry{
 						{Prefix: "10.0.0.0/24", Source: RouteSource{Protocol: model.RouteSourceBlackhole}}, // missing AFI+Action
 						{AFI: model.AFIIPv4, Prefix: "10.0.0.0/24", Source: RouteSource{Protocol: model.RouteSourceConnected}, Action: ActionForward},
-						{Prefix: "10.0.1.0/24", Source: RouteSource{Protocol: model.RouteSourceConnected}}, // missing Action, no next-hops
+						{Prefix: "10.0.1.0/24", Source: RouteSource{Protocol: model.RouteSourceConnected}},                                           // missing Action, no next-hops
 						{Prefix: "10.0.2.0/24", Source: RouteSource{Protocol: model.RouteSourceStatic}, NextHops: []NextHop{{Address: "192.0.2.1"}}}, // missing Action
 					},
 				},
