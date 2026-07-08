@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/live/device"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 )
@@ -545,7 +546,8 @@ func TestRunSRLinuxJSONRetriesEmptyOutput(t *testing.T) {
 		}
 		return []byte(`{"header":[]}`), nil
 	})
-	data, err := RunSRLinuxJSON(context.Background(), runner, "clab-test-core-gz", "show", "version")
+	session := device.NewDockerSession(runner, "clab-test-core-gz")
+	data, err := RunSRLinuxJSON(context.Background(), session, "show", "version")
 	if err != nil {
 		t.Fatalf("RunSRLinuxJSON() error = %v", err)
 	}
@@ -561,7 +563,8 @@ func TestRunSRLinuxJSONReportsMalformedOutput(t *testing.T) {
 	runner := runnerFunc(func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return []byte(`{"header":`), nil
 	})
-	_, err := RunSRLinuxJSON(context.Background(), runner, "clab-test-core-gz", "show", "version")
+	session := device.NewDockerSession(runner, "clab-test-core-gz")
+	_, err := RunSRLinuxJSON(context.Background(), session, "show", "version")
 	if err == nil {
 		t.Fatalf("RunSRLinuxJSON() succeeded unexpectedly")
 	}

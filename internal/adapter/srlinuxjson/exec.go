@@ -13,17 +13,28 @@ const maxAttempts = 3
 
 var retryDelay = 250 * time.Millisecond
 
-type Runner interface {
-	Run(ctx context.Context, name string, args ...string) ([]byte, error)
+// Session represents a session to a network device for running commands.
+// This is the interface consumed by ExecJSON; it is intentionally minimal so
+// that callers can pass any device session (docker exec, SSH, etc.).
+type Session interface {
+	Exec(ctx context.Context, args ...string) ([]byte, error)
 }
 
-func ExecJSON(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	args := append([]string{"exec", "-i", containerName, "sr_cli", "--output-format", "json", "--pagination", "off", "--"}, showArgs...)
+// ttySession is an optional interface that sessions may implement to provide
+// TTY-aware command execution (used as fallback when non-TTY exec returns
+// empty or malformed output, as sometimes happens with SR Linux sr_cli).
+type ttySession interface {
+	Session
+	ExecTTY(ctx context.Context, args ...string) ([]byte, error)
+}
+
+func ExecJSON(ctx context.Context, session Session, showArgs ...string) ([]byte, error) {
 	commandText := strings.Join(showArgs, " ")
+	args := append([]string{"sr_cli", "--output-format", "json", "--pagination", "off", "--"}, showArgs...)
 	var last []byte
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		data, err := runner.Run(ctx, "docker", args...)
+		data, err := session.Exec(ctx, args...)
 		if err == nil && validJSON(data) {
 			return data, nil
 		}
@@ -36,22 +47,24 @@ func ExecJSON(ctx context.Context, runner Runner, containerName string, showArgs
 		}
 	}
 
-	data, ttyErr := runTTY(ctx, runner, containerName, showArgs...)
-	if ttyErr != nil {
-		if lastErr != nil {
-			return nil, fmt.Errorf("docker exec -i/it %s sr_cli %s: %w", containerName, commandText, ttyErr)
+	if ts, ok := session.(ttySession); ok {
+		data, ttyErr := ts.ExecTTY(ctx, args...)
+		if ttyErr != nil {
+			if lastErr != nil {
+				return nil, fmt.Errorf("sr_cli %s: %w", commandText, ttyErr)
+			}
+			return nil, malformedError(commandText, maxAttempts, last)
 		}
-		return nil, malformedError("docker exec -i/it", containerName, commandText, maxAttempts, last)
+		if validJSON(data) {
+			return data, nil
+		}
+		return nil, malformedError(commandText, 1, data)
 	}
-	if validJSON(data) {
-		return data, nil
-	}
-	return nil, malformedError("docker exec -it", containerName, commandText, 1, data)
-}
 
-func runTTY(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	command := "docker exec -it " + shellQuote(containerName) + " sr_cli --output-format json --pagination off -- " + shellJoin(showArgs)
-	return runner.Run(ctx, "script", "-q", "/dev/null", "-c", command)
+	if lastErr != nil {
+		return nil, fmt.Errorf("sr_cli %s: %w", commandText, lastErr)
+	}
+	return nil, malformedError(commandText, maxAttempts, last)
 }
 
 func validJSON(data []byte) bool {
@@ -59,8 +72,8 @@ func validJSON(data []byte) bool {
 	return len(trimmed) > 0 && json.Valid(trimmed)
 }
 
-func malformedError(invocation, containerName, commandText string, attempts int, data []byte) error {
-	return fmt.Errorf("%s %s sr_cli %s returned malformed JSON after %d attempts: bytes=%d preview=%q", invocation, containerName, commandText, attempts, len(data), previewBytes(data, 160))
+func malformedError(commandText string, attempts int, data []byte) error {
+	return fmt.Errorf("sr_cli %s returned malformed JSON after %d attempts: bytes=%d preview=%q", commandText, attempts, len(data), previewBytes(data, 160))
 }
 
 func sleepContext(ctx context.Context, d time.Duration) error {
@@ -83,16 +96,4 @@ func previewBytes(data []byte, limit int) string {
 		return string(trimmed)
 	}
 	return string(trimmed[:limit]) + "..."
-}
-
-func shellJoin(args []string) string {
-	quoted := make([]string, 0, len(args))
-	for _, arg := range args {
-		quoted = append(quoted, shellQuote(arg))
-	}
-	return strings.Join(quoted, " ")
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

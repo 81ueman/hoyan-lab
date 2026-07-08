@@ -79,12 +79,12 @@ func fibCollectorsByID(runner Runner) map[model.LiveCollectorID]collector {
 func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
 	fib := FIB{Node: model.NodeID(n.Name), VRF: vrf}
-	containerName := n.RuntimeName()
+	session := c.SessionForNode(n)
 	if vrf == model.NetworkInstanceDefault {
 		for _, table := range []string{"main", "local"} {
-			data, err := c.Exec.Exec(ctx, containerName, "ip", "-j", "route", "show", "table", table)
+			data, err := session.Exec(ctx, "ip", "-j", "route", "show", "table", table)
 			if err != nil {
-				return FIB{}, fmt.Errorf("docker exec -i %s ip -j route show table %s: %w", containerName, table, err)
+				return FIB{}, fmt.Errorf("node %s ip -j route show table %s: %w", n.RuntimeName(), table, err)
 			}
 			routes, err := ParseLinuxIPRoute(n.Name, data)
 			if err != nil {
@@ -95,9 +95,9 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 		SortRoutes(fib.Entries)
 		return fib, nil
 	}
-	data, err := c.Exec.Exec(ctx, containerName, "ip", "-j", "route", "show", "vrf", string(vrf))
+	data, err := session.Exec(ctx, "ip", "-j", "route", "show", "vrf", string(vrf))
 	if err != nil {
-		return FIB{}, fmt.Errorf("docker exec -i %s ip -j route show vrf %s: %w", containerName, vrf, err)
+		return FIB{}, fmt.Errorf("node %s ip -j route show vrf %s: %w", n.RuntimeName(), vrf, err)
 	}
 	routes, err := ParseLinuxIPRouteVRF(n.Name, string(vrf), data)
 	if err != nil {
@@ -110,10 +110,10 @@ func (c frrCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.Ne
 
 func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	containerName := n.RuntimeName()
-	data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
+	session := c.SessionForNode(n)
+	data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip route vrf all | json")
 	if err != nil {
-		return FIB{}, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip route vrf all | json", err)
+		return FIB{}, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), "show ip route vrf all | json", err)
 	}
 	fibs, err := ParseCEOSFIBs(n.Name, data)
 	if err != nil {
@@ -124,11 +124,11 @@ func (c ceosCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.N
 
 func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf model.NetworkInstanceID) (FIB, error) {
 	vrf = model.NormalizeNetworkInstance(string(vrf))
-	containerName := n.RuntimeName()
+	session := c.SessionForNode(n)
 	ni := string(vrf)
-	data, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
+	data, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", "ipv4-unicast", "summary")
 	if err != nil {
-		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", containerName, ni, err)
+		return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast summary: %w", n.RuntimeName(), ni, err)
 	}
 	routes, err := ParseSRLinuxRoutesNetworkInstance(n.Name, ni, data)
 	if err != nil {
@@ -138,9 +138,9 @@ func (c srlinuxCollector) CollectFIB(ctx context.Context, n model.Node, vrf mode
 		if !srlinuxNeedsRouteDetail(routes[i]) {
 			continue
 		}
-		detail, err := srlinuxjson.ExecJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
+		detail, err := srlinuxjson.ExecJSON(ctx, session, "show", "network-instance", ni, "route-table", "ipv4-unicast", "prefix", routes[i].Prefix, "detail")
 		if err != nil {
-			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", containerName, ni, routes[i].Prefix, err)
+			return FIB{}, fmt.Errorf("%s sr_cli network-instance %s route-table ipv4-unicast prefix %s detail: %w", n.RuntimeName(), ni, routes[i].Prefix, err)
 		}
 		detailRoutes, err := ParseSRLinuxRouteDetailsNetworkInstance(n.Name, ni, detail)
 		if err != nil {

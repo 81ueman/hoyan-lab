@@ -116,13 +116,13 @@ func collectorsByID(runner Runner) map[model.LiveCollectorID]routeCollector {
 func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", "show ip bgp json")
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "vtysh", "-c", "show ip bgp json")
 		if err != nil {
 			if strings.Contains(string(data), "bgpd is not running") {
 				continue
 			}
-			return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, "show ip bgp json", err)
+			return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), "show ip bgp json", err)
 		}
 		routes, err := ParseFRR(n.Name, data)
 		if err != nil {
@@ -131,12 +131,12 @@ func (c frrCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) 
 		out = append(out, routes...)
 		for _, vrf := range frrVRFsFromNode(n) {
 			cmd := fmt.Sprintf("show bgp vrf %s ipv4 unicast json", vrf)
-			data, err := c.Exec.Exec(ctx, containerName, "vtysh", "-c", cmd)
+			data, err := session.Exec(ctx, "vtysh", "-c", cmd)
 			if err != nil {
 				if strings.Contains(string(data), "bgpd is not running") {
 					continue
 				}
-				return nil, fmt.Errorf("docker exec -i %s vtysh -c %q: %w", containerName, cmd, err)
+				return nil, fmt.Errorf("node %s vtysh -c %q: %w", n.RuntimeName(), cmd, err)
 			}
 			routes, err := ParseFRRVRF(n.Name, vrf, data)
 			if err != nil {
@@ -167,10 +167,10 @@ func frrVRFsFromNode(n model.Node) []string {
 func (c ceosCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
-		data, err := c.Exec.Exec(ctx, containerName, "Cli", "-p", "15", "-c", "show ip bgp vrf all | json")
+		session := c.SessionForNode(n)
+		data, err := session.Exec(ctx, "Cli", "-p", "15", "-c", "show ip bgp vrf all | json")
 		if err != nil {
-			return nil, fmt.Errorf("docker exec -i %s Cli -p 15 -c %q: %w", containerName, "show ip bgp vrf all | json", err)
+			return nil, fmt.Errorf("node %s Cli -p 15 -c %q: %w", n.RuntimeName(), "show ip bgp vrf all | json", err)
 		}
 		routes, err := ParseCEOS(n.Name, data)
 		if err != nil {
@@ -237,9 +237,9 @@ func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node) ([]RIBRoute, error) {
 	var out []RIBRoute
 	for _, n := range nodes {
-		containerName := n.RuntimeName()
+		session := c.SessionForNode(n)
 		for _, ni := range model.NetworkInstancesForNode(n) {
-			summary, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "summary")
+			summary, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "summary")
 			if err != nil {
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary collection network-instance %s: %w", n.Name, ni, err)
 			}
@@ -248,7 +248,7 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 				return nil, fmt.Errorf("%s SR Linux BGP RIB summary network-instance %s: %w", n.Name, ni, err)
 			}
 			for _, prefix := range prefixes {
-				detail, err := RunSRLinuxJSON(ctx, c.Exec, containerName, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "prefix", prefix, "detail")
+				detail, err := RunSRLinuxJSON(ctx, session, "show", "network-instance", ni, "protocols", "bgp", "routes", "ipv4", "prefix", prefix, "detail")
 				if err != nil {
 					return nil, fmt.Errorf("%s SR Linux BGP RIB network-instance %s prefix %s detail collection: %w", n.Name, ni, prefix, err)
 				}
@@ -264,6 +264,8 @@ func (c srlinuxCollector) collectBGPRoutes(ctx context.Context, nodes []model.No
 	return out, nil
 }
 
-func RunSRLinuxJSON(ctx context.Context, runner Runner, containerName string, showArgs ...string) ([]byte, error) {
-	return srlinuxjson.ExecJSON(ctx, runner, containerName, showArgs...)
+// RunSRLinuxJSON runs an SR Linux CLI command and returns JSON output.
+// It uses the provided DeviceSession to communicate with the target node.
+func RunSRLinuxJSON(ctx context.Context, session device.DeviceSession, showArgs ...string) ([]byte, error) {
+	return srlinuxjson.ExecJSON(ctx, session, showArgs...)
 }

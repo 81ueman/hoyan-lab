@@ -1,0 +1,10 @@
+{
+  "status": "reviewing",
+  "base": "main",
+  "implPane": "wQ:p1",
+  "reviewPane": "wQ:p2",
+  "reviewTab": "wQ:t2",
+  "workspace": "wQ",
+  "startedAt": "2026-07-08T07:58:16.896Z",
+  "label": "review-device-session-abstraction"
+}
