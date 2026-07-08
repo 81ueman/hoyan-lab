@@ -71,7 +71,10 @@ func TestLabFlagResolvesDefaultInputs(t *testing.T) {
 		}
 	})
 
-	cmd := NewVerifyCommand()
+	// Use NewModelPrefixClassesCommand as a stand-in: every model-inspect
+	// subcommand registers the same --lab/--topology flags via addLabFlag +
+	// addTopologyFlag, so any of them can drive resolveLabInputs tests.
+	cmd := NewModelPrefixClassesCommand()
 	cmd.SetArgs([]string{"--lab", "base-wan"})
 	if err := cmd.ParseFlags([]string{"--lab", "base-wan"}); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
@@ -104,7 +107,9 @@ func TestLabFlagKeepsExplicitTopology(t *testing.T) {
 		}
 	})
 
-	cmd := NewVerifyCommand()
+	// See TestLabFlagResolvesDefaultInputs for rationale on using
+	// NewModelPrefixClassesCommand as a --lab/--topology flag stand-in.
+	cmd := NewModelPrefixClassesCommand()
 	if err := cmd.ParseFlags([]string{"--lab", "base-wan", "--topology", "custom.yml"}); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
