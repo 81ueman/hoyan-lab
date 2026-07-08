@@ -90,7 +90,7 @@ func resolveCollector(ctx context.Context, target CollectorTarget) (collectuseca
 		if err != nil {
 			return nil, err
 		}
-		return observation.NewSnapshotBackedCollector(snap), nil
+		return collectusecase.AdaptCollector(observation.NewSnapshotBackedCollector(snap)), nil
 	case TargetModel:
 		topo, err := topology.LoadTopology(target.Path)
 		if err != nil {

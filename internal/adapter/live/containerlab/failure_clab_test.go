@@ -12,6 +12,7 @@ import (
 	liveexec "github.com/81ueman/hoyan-lab/internal/adapter/live"
 	clabruntime "github.com/81ueman/hoyan-lab/internal/adapter/live/containerlab"
 	liverib "github.com/81ueman/hoyan-lab/internal/adapter/live/rib"
+	"github.com/81ueman/hoyan-lab/internal/domain/observation"
 	"github.com/81ueman/hoyan-lab/internal/usecase/livecheck"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 )
@@ -31,7 +32,7 @@ func TestContainerlabRIBsMatchSimulationUnderFailures(t *testing.T) {
 	}
 	runner := liveexec.ExecRunner{}
 	runtime := clabruntime.Runtime{Runner: runner}
-	ribCollector := liverib.NewCollector(runner)
+	ribCollector := clabruntime.NewCollector(topo.Nodes, runner, observation.Options{})
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 

@@ -227,8 +227,9 @@ func countSnapshotDiffs(result observation.SnapshotComparison) int {
 func collectRIBRoutes(ctx context.Context, collector RIBCollector, nodes []model.Node, opts observation.CollectOptions) ([]observation.RIBRoute, error) {
 	var out []observation.RIBRoute
 	for _, node := range nodes {
+		nodeID := model.NodeID(node.Name)
 		for _, vrf := range model.NetworkInstancesForNode(node) {
-			rib, err := collector.CollectRIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			rib, err := collector.CollectRIB(ctx, nodeID, model.NormalizeNetworkInstance(vrf), opts)
 			if err != nil {
 				return nil, err
 			}
@@ -363,8 +364,9 @@ func collectExpectedRIBSources(ctx context.Context, collector RIBCollector, node
 	opts := observation.CollectOptions{IncludeInactive: true, IncludeModelInfo: true}
 	var out []observation.RIBRoute
 	for _, node := range nodes {
+		nodeID := model.NodeID(node.Name)
 		for _, vrf := range model.NetworkInstancesForNode(node) {
-			rib, err := collector.CollectRIB(ctx, node, model.NormalizeNetworkInstance(vrf), opts)
+			rib, err := collector.CollectRIB(ctx, nodeID, model.NormalizeNetworkInstance(vrf), opts)
 			if err != nil {
 				return nil, err
 			}
