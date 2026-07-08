@@ -101,13 +101,6 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, boo
 	if hop.Address != "" || hop.Interface != "" {
 		route.NextHops = append(route.NextHops, hop)
 	}
-	backupHop := NextHop{
-		Address:   srlinuxNextHopAddress(stringValue(m["Backup Next-hop (Type)"])),
-		Interface: strings.TrimSpace(stringValue(m["Backup Next-hop Interface"])),
-	}
-	if backupHop.Address != "" || backupHop.Interface != "" {
-		route.NextHops = append(route.NextHops, backupHop)
-	}
 	if discardNextHops(route.NextHops) {
 		route.Source = canonicalRouteSource("blackhole")
 		route.NextHops = nil
@@ -137,7 +130,6 @@ func srlinuxDetailRoute(node, networkInstance string, m map[string]any) (FIBEntr
 		Metric:     intValue(m["Metric"]),
 	}
 	route.NextHops = append(route.NextHops, srlinuxDetailNextHops(mapValue(m["ip route nexthop"]), "Next hops")...)
-	route.NextHops = append(route.NextHops, srlinuxDetailNextHops(mapValue(m["ip route backup nexthop"]), "Backup Next hops")...)
 	route.NextHops = dedupeNextHops(route.NextHops)
 	route.Action = forwardingAction(string(route.Source.Protocol), route.NextHops)
 	return route, true
