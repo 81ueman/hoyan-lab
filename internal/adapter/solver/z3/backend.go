@@ -1,7 +1,7 @@
 package z3
 
 /*
-#cgo LDFLAGS: -lz3
+#cgo pkg-config: z3
 #include <stdlib.h>
 #include <z3.h>
 */
