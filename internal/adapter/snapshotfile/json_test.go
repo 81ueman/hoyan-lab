@@ -16,9 +16,6 @@ func TestMarshalLoadRoundTrip(t *testing.T) {
 		Version:     snapshotdomain.Version,
 		Lab:         "unit",
 		CollectedAt: time.Date(2026, 5, 26, 1, 2, 3, 0, time.UTC),
-		Nodes: map[string]snapshotdomain.NodeSnapshot{
-			"r1": {Kind: model.KindFRR},
-		},
 		Network: observation.NetworkSnapshot{
 			Nodes: []observation.NodeSnapshot{{
 				Node: "r1",

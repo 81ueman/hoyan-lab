@@ -230,11 +230,9 @@ func TestRunSnapshotOfflineDoesNotCallRuntimeOrCollectors(t *testing.T) {
 		Version:      snapshotdomain.Version,
 		TopologyPath: topologyPath,
 		CollectedAt:  time.Now().UTC(),
-		Nodes:        map[string]snapshotdomain.NodeSnapshot{},
 		Network:      observation.NetworkSnapshot{Nodes: make([]observation.NodeSnapshot, 0, len(topo.Nodes))},
 	}
 	for _, node := range topo.Nodes {
-		snap.Nodes[node.Name] = snapshotdomain.NodeSnapshot{Kind: node.Kind}
 		vrf := observation.VRFSnapshot{
 			VRF: model.NetworkInstanceDefault,
 			RIB: observation.RIB{Node: model.NodeID(node.Name), VRF: model.NetworkInstanceDefault},

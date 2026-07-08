@@ -1,2796 +1,2543 @@
 {
-  "version": "hoyan.live_snapshot.v1",
-  "lab": "hoyan-ospf-basic-ospf-basic",
-  "topology_path": "labs/ospf-basic/lab.ospf-basic.clab.yml",
-  "topology_hash": "02433f54a1038bb0d76e389e76ebc121b6381c43de2838d5872bbde520f15df1",
-  "config_hashes": {
-    "configs/frr/r1/daemons": "842e5c5516271a8c52724e14d137f8a605d3d0692b20a71e6876a38dfde66bfb",
-    "configs/frr/r1/frr.conf": "2ea8f15268f22ec21a7aa56287ffb20c3ef7eec9ea57df87237ef26f832389fb",
-    "configs/frr/r1/vtysh.conf": "dc8aa539965a4cebabbe1a75a53b48ae8471bafe77ce59af22d5352d28da4df6",
-    "configs/frr/r2/daemons": "842e5c5516271a8c52724e14d137f8a605d3d0692b20a71e6876a38dfde66bfb",
-    "configs/frr/r2/frr.conf": "138200b891ced7a5f3ee795bb4e69ecb3e876ed70de823f2d20ea18d6cb25090",
-    "configs/frr/r2/vtysh.conf": "dc8aa539965a4cebabbe1a75a53b48ae8471bafe77ce59af22d5352d28da4df6",
-    "configs/frr/r3/daemons": "842e5c5516271a8c52724e14d137f8a605d3d0692b20a71e6876a38dfde66bfb",
-    "configs/frr/r3/frr.conf": "e418fc4ad593a0fdd064aa50586ac144a14b9dc8f47ec965b3ac69f9f7f91e7b",
-    "configs/frr/r3/vtysh.conf": "dc8aa539965a4cebabbe1a75a53b48ae8471bafe77ce59af22d5352d28da4df6",
-    "configs/frr/r4/daemons": "842e5c5516271a8c52724e14d137f8a605d3d0692b20a71e6876a38dfde66bfb",
-    "configs/frr/r4/frr.conf": "5bbf2b0dbb3a15ddd0bf2e365318970c19bc50b1d3987e1d052376f49900e70b",
-    "configs/frr/r4/vtysh.conf": "dc8aa539965a4cebabbe1a75a53b48ae8471bafe77ce59af22d5352d28da4df6"
+  "metadata": {
+    "collected_at": "2026-05-27T05:01:04.821599319Z"
   },
-  "git_commit": "e64340cdc4efbfd75b081fed3497ddc9e1848850",
-  "collected_at": "2026-05-27T05:01:04.821599319Z",
-  "nodes": {
-    "r1": {
-      "kind": "frr",
-      "route_table": [
+  "nodes": [
+    {
+      "node": "r1",
+      "vrfs": [
         {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "0.0.0.0/0",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.0/24",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.11/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.7/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.6",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.6",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.6",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.6",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.6",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r1",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        }
-      ],
-      "fib": [
-        {
-          "node": "r1",
           "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "0.0.0.0/0",
-          "next_hops": [
-            {
-              "address": "172.86.163.1",
-              "interface": "eth0"
-            }
-          ],
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.1.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.1.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.0/8",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.255.255.255/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.0/24",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.11/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.255/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.0/31",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.0/32",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.6/31",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.7/32",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.2.2/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.6",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.3.3/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.6",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.4.4/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.6",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.2/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.6",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r1",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.4/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.6",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
+          "rib": {
+            "node": "r1",
+            "vrf": "default",
+            "routes": [
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "0.0.0.0/0",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.0/24",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.11/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.7/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.6"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.6"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.6"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.6"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.6"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "fib": {
+            "node": "r1",
+            "vrf": "default",
+            "entries": [
+              {
+                "afi": "ipv4",
+                "prefix": "0.0.0.0/0",
+                "source": {
+                  "protocol": ""
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "172.86.163.1",
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.1.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.1.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.0/8",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.255.255.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.0/24",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.11/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.0/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.0/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.6/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.7/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.2.2/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.6",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.3.3/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.6",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.4.4/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.6",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.2/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.6",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.4/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.6",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              }
+            ]
+          }
         }
       ]
     },
-    "r2": {
-      "kind": "frr",
-      "route_table": [
+    {
+      "node": "r2",
+      "vrfs": [
         {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "0.0.0.0/0",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.0/24",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.12/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.1/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.3",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.3",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.3",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.3",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r2",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.3",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        }
-      ],
-      "fib": [
-        {
-          "node": "r2",
           "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "0.0.0.0/0",
-          "next_hops": [
-            {
-              "address": "172.86.163.1",
-              "interface": "eth0"
-            }
-          ],
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.2.2/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.2.2/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.0/8",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.255.255.255/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.0/24",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.12/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.255/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.0/31",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.1/32",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.2/31",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.2/32",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.1.1/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.3",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.3.3/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.3",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.4.4/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.3",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.4/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.3",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r2",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.6/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.3",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
+          "rib": {
+            "node": "r2",
+            "vrf": "default",
+            "routes": [
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "0.0.0.0/0",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.0/24",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.12/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.1/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.3"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.3"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.3"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.3"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.3"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "fib": {
+            "node": "r2",
+            "vrf": "default",
+            "entries": [
+              {
+                "afi": "ipv4",
+                "prefix": "0.0.0.0/0",
+                "source": {
+                  "protocol": ""
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "172.86.163.1",
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.2.2/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.2.2/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.0/8",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.255.255.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.0/24",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.12/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.0/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.2/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.2/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.1.1/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.3",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.3.3/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.3",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.4.4/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.3",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.4/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.3",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.6/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.3",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              }
+            ]
+          }
         }
       ]
     },
-    "r3": {
-      "kind": "frr",
-      "route_table": [
+    {
+      "node": "r3",
+      "vrfs": [
         {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "0.0.0.0/0",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.0/24",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.13/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.3/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.5",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.2",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.5",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.2",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r3",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.5",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        }
-      ],
-      "fib": [
-        {
-          "node": "r3",
           "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "0.0.0.0/0",
-          "next_hops": [
-            {
-              "address": "172.86.163.1",
-              "interface": "eth0"
-            }
-          ],
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.3.3/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.3.3/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.0/8",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.255.255.255/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.0/24",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.13/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.255/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.2/31",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.3/32",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.4/31",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.4/32",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.1.1/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.5",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.2.2/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.2",
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.4.4/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.5",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.0/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.2",
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r3",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.6/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.5",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
+          "rib": {
+            "node": "r3",
+            "vrf": "default",
+            "routes": [
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "0.0.0.0/0",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.0/24",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.13/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.3/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.5"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.2"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.5"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.2"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.5"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "fib": {
+            "node": "r3",
+            "vrf": "default",
+            "entries": [
+              {
+                "afi": "ipv4",
+                "prefix": "0.0.0.0/0",
+                "source": {
+                  "protocol": ""
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "172.86.163.1",
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.3.3/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.3.3/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.0/8",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.255.255.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.0/24",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.13/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.2/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.3/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.4/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.4/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.1.1/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.5",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.2.2/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.2",
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.4.4/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.5",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.0/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.2",
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.6/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.5",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              }
+            ]
+          }
         }
       ]
     },
-    "r4": {
-      "kind": "frr",
-      "route_table": [
+    {
+      "node": "r4",
+      "vrfs": [
         {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "0.0.0.0/0",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.0/24",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "172.86.163.14/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.5/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/32",
-          "Protocol": "connected",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.1.1/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.7",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.2.2/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.4",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.3.3/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.4",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "10.255.4.4/32",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.0/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.7",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.2/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "198.51.100.4",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.4/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        },
-        {
-          "Node": "r4",
-          "NetworkInstance": "default",
-          "AFI": "ipv4",
-          "Prefix": "198.51.100.6/31",
-          "Protocol": "ospf",
-          "ConnectedClass": "",
-          "Paths": [
-            {
-              "Best": true,
-              "Valid": true,
-              "NextHop": "",
-              "ASPath": null,
-              "Origin": "igp",
-              "LocalPref": 100,
-              "MED": 0,
-              "Weight": 0,
-              "Communities": null,
-              "LargeCommunities": null,
-              "OriginatorID": "",
-              "ClusterList": null,
-              "Peer": "",
-              "PeerAS": 0
-            }
-          ]
-        }
-      ],
-      "fib": [
-        {
-          "node": "r4",
           "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "0.0.0.0/0",
-          "next_hops": [
-            {
-              "address": "172.86.163.1",
-              "interface": "eth0"
-            }
-          ],
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.4.4/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.4.4/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.0/8",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.0.0.1/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "127.255.255.255/32",
-          "next_hops": [
-            {
-              "interface": "lo"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.0/24",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.14/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "172.86.163.255/32",
-          "next_hops": [
-            {
-              "interface": "eth0"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.4/31",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.5/32",
-          "next_hops": [
-            {
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.6/31",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.6/32",
-          "next_hops": [
-            {
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "connected",
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.1.1/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.7",
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.2.2/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.4",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "10.255.3.3/32",
-          "next_hops": [
-            {
-              "address": "198.51.100.4",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.0/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.7",
-              "interface": "eth1"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
-        },
-        {
-          "node": "r4",
-          "vrf": "default",
-          "afi": "ipv4",
-          "prefix": "198.51.100.2/31",
-          "next_hops": [
-            {
-              "address": "198.51.100.4",
-              "interface": "eth2"
-            }
-          ],
-          "protocol": "ospf",
-          "metric": 20,
-          "installed": true
+          "rib": {
+            "node": "r4",
+            "vrf": "default",
+            "routes": [
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "0.0.0.0/0",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.0/24",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "172.86.163.14/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.5/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/32",
+                  "protocol": "connected",
+                  "eligible": true,
+                  "best": true
+                },
+                "connected": {
+                  "next_hops": []
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.1.1/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.7"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.2.2/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.4"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.3.3/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.4"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "10.255.4.4/32",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.0/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.7"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.2/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": "198.51.100.4"
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.4/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              },
+              {
+                "common": {
+                  "afi": "ipv4",
+                  "prefix": "198.51.100.6/31",
+                  "protocol": "ospf",
+                  "eligible": true,
+                  "best": true
+                },
+                "bgp": {
+                  "paths": [
+                    {
+                      "next_hop": {
+                        "address": ""
+                      },
+                      "eligible": true,
+                      "best": true,
+                      "origin": "igp",
+                      "local_pref": 100,
+                      "med": 0,
+                      "weight": 0,
+                      "as_path": [],
+                      "communities": [],
+                      "large_communities": [],
+                      "originator_id": "",
+                      "cluster_list": [],
+                      "peer": "",
+                      "peer_as": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "fib": {
+            "node": "r4",
+            "vrf": "default",
+            "entries": [
+              {
+                "afi": "ipv4",
+                "prefix": "0.0.0.0/0",
+                "source": {
+                  "protocol": ""
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "172.86.163.1",
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.4.4/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.4.4/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.0/8",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.0.0.1/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "127.255.255.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "lo"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.0/24",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.14/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "172.86.163.255/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth0"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.4/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.5/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.6/31",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.6/32",
+                "source": {
+                  "protocol": "connected"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 0
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.1.1/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.7",
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.2.2/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.4",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "10.255.3.3/32",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.4",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.0/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.7",
+                    "interface": "eth1"
+                  }
+                ],
+                "metric": 20
+              },
+              {
+                "afi": "ipv4",
+                "prefix": "198.51.100.2/31",
+                "source": {
+                  "protocol": "ospf"
+                },
+                "action": "forward",
+                "next_hops": [
+                  {
+                    "address": "198.51.100.4",
+                    "interface": "eth2"
+                  }
+                ],
+                "metric": 20
+              }
+            ]
+          }
         }
       ]
     }
-  }
+  ]
 }
