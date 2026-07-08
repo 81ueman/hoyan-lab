@@ -54,10 +54,10 @@ func (e Environment) VRFs(ctx context.Context, node model.NodeID) ([]model.Netwo
 	return e.collector.VRFs(ctx, node)
 }
 
-func (e Environment) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+func (e Environment) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
 	return e.collector.CollectRIB(ctx, node, vrf, opts)
 }
 
-func (e Environment) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
+func (e Environment) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
 	return e.collector.CollectFIB(ctx, node, vrf, opts)
 }

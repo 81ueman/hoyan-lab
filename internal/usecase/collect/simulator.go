@@ -61,20 +61,19 @@ func (s Simulator) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkIn
 	return vrfs, nil
 }
 
-func (s Simulator) CollectRIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
-	nodeID := model.NodeID(node.Name)
-	n, ok := s.idx.Node(string(nodeID))
+func (s Simulator) CollectRIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	n, ok := s.idx.Node(string(node))
 	if !ok {
-		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node.Name)
+		return observation.RIB{}, fmt.Errorf("simulator node %q not found", node)
 	}
 	rib := s.expectedRIB(n, vrf, s.failures)
 	return observation.FilterRIB(rib, opts), nil
 }
 
-func (s Simulator) CollectFIB(_ context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
-	n, ok := s.idx.Node(node.Name)
+func (s Simulator) CollectFIB(_ context.Context, node model.NodeID, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
+	n, ok := s.idx.Node(string(node))
 	if !ok {
-		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node.Name)
+		return observation.FIB{}, fmt.Errorf("simulator node %q not found", node)
 	}
 	return s.expectedFIB(n, vrf, s.failures), nil
 }

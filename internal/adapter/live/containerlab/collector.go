@@ -50,19 +50,18 @@ func (c Collector) VRFs(_ context.Context, node model.NodeID) ([]model.NetworkIn
 	return out, nil
 }
 
-func (c Collector) CollectRIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
-	nodeID := model.NodeID(node.Name)
-	n, ok := c.node(nodeID)
+func (c Collector) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
+	n, ok := c.node(node)
 	if !ok {
-		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node.Name)
+		return observation.RIB{}, fmt.Errorf("containerlab node %q not found", node)
 	}
 	return liverib.NewCollector(c.runner).CollectRIB(ctx, n, vrf, opts)
 }
 
-func (c Collector) CollectFIB(ctx context.Context, node model.Node, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
-	n, ok := c.node(model.NodeID(node.Name))
+func (c Collector) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, _ observation.Options) (observation.FIB, error) {
+	n, ok := c.node(node)
 	if !ok {
-		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node.Name)
+		return observation.FIB{}, fmt.Errorf("containerlab node %q not found", node)
 	}
 	fibOpts := c.fibOptions
 	fibOpts.AllowUnsupported = true
