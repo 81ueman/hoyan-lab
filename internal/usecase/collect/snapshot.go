@@ -32,44 +32,6 @@ type MetadataProvider interface {
 	Metadata(ctx context.Context) observation.CollectorMetadata
 }
 
-// AdaptCollector wraps an observation.Collector (model.Node-based) to implement
-// the NodeID-based Collector interface.
-//
-//lint:ignore SA1019 observation.Collector is deprecated but intentionally wrapped for backward compatibility.
-func AdaptCollector(inner observation.Collector) Collector {
-	return &oldCollectorAdapter{inner: inner}
-}
-
-type oldCollectorAdapter struct {
-	//lint:ignore SA1019 observation.Collector is deprecated but intentionally wrapped for backward compatibility.
-	inner observation.Collector
-}
-
-func (a *oldCollectorAdapter) CollectRIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.CollectOptions) (observation.RIB, error) {
-	return a.inner.CollectRIB(ctx, model.Node{Name: string(node)}, vrf, opts)
-}
-
-func (a *oldCollectorAdapter) CollectFIB(ctx context.Context, node model.NodeID, vrf model.NetworkInstanceID, opts observation.Options) (observation.FIB, error) {
-	return a.inner.CollectFIB(ctx, model.Node{Name: string(node)}, vrf, opts)
-}
-
-func (a *oldCollectorAdapter) Nodes(ctx context.Context) ([]model.NodeID, error) {
-	return a.inner.Nodes(ctx)
-}
-
-func (a *oldCollectorAdapter) VRFs(ctx context.Context, node model.NodeID) ([]model.NetworkInstanceID, error) {
-	return a.inner.VRFs(ctx, node)
-}
-
-// Metadata checks if the inner collector implements MetadataProvider and forwards.
-func (a *oldCollectorAdapter) Metadata(ctx context.Context) observation.CollectorMetadata {
-	//lint:ignore SA1019 observation.MetadataProvider is deprecated but intentionally used as a backward-compat bridge.
-	if p, ok := a.inner.(observation.MetadataProvider); ok {
-		return p.Metadata(ctx)
-	}
-	return observation.CollectorMetadata{}
-}
-
 // CollectSnapshot orchestrates collection of RIB/FIB data from all nodes and VRFs.
 func CollectSnapshot(ctx context.Context, collector Collector, opts observation.CollectOptions) (observation.NetworkSnapshot, error) {
 	nodes, err := collector.Nodes(ctx)

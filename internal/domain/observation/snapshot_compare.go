@@ -1,7 +1,6 @@
 package observation
 
 import (
-	"context"
 	"encoding/json"
 	"reflect"
 
@@ -39,22 +38,6 @@ type SnapshotTableMismatch struct {
 	VRF      model.NetworkInstanceID `json:"vrf"`
 	Expected string                  `json:"expected"`
 	Actual   string                  `json:"actual"`
-}
-
-// CompareCollectors collects snapshots from two collectors and compares them.
-//
-// Deprecated: collection orchestration belongs to the collect usecase. New code
-// should use internal/usecase/collect.CompareCollectors.
-func CompareCollectors(ctx context.Context, expected, actual Collector, collectOpts CollectOptions, compareOpts SnapshotCompareOptions) (SnapshotComparison, error) {
-	expectedSnapshot, err := CollectSnapshot(ctx, expected, collectOpts)
-	if err != nil {
-		return SnapshotComparison{}, err
-	}
-	actualSnapshot, err := CollectSnapshot(ctx, actual, collectOpts)
-	if err != nil {
-		return SnapshotComparison{}, err
-	}
-	return CompareSnapshots(expectedSnapshot, actualSnapshot, compareOpts), nil
 }
 
 func CompareSnapshots(expected, actual NetworkSnapshot, opts SnapshotCompareOptions) SnapshotComparison {
