@@ -192,6 +192,37 @@ func TestParseSRLinuxRoutes(t *testing.T) {
 	}
 }
 
+func TestParseSRLinuxRoutesIgnoresBackupNextHop(t *testing.T) {
+	data := []byte(`{
+	  "instance": [{
+	    "Name": "default",
+	    "ip route": [{
+	      "Prefix":"10.10.0.0/24",
+	      "Route Type":"bgp",
+	      "Active":"True",
+	      "Metric":0,
+	      "Pref":170,
+	      "Next-hop (Type)":"192.0.2.1/32 (direct)",
+	      "Next-hop Interface":"ethernet-1/1.0 ",
+	      "Backup Next-hop (Type)":"192.0.2.254/32 (direct)",
+	      "Backup Next-hop Interface":"ethernet-1/99.0 "
+	    }]
+	  }]
+	}`)
+	routes, err := ParseSRLinuxRoutes("srl1", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRoutes() error = %v", err)
+	}
+	route := routeByPrefix(routes, "10.10.0.0/24")
+	if route == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+	want := []NextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}
+	if !reflect.DeepEqual(route.NextHops, want) {
+		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
+	}
+}
+
 func TestParseSRLinuxRouteDetailsNormalizesPeerGateway(t *testing.T) {
 	data := []byte(`{
 	  "instance": [{
@@ -228,6 +259,41 @@ func TestParseSRLinuxRouteDetailsNormalizesPeerGateway(t *testing.T) {
 		t.Fatalf("route attrs = %#v", route)
 	}
 	want := []NextHop{{Address: "198.18.20.5", Interface: "ethernet-1/4.0"}}
+	if !reflect.DeepEqual(route.NextHops, want) {
+		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
+	}
+}
+
+func TestParseSRLinuxRouteDetailsIgnoresBackupNextHop(t *testing.T) {
+	data := []byte(`{
+	  "instance": [{
+	    "Name": "default",
+	    "ip route": [{
+	      "Destination": "10.20.0.0/24",
+	      "Route Type": "bgp",
+	      "Metric": 0,
+	      "Preference": 170,
+	      "Active": true,
+	      "ip route nexthop": {
+	        "Next Hop Count": 1,
+	        "Next hops": "192.0.2.1 (direct) via [ethernet-1/1.0]"
+	      },
+	      "ip route backup nexthop": {
+	        "Backup Next Hop Count": 1,
+	        "Backup Next hops": "192.0.2.254 (direct) via [ethernet-1/99.0]"
+	      }
+	    }]
+	  }]
+	}`)
+	routes, err := ParseSRLinuxRouteDetails("srl1", data)
+	if err != nil {
+		t.Fatalf("ParseSRLinuxRouteDetails() error = %v", err)
+	}
+	route := routeByPrefix(routes, "10.20.0.0/24")
+	if route == nil {
+		t.Fatalf("routes = %#v", routes)
+	}
+	want := []NextHop{{Address: "192.0.2.1", Interface: "ethernet-1/1.0"}}
 	if !reflect.DeepEqual(route.NextHops, want) {
 		t.Fatalf("next-hops = %#v, want %#v", route.NextHops, want)
 	}
