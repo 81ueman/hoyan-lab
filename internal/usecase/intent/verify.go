@@ -242,11 +242,6 @@ func evalForall(f *ForallExpr, snapshot SnapshotContext, rowFilter map[string]an
 	return overall, actual
 }
 
-// validForallFields contains recognized field names for ForallExpr value collection.
-var validForallFields = map[string]bool{
-	"device": true, "node": true, "vrf": true, "protocol": true,
-}
-
 // collectDistinctValues extracts all distinct values for a given field from
 // the snapshot's RIB routes. The field can be "device" (node name), "vrf",
 // or "protocol". Returns an error if the field name is not recognized.
@@ -335,13 +330,10 @@ func evalImply(pair [2]*RCLExpr, snapshot SnapshotContext, rowFilter map[string]
 		// Antecedent false → implication is vacuously true
 		return "pass", Actual{Count: 0, Reason: "antecedent is false"}
 	}
-	// Antecedent true → evaluate consequent
+	// Antecedent true → evaluate consequent; propagate full consequent Actual
 	conStatus, conActual := evalRCLExpr(pair[1], snapshot, rowFilter, scenario, ctx)
-	return conStatus, Actual{
-		Count:   conActual.Count,
-		Reason:  fmt.Sprintf("antecedent passed, consequent: %s", conStatus),
-		Rows:    conActual.Rows,
-	}
+	conActual.Reason = fmt.Sprintf("antecedent passed, consequent: %s", conStatus)
+	return conStatus, conActual
 }
 
 // ---------------------------------------------------------------------------
