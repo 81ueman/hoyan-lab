@@ -3,14 +3,16 @@ package intentdsl
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/intent"
 )
 
 // parser implements a recursive-descent parser for the Hoyan DSL.
 type parser struct {
-	lex *lexer
-	tok token // current lookahead token
+	lex  *lexer
+	tok  token // current lookahead token
+	vars map[string]any
 }
 
 func newParser(lex *lexer) *parser {
@@ -50,6 +52,7 @@ func (p *parser) ParseDocument() (*intent.Document, error) {
 		Snapshots: make(map[string]intent.Snapshot),
 		Scenarios: make(map[string]intent.Scenario),
 	}
+	p.vars = doc.Vars
 
 	// version = "..."
 	if p.tok.kind == tokKeywordVersion {
@@ -446,22 +449,9 @@ func (p *parser) parseForall() (*intent.RCLExpr, error) {
 		return nil, err
 	}
 
-	vals, ok := val.([]string)
-	if !ok {
-		// If it's a var ref ($edges), it will become []string at parse time
-		// The YAML model stores []string in the In field
-		// For now, treat it as string slice or []any
-		switch v := val.(type) {
-		case []any:
-			vals = make([]string, len(v))
-			for i, iv := range v {
-				vals[i] = fmt.Sprint(iv)
-			}
-		case string:
-			vals = []string{v}
-		default:
-			return nil, p.errorf("expected array for 'in', got %T", val)
-		}
+	vals, err := p.forallValues(val)
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse the block as the inner intent
@@ -471,6 +461,14 @@ func (p *parser) parseForall() (*intent.RCLExpr, error) {
 	}
 
 	inner := p.blockToRCLExpr(block)
+	if len(vals) > 0 && rclUsesVarRef(inner, varName) {
+		exprs := make([]intent.RCLExpr, 0, len(vals))
+		for _, v := range vals {
+			expr := substituteRCLVarRef(inner, varName, v)
+			exprs = append(exprs, expr)
+		}
+		return &intent.RCLExpr{And: exprs}, nil
+	}
 
 	return &intent.RCLExpr{
 		Forall: &intent.ForallExpr{
@@ -479,6 +477,187 @@ func (p *parser) parseForall() (*intent.RCLExpr, error) {
 			Intent: *inner,
 		},
 	}, nil
+}
+
+func (p *parser) forallValues(val any) ([]string, error) {
+	switch v := val.(type) {
+	case []string:
+		return v, nil
+	case []any:
+		return toStringSlice(v), nil
+	case string:
+		if ref, ok := parserSingleVarRef(v); ok {
+			if raw, exists := p.vars[ref]; exists {
+				return toStringSlice(raw), nil
+			}
+		}
+		return []string{v}, nil
+	default:
+		return nil, p.errorf("expected array for 'in', got %T", val)
+	}
+}
+
+func parserSingleVarRef(s string) (string, bool) {
+	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") && len(s) > 3 {
+		return strings.TrimSuffix(strings.TrimPrefix(s, "${"), "}"), true
+	}
+	return "", false
+}
+
+func rclUsesVarRef(expr *intent.RCLExpr, varName string) bool {
+	ref := "${" + varName + "}"
+	return rclContainsString(expr, ref)
+}
+
+func rclContainsString(expr *intent.RCLExpr, ref string) bool {
+	if expr == nil {
+		return false
+	}
+	switch {
+	case expr.Guard != nil:
+		return anyContainsString(expr.Guard.Where, ref) || rclContainsString(&expr.Guard.Intent, ref)
+	case expr.Forall != nil:
+		return anyContainsString(expr.Forall.Var, ref) || anyContainsString(expr.Forall.In, ref) || rclContainsString(&expr.Forall.Intent, ref)
+	case len(expr.And) > 0:
+		for i := range expr.And {
+			if rclContainsString(&expr.And[i], ref) {
+				return true
+			}
+		}
+	case len(expr.Or) > 0:
+		for i := range expr.Or {
+			if rclContainsString(&expr.Or[i], ref) {
+				return true
+			}
+		}
+	case expr.Not != nil:
+		return rclContainsString(expr.Not, ref)
+	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+		return rclContainsString(expr.Imply[0], ref) || rclContainsString(expr.Imply[1], ref)
+	case expr.RIBEq != nil:
+		return anyContainsString(expr.RIBEq.Where, ref)
+	case expr.RIBEval != nil:
+		return anyContainsString(expr.RIBEval.Where, ref) || anyContainsString(expr.RIBEval.Eq, ref) || anyContainsString(expr.RIBEval.Ne, ref)
+	case expr.PacketReachable != nil:
+		return anyContainsString(expr.PacketReachable.From, ref) || anyContainsString(expr.PacketReachable.To, ref) || anyContainsString(expr.PacketReachable.VRF, ref)
+	}
+	return false
+}
+
+func anyContainsString(v any, ref string) bool {
+	switch x := v.(type) {
+	case string:
+		return x == ref
+	case []string:
+		for _, item := range x {
+			if item == ref {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range x {
+			if anyContainsString(item, ref) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range x {
+			if anyContainsString(item, ref) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func substituteRCLVarRef(expr *intent.RCLExpr, varName, value string) intent.RCLExpr {
+	if expr == nil {
+		return intent.RCLExpr{}
+	}
+	ref := "${" + varName + "}"
+	out := *expr
+	switch {
+	case expr.Guard != nil:
+		inner := substituteRCLVarRef(&expr.Guard.Intent, varName, value)
+		out.Guard = &intent.GuardExpr{Where: substituteAnyVarRef(expr.Guard.Where, ref, value).(map[string]any), Intent: inner}
+	case expr.Forall != nil:
+		inner := substituteRCLVarRef(&expr.Forall.Intent, varName, value)
+		out.Forall = &intent.ForallExpr{Var: substituteStringVarRef(expr.Forall.Var, ref, value), In: substituteStringSliceVarRef(expr.Forall.In, ref, value), Intent: inner}
+	case len(expr.And) > 0:
+		out.And = make([]intent.RCLExpr, len(expr.And))
+		for i := range expr.And {
+			out.And[i] = substituteRCLVarRef(&expr.And[i], varName, value)
+		}
+	case len(expr.Or) > 0:
+		out.Or = make([]intent.RCLExpr, len(expr.Or))
+		for i := range expr.Or {
+			out.Or[i] = substituteRCLVarRef(&expr.Or[i], varName, value)
+		}
+	case expr.Not != nil:
+		inner := substituteRCLVarRef(expr.Not, varName, value)
+		out.Not = &inner
+	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+		left := substituteRCLVarRef(expr.Imply[0], varName, value)
+		right := substituteRCLVarRef(expr.Imply[1], varName, value)
+		out.Imply = [2]*intent.RCLExpr{&left, &right}
+	case expr.RIBEq != nil:
+		out.RIBEq = &intent.RIBEqExpr{Left: expr.RIBEq.Left, Right: expr.RIBEq.Right, Where: substituteAnyVarRef(expr.RIBEq.Where, ref, value).(map[string]any)}
+	case expr.RIBEval != nil:
+		out.RIBEval = &intent.RIBEvalExpr{Snapshot: expr.RIBEval.Snapshot, Where: substituteAnyVarRef(expr.RIBEval.Where, ref, value).(map[string]any), Aggregate: expr.RIBEval.Aggregate, Eq: substituteAnySliceVarRef(expr.RIBEval.Eq, ref, value), Ne: substituteAnySliceVarRef(expr.RIBEval.Ne, ref, value), Gt: expr.RIBEval.Gt, Gte: expr.RIBEval.Gte, Lt: expr.RIBEval.Lt, Lte: expr.RIBEval.Lte}
+	case expr.PacketReachable != nil:
+		out.PacketReachable = &intent.PacketReachableExpr{From: substituteStringVarRef(expr.PacketReachable.From, ref, value), VRF: substituteStringVarRef(expr.PacketReachable.VRF, ref, value), To: substituteStringVarRef(expr.PacketReachable.To, ref, value), Protocol: expr.PacketReachable.Protocol, DstPort: expr.PacketReachable.DstPort, Expect: expr.PacketReachable.Expect}
+	}
+	return out
+}
+
+func substituteAnyVarRef(v any, ref, value string) any {
+	switch x := v.(type) {
+	case nil:
+		return map[string]any(nil)
+	case string:
+		return substituteStringVarRef(x, ref, value)
+	case []string:
+		return substituteStringSliceVarRef(x, ref, value)
+	case []any:
+		return substituteAnySliceVarRef(x, ref, value)
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, item := range x {
+			out[k] = substituteAnyVarRef(item, ref, value)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func substituteStringVarRef(s, ref, value string) string {
+	if s == ref {
+		return value
+	}
+	return s
+}
+
+func substituteStringSliceVarRef(in []string, ref, value string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	for i, item := range in {
+		out[i] = substituteStringVarRef(item, ref, value)
+	}
+	return out
+}
+
+func substituteAnySliceVarRef(in []any, ref, value string) []any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]any, len(in))
+	for i, item := range in {
+		out[i] = substituteAnyVarRef(item, ref, value)
+	}
+	return out
 }
 
 // parseRibEval parses: rib [where ...] { aggregate }
@@ -1000,7 +1179,7 @@ func (p *parser) parseOneWhereEntry() (map[string]any, error) {
 		if err := p.expect(tokLBrace); err != nil {
 			return nil, err
 		}
-		var andList []map[string]any
+		var andList []any
 		for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
 			pred, err := p.parseOneWhereEntry()
 			if err != nil {
@@ -1018,7 +1197,7 @@ func (p *parser) parseOneWhereEntry() (map[string]any, error) {
 		if err := p.expect(tokLBrace); err != nil {
 			return nil, err
 		}
-		var orList []map[string]any
+		var orList []any
 		for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
 			pred, err := p.parseOneWhereEntry()
 			if err != nil {
@@ -1050,7 +1229,7 @@ func (p *parser) parseOneWhereEntry() (map[string]any, error) {
 		if err := p.expect(tokRBrace); err != nil {
 			return nil, err
 		}
-		return map[string]any{"imply": []map[string]any{antecedent, consequent}}, nil
+		return map[string]any{"imply": []any{antecedent, consequent}}, nil
 
 	case tokKeywordNot:
 		p.next()
@@ -1104,7 +1283,7 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 			if err := p.expect(tokLBrace); err != nil {
 				return nil, err
 			}
-			var andList []map[string]any
+			var andList []any
 			for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
 				pred, err := p.parseOneWhereEntry()
 				if err != nil {
@@ -1123,7 +1302,7 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 			if err := p.expect(tokLBrace); err != nil {
 				return nil, err
 			}
-			var orList []map[string]any
+			var orList []any
 			for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
 				pred, err := p.parseOneWhereEntry()
 				if err != nil {
@@ -1159,7 +1338,7 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 			if err := p.expect(tokRBrace); err != nil {
 				return nil, err
 			}
-			result["imply"] = []map[string]any{antecedent, consequent}
+			result["imply"] = []any{antecedent, consequent}
 			return result, nil
 
 		case tokKeywordNot:
@@ -1230,13 +1409,13 @@ func (p *parser) parseSingleWherePredicate() (map[string]any, error) {
 		return map[string]any{key: val}, nil
 
 	case tokNe:
-		// ident != value
+		// ident != value; emit the existing evaluator's negated-predicate shape.
 		p.next()
 		val, err := p.parseValue()
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{key: map[string]any{"ne": val}}, nil
+		return map[string]any{"not": map[string]any{key: val}}, nil
 
 	case tokKeywordContains:
 		// ident contains value
@@ -1257,13 +1436,16 @@ func (p *parser) parseSingleWherePredicate() (map[string]any, error) {
 		return map[string]any{key: map[string]any{"matches": val}}, nil
 
 	case tokKeywordWithin:
-		// ident within value
+		// prefix within value; emit the existing evaluator's prefix_within key.
 		p.next()
+		if key != "prefix" {
+			return nil, p.errorf("within is only supported for prefix predicates")
+		}
 		val, err := p.parseValue()
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{key: map[string]any{"within": val}}, nil
+		return map[string]any{"prefix_within": val}, nil
 
 	default:
 		return nil, p.errorf("expected =, !=, contains, matches, or within after %q, got %s (%q)", key, p.tok.kind, p.tok.text)

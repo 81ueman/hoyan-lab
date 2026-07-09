@@ -22,6 +22,20 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestLoadRejectsNonHoyanExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "intent.yml")
+	if err := os.WriteFile(path, []byte("version = \"hoyan/v1\"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected .hoyan extension error, got nil")
+	}
+	if !strings.Contains(err.Error(), ".hoyan") {
+		t.Fatalf("error = %v, want .hoyan message", err)
+	}
+}
+
 func TestLoadMinimal(t *testing.T) {
 	doc, err := Load("testdata/intentdsl/minimal.hoyan")
 	if err != nil {
@@ -356,6 +370,50 @@ intent "empty-when" {
 	}
 	if !strings.Contains(err.Error(), "expected where predicate") {
 		t.Fatalf("error = %v, want expected where predicate message", err)
+	}
+}
+
+func TestWhereEmitsEvaluatorCompatibleShapes(t *testing.T) {
+	doc, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "where-shapes" {
+  scenario = "normal"
+  rib where and {
+    device != "r2"
+    or {
+      protocol = "bgp"
+      protocol = "static"
+    }
+    imply {
+      prefix within "10.0.0.0/8"
+      then selected = true
+    }
+  } { count() >= 1 }
+}
+`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	where := doc.Intents[0].RCL.RIBEval.Where
+	andList, ok := where["and"].([]any)
+	if !ok {
+		t.Fatalf("where[and] = %T, want []any", where["and"])
+	}
+	if _, ok := andList[0].(map[string]any)["not"].(map[string]any); !ok {
+		t.Fatalf("!= predicate = %#v, want not map", andList[0])
+	}
+	orList, ok := andList[1].(map[string]any)["or"].([]any)
+	if !ok || len(orList) != 2 {
+		t.Fatalf("or predicate = %#v, want []any with two entries", andList[1])
+	}
+	implyList, ok := andList[2].(map[string]any)["imply"].([]any)
+	if !ok || len(implyList) != 2 {
+		t.Fatalf("imply predicate = %#v, want []any with two entries", andList[2])
+	}
+	if implyList[0].(map[string]any)["prefix_within"] != "10.0.0.0/8" {
+		t.Fatalf("within predicate = %#v, want prefix_within", implyList[0])
 	}
 }
 

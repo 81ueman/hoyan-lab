@@ -88,20 +88,6 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 
 		switch lkey {
 		case "prefix":
-			if opMap, ok := raw.(map[string]any); ok {
-				if nv, ok := opMap["ne"]; ok {
-					if matchesPrefix(route.Common.Prefix, scalar(nv)) {
-						return false, nil
-					}
-					continue
-				}
-				if wv, ok := opMap["within"]; ok {
-					if !prefixWithin(route.Common.Prefix, scalar(wv)) {
-						return false, nil
-					}
-					continue
-				}
-			}
 			val, ok := raw.(string)
 			if !ok {
 				continue
@@ -111,20 +97,11 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "device", "node":
-			actual := string(rib.Node)
-			if opMap, ok := raw.(map[string]any); ok {
-				if nv, ok := opMap["ne"]; ok {
-					if valuesEqual(actual, nv) {
-						return false, nil
-					}
-					continue
-				}
-			}
 			val, ok := raw.(string)
 			if !ok {
 				continue
 			}
-			if actual != val {
+			if string(rib.Node) != val {
 				return false, nil
 			}
 
@@ -163,20 +140,11 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "protocol":
-			actual := string(route.Common.Protocol)
-			if opMap, ok := raw.(map[string]any); ok {
-				if nv, ok := opMap["ne"]; ok {
-					if valuesEqual(actual, nv) {
-						return false, nil
-					}
-					continue
-				}
-			}
 			val, ok := raw.(string)
 			if !ok {
 				continue
 			}
-			if actual != val {
+			if string(route.Common.Protocol) != val {
 				return false, nil
 			}
 
@@ -194,11 +162,15 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "and":
-			conds, ok := predicateList(raw)
+			conds, ok := raw.([]any)
 			if !ok {
 				continue
 			}
-			for _, inner := range conds {
+			for _, c := range conds {
+				inner, ok := c.(map[string]any)
+				if !ok {
+					return false, nil
+				}
 				innerOk, err := matchWhere(route, rib, inner)
 				if err != nil {
 					return false, err
@@ -209,12 +181,16 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "or":
-			conds, ok := predicateList(raw)
+			conds, ok := raw.([]any)
 			if !ok {
 				continue
 			}
 			anyMatch := false
-			for _, inner := range conds {
+			for _, c := range conds {
+				inner, ok := c.(map[string]any)
+				if !ok {
+					continue
+				}
 				innerOk, err := matchWhere(route, rib, inner)
 				if err != nil {
 					return false, err
@@ -284,12 +260,15 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "imply":
-			clauses, ok := predicateList(raw)
+			clauses, ok := raw.([]any)
 			if !ok || len(clauses) != 2 {
 				continue
 			}
-			antecedent := clauses[0]
-			consequent := clauses[1]
+			antecedent, aOK := clauses[0].(map[string]any)
+			consequent, cOK := clauses[1].(map[string]any)
+			if !aOK || !cOK {
+				continue
+			}
 			aOk, err := matchWhere(route, rib, antecedent)
 			if err != nil {
 				return false, err
@@ -338,54 +317,29 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			continue
 
 		default:
-			actual := routeFieldValue(route, key)
 			if opMap, ok := raw.(map[string]any); ok {
 				if cv, ok := opMap["contains"]; ok {
+					actual := routeFieldValue(route, key)
 					if !containsCheck(actual, cv) {
 						return false, nil
 					}
 					continue
 				}
 				if mv, ok := opMap["matches"]; ok {
+					actual := routeFieldValue(route, key)
 					if !matchesCheck(actual, scalar(mv)) {
 						return false, nil
 					}
 					continue
 				}
-				if nv, ok := opMap["ne"]; ok {
-					if valuesEqual(actual, nv) {
-						return false, nil
-					}
-					continue
-				}
 			}
+			actual := routeFieldValue(route, key)
 			if !valuesEqual(actual, raw) {
 				return false, nil
 			}
 		}
 	}
 	return true, nil
-}
-
-// predicateList normalizes compound where predicate lists from both parser and
-// legacy/map-decoded shapes.
-func predicateList(raw any) ([]map[string]any, bool) {
-	switch conds := raw.(type) {
-	case []map[string]any:
-		return conds, true
-	case []any:
-		out := make([]map[string]any, 0, len(conds))
-		for _, c := range conds {
-			inner, ok := c.(map[string]any)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, inner)
-		}
-		return out, true
-	default:
-		return nil, false
-	}
 }
 
 // matchesPrefix checks if the route prefix is within or equal to the given

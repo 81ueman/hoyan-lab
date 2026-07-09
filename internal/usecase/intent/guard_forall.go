@@ -50,22 +50,12 @@ func evalForall(f *ForallExpr, snapshot SnapshotContext, rowFilter map[string]an
 	var actuals []Actual
 	var failingGroup string // tracks first failing iteration's group info for Result.Group
 	for _, v := range values {
-		// Substitute references to the RCL-level forall variable (for example $edge)
-		// inside the child expression for this iteration.
-		iterIntent, err := expandRCLExpr(&f.Intent, nil, map[string]string{f.Var: v})
-		if err != nil {
-			return "fail", Actual{Reason: fmt.Sprintf("forall: %v", err)}
-		}
-
-		// If the forall variable itself is a recognized where field (for example
-		// device), also apply the historical rowFilter behavior so concise forms like
-		// `for device in [...] { rib where protocol = "ospf" { ... } }` keep working.
-		combined := rowFilter
-		if validWhereKeys[strings.ToLower(f.Var)] {
-			forallFilter := map[string]any{f.Var: v}
-			combined = mergeWhereFilters(rowFilter, forallFilter)
-		}
-		status, a := evalRCLExpr(iterIntent, snapshot, combined, scenario, ctx)
+		// Create a forall-binding filter: the forall variable is bound to this value.
+		// This is used as a rowFilter so that inner RIBEval/RIBEq expressions only see
+		// rows matching the current forall value.
+		forallFilter := map[string]any{f.Var: v}
+		combined := mergeWhereFilters(rowFilter, forallFilter)
+		status, a := evalRCLExpr(&f.Intent, snapshot, combined, scenario, ctx)
 		if status == "fail" {
 			overall = "fail"
 			if failingGroup == "" {

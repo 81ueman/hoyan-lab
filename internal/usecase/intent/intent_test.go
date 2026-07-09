@@ -249,14 +249,15 @@ func TestVerifyRCLForallVarRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expand() error: %v", err)
 	}
-	got := expanded.Intents[0].RCL.Forall.In
+	got := expanded.Intents[0].RCL.And
 	want := []string{"bj-edge1", "sh-edge1", "gz-edge1"}
 	if len(got) != len(want) {
-		t.Fatalf("RCL forall values = %#v, want %#v", got, want)
+		t.Fatalf("expanded RCL expressions = %#v, want %d entries", got, len(want))
 	}
 	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("RCL forall values = %#v, want %#v", got, want)
+		where := got[i].RIBEval.Where
+		if where["device"] != want[i] {
+			t.Fatalf("expanded where[%d].device = %#v, want %q", i, where["device"], want[i])
 		}
 	}
 
