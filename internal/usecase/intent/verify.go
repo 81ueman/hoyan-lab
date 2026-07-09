@@ -7,8 +7,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
@@ -167,7 +169,7 @@ func evalRCLExpr(expr *RCLExpr, snapshot SnapshotContext, rowFilter map[string]a
 	case expr.RIBEval != nil:
 		return evalRIBEval(expr.RIBEval, snapshot, rowFilter, scenario, ctx)
 	case expr.PacketReachable != nil:
-		return evalPacketReachable(expr.PacketReachable, snapshot)
+		return evalPacketReachable(expr.PacketReachable, snapshot, scenario)
 	default:
 		return "fail", Actual{Reason: "empty expression"}
 	}
@@ -274,6 +276,45 @@ func collectDistinctValues(snapshot SnapshotContext, field string) ([]string, er
 		for _, rib := range RIBs(snapshot.Network) {
 			for _, route := range rib.Routes {
 				v := string(route.Common.Protocol)
+				if v == "" {
+					continue
+				}
+				if !seen[v] {
+					seen[v] = true
+					values = append(values, v)
+				}
+			}
+		}
+	case "route_type":
+		collectOSPFAttr(snapshot, func(r observation.OSPFRIBRoute) string { return string(r.RouteType) }, seen, &values)
+	case "area":
+		collectOSPFAttr(snapshot, func(r observation.OSPFRIBRoute) string { return string(r.Area) }, seen, &values)
+	case "origin":
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.BGP == nil || len(route.BGP.Paths) == 0 {
+					continue
+				}
+				v := string(route.BGP.Paths[0].Origin)
+				if v == "" {
+					continue
+				}
+				if !seen[v] {
+					seen[v] = true
+					values = append(values, v)
+				}
+			}
+		}
+	case "connected_class":
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.Connected == nil {
+					continue
+				}
+				v := routeConnectedClass(route)
+				if v == "" {
+					continue
+				}
 				if !seen[v] {
 					seen[v] = true
 					values = append(values, v)
@@ -281,10 +322,30 @@ func collectDistinctValues(snapshot SnapshotContext, field string) ([]string, er
 			}
 		}
 	default:
-		return nil, fmt.Errorf("unrecognized forall field %q (valid: device, node, vrf, protocol)", field)
+		return nil, fmt.Errorf("unrecognized forall field %q (valid: device, node, vrf, protocol, route_type, area, origin, connected_class)", field)
 	}
 
 	return values, nil
+}
+
+// collectOSPFAttr extracts distinct values of an OSPF route attribute from the
+// snapshot, skipping nil OSPF entries and empty values.
+func collectOSPFAttr(snapshot SnapshotContext, attr func(observation.OSPFRIBRoute) string, seen map[string]bool, values *[]string) {
+	for _, rib := range RIBs(snapshot.Network) {
+		for _, route := range rib.Routes {
+			if route.OSPF == nil {
+				continue
+			}
+			v := attr(*route.OSPF)
+			if v == "" {
+				continue
+			}
+			if !seen[v] {
+				seen[v] = true
+				*values = append(*values, v)
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -685,30 +746,146 @@ func extractNextHops(route observation.RIBRoute) string {
 // PacketReachableExpr
 // ---------------------------------------------------------------------------
 
-func evalPacketReachable(e *PacketReachableExpr, snapshot SnapshotContext) (string, Actual) {
+func evalPacketReachable(e *PacketReachableExpr, snapshot SnapshotContext, scenario Scenario) (string, Actual) {
 	spec := model.PacketSpec{
 		Protocol: e.Protocol,
 		DstPort:  model.ExactPort(e.DstPort),
 	}
 
+	// When no failure constraints: use the simple NoFailures path.
+	if scenario.Failures.Max <= 0 {
+		return evalPacketReachableNoFailures(e, snapshot, spec)
+	}
+
+	// Build target and search options for symbolic failure search.
+	target := sim.PacketTarget{
+		To:       e.To,
+		Protocol: e.Protocol,
+		DstPort:  e.DstPort,
+		VRF:      e.VRF,
+	}
+	opts := sim.FailureSearchOptions{
+		MaxFailures:  scenario.Failures.Max,
+		IncludeLinks: true,
+		IncludeNodes: true,
+		Domain:       buildFailureDomain(scenario.Failures),
+	}
+
+	if e.Expect {
+		// Expect reachable → search for a failure set that breaks reachability.
+		result, err := snapshot.Graph.FindBreakingFailuresSymbolic(e.From, target, opts)
+		if err != nil {
+			reachable := false
+			actual := Actual{
+				Reachable: &reachable,
+				Reason:    fmt.Sprintf("failure search error: %v", err),
+			}
+			return "fail", actual
+		}
+		if result.Sat {
+			// Found a failure combination that breaks reachability → fail.
+			reachable := false
+			failures := make([]model.LinkID, 0)
+			for _, fe := range result.Failures {
+				failures = append(failures, model.LinkID(fe.Name))
+			}
+			actual := Actual{
+				Reachable: &reachable,
+				Reason:    fmt.Sprintf("not resilient: %v failures break reachability (e.g. %v)", scenario.Failures.Max, failures),
+			}
+			return "fail", actual
+		}
+		// No failure combination breaks reachability → pass.
+		reachable := true
+		actual := Actual{
+			Reachable: &reachable,
+			Reason:    fmt.Sprintf("resilient to %d failures", scenario.Failures.Max),
+		}
+		return "pass", actual
+	}
+
+	// e.Expect == false: the packet should NOT be reachable.
+	// Step 1: verify unreachability without failures.
+	reachable, reason := checkNoFailuresReachable(e, snapshot, spec)
+	if reachable {
+		actual := Actual{
+			Reachable: &reachable,
+			Reason:    fmt.Sprintf("unexpectedly reachable (no failures): %s", reason),
+		}
+		return "fail", actual
+	}
+	// Step 2: additional simple check — confirm unreachability is
+	// preserved under each single failure candidate.
+	elements := failure.SearchElements(snapshot.Topology, opts)
+	for _, fe := range elements {
+		var fs sim.FailureSet
+		if fe.Kind == solver.FailureLink {
+			fs = sim.LinkFailures(model.LinkID(fe.Name))
+		} else {
+			fs = sim.NodeFailures(model.NodeID(fe.Name))
+		}
+		var r bool
+		var rs string
+		if e.VRF != "" {
+			_, r, rs = snapshot.Graph.PacketReachableSpecVRF(e.From, e.VRF, e.To, spec, fs)
+		} else {
+			_, r, rs = snapshot.Graph.PacketReachableSpec(e.From, e.To, spec, fs)
+		}
+		if r {
+			actual := Actual{
+				Reachable: &r,
+				Reason:    fmt.Sprintf("became reachable under failure of %s: %s", fe.Name, rs),
+			}
+			return "fail", actual
+		}
+	}
+	// Unreachable without failures and under all single failures → pass.
+	actual := Actual{
+		Reachable: &reachable,
+		Reason:    fmt.Sprintf("unreachable as expected (no failures): %s", reason),
+	}
+	return "pass", actual
+}
+
+// evalPacketReachableNoFailures evaluates reachability without failures.
+// Returns pass/fail status and Actual with the reachable flag.
+func evalPacketReachableNoFailures(e *PacketReachableExpr, snapshot SnapshotContext, spec model.PacketSpec) (string, Actual) {
+	reachable, reason := checkNoFailuresReachable(e, snapshot, spec)
+	actual := Actual{
+		Reachable: &reachable,
+		Reason:    reason,
+	}
+	if reachable == e.Expect {
+		return "pass", actual
+	}
+	return "fail", actual
+}
+
+// checkNoFailuresReachable evaluates reachability without failures.
+// Returns (reachable, reason) for callers that need the raw bool.
+func checkNoFailuresReachable(e *PacketReachableExpr, snapshot SnapshotContext, spec model.PacketSpec) (bool, string) {
 	var reachable bool
 	var reason string
-
 	if e.VRF != "" {
 		_, reachable, reason = snapshot.Graph.PacketReachableSpecVRF(e.From, e.VRF, e.To, spec, sim.NoFailures())
 	} else {
 		_, reachable, reason = snapshot.Graph.PacketReachableSpec(e.From, e.To, spec, sim.NoFailures())
 	}
+	return reachable, reason
+}
 
-	actual := Actual{
-		Reachable: &reachable,
-		Reason:    reason,
+// buildFailureDomain converts FailureConstraints to a model.FailureDomain.
+func buildFailureDomain(fc FailureConstraints) model.FailureDomain {
+	return model.FailureDomain{
+		IncludeLinkRoles: fc.IncludeLinkRoles,
+		ExcludeLinkRoles: fc.ExcludeLinkRoles,
+		IncludeLinks:     fc.IncludeLinks,
+		ExcludeLinks:     fc.ExcludeLinks,
+		IncludeNodeRoles: fc.IncludeNodeRoles,
+		ExcludeNodeRoles: fc.ExcludeNodeRoles,
+		IncludeNodes:     fc.IncludeNodes,
+		ExcludeNodes:     fc.ExcludeNodes,
 	}
-
-	if reachable == e.Expect {
-		return "pass", actual
-	}
-	return "fail", actual
 }
 
 // ---------------------------------------------------------------------------
