@@ -52,17 +52,22 @@ intents:
             aggregate: count()
             gte: 1
 
-  # BGP routes have resolved nexthops (recursive nexthop resolution works)
+  # Each router with BGP routes has at least one resolved nexthop
+  # (recursive nexthop resolution working per device, not just globally)
   - name: bgp-routes-have-nexthops
     scenario: normal
     rcl:
-      guard:
-        where:
-          protocol: bgp
+      forall:
+        var: device
+        in: [bj-edge1, sh-edge1, gz-edge1, hz-edge1, bj-edge2, sh-edge2, gz-edge2, hz-edge2, core-bj, core-sh, core-gz, core-hz]
         intent:
-          rib_eval:
-            aggregate: distCnt(nexthop)
-            gte: 1
+          guard:
+            where:
+              protocol: bgp
+            intent:
+              rib_eval:
+                aggregate: distCnt(nexthop)
+                gte: 1
 
   # bj-edge1 sees sh-edge1's service prefix (east-west BGP reachability)
   - name: bj-edge1-sees-sh-service-prefix

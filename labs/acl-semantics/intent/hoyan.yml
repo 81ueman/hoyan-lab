@@ -81,3 +81,17 @@ intents:
               protocol: bgp
             aggregate: count()
             gte: 1
+
+  # ACL default-action permits non-matching traffic (SSH to service IP passes)
+  # Verifies the ACL only blocks configured rules (tcp/80), not everything
+  - name: acl-default-action-permits-other-traffic
+    scenario: normal
+    forall:
+      src: ${customers}
+    rcl:
+      packet_reachable:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 22
+        expect: true

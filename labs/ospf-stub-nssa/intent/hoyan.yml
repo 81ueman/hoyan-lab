@@ -57,18 +57,30 @@ intents:
             aggregate: count()
             gte: 1
 
-  # r3 in stub area has no external routes (stub area blocks type-5 externals)
+  # r3 in stub area has no external type-5 routes
+  # (stub area blocks type-5 externals; count each external type separately)
   - name: stub-area-no-external-routes
     scenario: normal
     rcl:
-      guard:
-        where:
-          device: r3
-          protocol: ospf
-        intent:
-          rib_eval:
-            aggregate: distVals(route_type)
-            ne: [[external_type_1, external_type_2]]
+      and:
+        - guard:
+            where:
+              device: r3
+              protocol: ospf
+              route_type: external_type_1
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+        - guard:
+            where:
+              device: r3
+              protocol: ospf
+              route_type: external_type_2
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
 
   # r4 in NSSA area has no normal external type-5 routes
   # (NSSA allows type-7 translated to type-5 at ABR, but r4 itself shouldn't
@@ -76,14 +88,25 @@ intents:
   - name: nssa-area-no-type5-external-routes
     scenario: normal
     rcl:
-      guard:
-        where:
-          device: r4
-          protocol: ospf
-        intent:
-          rib_eval:
-            aggregate: distVals(route_type)
-            ne: [[external_type_1, external_type_2]]
+      and:
+        - guard:
+            where:
+              device: r4
+              protocol: ospf
+              route_type: external_type_1
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+        - guard:
+            where:
+              device: r4
+              protocol: ospf
+              route_type: external_type_2
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
 
   # NSSA external route (198.18.4.0/24 from r4) is visible in area 0 via ABR translation
   - name: nssa-external-route-reaches-area0
