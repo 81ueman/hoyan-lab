@@ -2,6 +2,7 @@ package intent
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
@@ -164,7 +165,10 @@ func evalRCLExpr(expr *RCLExpr, snapshot SnapshotContext, rowFilter map[string]a
 // ---------------------------------------------------------------------------
 
 func evalGuard(g *GuardExpr, snapshot SnapshotContext, rowFilter map[string]any, scenario Scenario, ctx verifyContext) (string, Actual) {
-	matching := matchingRows(snapshot, g.Where, rowFilter)
+	matching, err := matchingRows(snapshot, g.Where, rowFilter)
+	if err != nil {
+		return "fail", Actual{Reason: fmt.Sprintf("guard where: %v", err)}
+	}
 	if len(matching) == 0 {
 		// Premise false → pass (vacuously true)
 		return "pass", Actual{Count: 0}
@@ -339,8 +343,14 @@ func evalRIBEq(e *RIBEqExpr, snapshot SnapshotContext, rowFilter map[string]any,
 	}
 
 	// Get matching rows from both snapshots
-	leftRows := matchingRows(leftSnap, e.Where, rowFilter)
-	rightRows := matchingRows(rightSnap, e.Where, rowFilter)
+	leftRows, err := matchingRows(leftSnap, e.Where, rowFilter)
+	if err != nil {
+		return "fail", Actual{Reason: fmt.Sprintf("rib_eq left where: %v", err)}
+	}
+	rightRows, err := matchingRows(rightSnap, e.Where, rowFilter)
+	if err != nil {
+		return "fail", Actual{Reason: fmt.Sprintf("rib_eq right where: %v", err)}
+	}
 
 	// Build prefix→entry maps for comparison
 	leftIndex := buildRIBIndex(leftRows)
@@ -413,7 +423,12 @@ func routesEqual(a, b observation.RIBRoute) bool {
 		a.Common.Metric == b.Common.Metric &&
 		a.Common.Preference == b.Common.Preference &&
 		a.Common.Eligible == b.Common.Eligible &&
-		a.Common.Best == b.Common.Best
+		a.Common.Best == b.Common.Best &&
+		reflect.DeepEqual(a.BGP, b.BGP) &&
+		reflect.DeepEqual(a.OSPF, b.OSPF) &&
+		reflect.DeepEqual(a.Static, b.Static) &&
+		reflect.DeepEqual(a.Connected, b.Connected) &&
+		reflect.DeepEqual(a.Blackhole, b.Blackhole)
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +446,10 @@ func evalRIBEval(e *RIBEvalExpr, snapshot SnapshotContext, rowFilter map[string]
 		}
 	}
 
-	rows := matchingRows(snap, e.Where, rowFilter)
+	rows, err := matchingRows(snap, e.Where, rowFilter)
+	if err != nil {
+		return "fail", Actual{Reason: fmt.Sprintf("rib_eval where: %v", err)}
+	}
 	count := len(rows)
 
 	agg, err := ParseAggregate(e.Aggregate)
@@ -653,52 +671,69 @@ type routeRow struct {
 
 // matchingRows returns all RIB routes from the snapshot that satisfy all
 // given where predicates (AND semantics). Pass nil for no filter.
-func matchingRows(snapshot SnapshotContext, filters ...map[string]any) []routeRow {
+// Returns an error if any where predicate contains unrecognized keys.
+func matchingRows(snapshot SnapshotContext, filters ...map[string]any) ([]routeRow, error) {
 	var out []routeRow
 	for _, rib := range RIBs(snapshot.Network) {
 		for _, route := range rib.Routes {
-			if matchAllWhere(route, rib, filters...) {
+			ok, err := matchAllWhere(route, rib, filters...)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				out = append(out, routeRow{rib: rib, route: route})
 			}
 		}
 	}
-	return out
+	return out, nil
 }
 
 // matchAllWhere checks that a route satisfies all given where predicates (AND).
-func matchAllWhere(route observation.RIBRoute, rib observation.RIB, filters ...map[string]any) bool {
+// Returns an error if any where predicate contains unrecognized keys.
+func matchAllWhere(route observation.RIBRoute, rib observation.RIB, filters ...map[string]any) (bool, error) {
 	for _, f := range filters {
 		if len(f) > 0 {
-			if !matchWhere(route, rib, f) {
-				return false
+			ok, err := matchWhere(route, rib, f)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
 			}
 		}
 	}
-	return true
+	return true, nil
+}
+
+// validWhereKeys contains all recognized keys for RCL where predicates.
+var validWhereKeys = map[string]bool{
+	"prefix": true, "device": true, "node": true, "vrf": true,
+	"protocol": true, "not": true, "and": true, "or": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
-// Supported keys: prefix, device, node, vrf, protocol, not.
+// Supported keys: prefix, device, node, vrf, protocol, not, and, or.
 // Multiple keys are ANDed together. The "not" key contains a nested predicate
-// that is negated.
-func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[string]any) bool {
+// that is negated. Returns an error for unrecognized keys.
+func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[string]any) (bool, error) {
 	if len(where) == 0 {
-		return true
-	}
-
-	matchPrefix := func(v string) bool {
-		return matchesPrefix(route.Common.Prefix, v)
+		return true, nil
 	}
 
 	for key, raw := range where {
-		switch strings.ToLower(key) {
+		lkey := strings.ToLower(key)
+		if !validWhereKeys[lkey] {
+			return false, fmt.Errorf("unrecognized where key %q", key)
+		}
+
+		switch lkey {
 		case "prefix":
 			val, ok := raw.(string)
 			if !ok {
 				continue
 			}
-			if !matchPrefix(val) {
-				return false
+			if !matchesPrefix(route.Common.Prefix, val) {
+				return false, nil
 			}
 
 		case "device", "node":
@@ -707,7 +742,7 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				continue
 			}
 			if string(rib.Node) != val {
-				return false
+				return false, nil
 			}
 
 		case "vrf":
@@ -716,7 +751,7 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				continue
 			}
 			if string(rib.VRF) != val {
-				return false
+				return false, nil
 			}
 
 		case "protocol":
@@ -725,7 +760,7 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				continue
 			}
 			if string(route.Common.Protocol) != val {
-				return false
+				return false, nil
 			}
 
 		case "not":
@@ -733,8 +768,12 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			if !ok {
 				continue
 			}
-			if matchWhere(route, rib, inner) {
-				return false // negate
+			innerOk, err := matchWhere(route, rib, inner)
+			if err != nil {
+				return false, err
+			}
+			if innerOk {
+				return false, nil // negate
 			}
 
 		case "and":
@@ -745,10 +784,14 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			for _, c := range conds {
 				inner, ok := c.(map[string]any)
 				if !ok {
-					return false
+					return false, nil
 				}
-				if !matchWhere(route, rib, inner) {
-					return false
+				innerOk, err := matchWhere(route, rib, inner)
+				if err != nil {
+					return false, err
+				}
+				if !innerOk {
+					return false, nil
 				}
 			}
 
@@ -763,20 +806,21 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				if !ok {
 					continue
 				}
-				if matchWhere(route, rib, inner) {
+				innerOk, err := matchWhere(route, rib, inner)
+				if err != nil {
+					return false, err
+				}
+				if innerOk {
 					anyMatch = true
 					break
 				}
 			}
 			if !anyMatch {
-				return false
+				return false, nil
 			}
-
-		default:
-			// Unknown keys are ignored for forward compatibility
 		}
 	}
-	return true
+	return true, nil
 }
 
 // matchesPrefix checks if the route prefix is within or equal to the given
