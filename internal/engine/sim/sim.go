@@ -74,10 +74,10 @@ func And(cs ...Cond) Cond { return failure.And(cs...) }
 func Or(cs ...Cond) Cond  { return failure.Or(cs...) }
 func Not(c Cond) Cond     { return failure.Not(c) }
 
-func NewGraph(topo *model.Topology, opts ...GraphOption) *Graph {
+func NewGraph(topo *model.Topology, opts ...GraphOption) (*Graph, error) {
 	idx, err := model.BuildTopologyIndex(topo)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	g := &Graph{
 		topo:      topo,
@@ -90,9 +90,11 @@ func NewGraph(topo *model.Topology, opts ...GraphOption) *Graph {
 			opt(g)
 		}
 	}
-	controlplane.NewEngine(idx, g.rib).Simulate()
+	if err := controlplane.NewEngine(idx, g.rib).Simulate(); err != nil {
+		return nil, err
+	}
 	dataplane.NewEngine(idx, g.rib, g.fib).DeriveFIB()
-	return g
+	return g, nil
 }
 
 func (g *Graph) RIB(node model.NodeID, prefix model.Prefix) []RIBEntry {

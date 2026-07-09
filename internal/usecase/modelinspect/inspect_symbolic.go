@@ -18,7 +18,10 @@ func InspectPrefixClasses(req Request) (PrefixClassesResult, error) {
 	if err != nil {
 		return PrefixClassesResult{}, err
 	}
-	graph := sim.NewGraph(topo)
+	graph, err := sim.NewGraph(topo)
+	if err != nil {
+		return PrefixClassesResult{}, err
+	}
 	var filter model.PrefixSet
 	var request []model.PrefixPredicate
 	if req.Prefix != "" {

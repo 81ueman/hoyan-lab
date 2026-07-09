@@ -29,7 +29,11 @@ func NewSimulatorWithGraphOptions(topo *model.Topology, graphOpts ...sim.GraphOp
 	if err != nil {
 		return Simulator{}, err
 	}
-	return Simulator{idx: idx, graph: sim.NewGraph(topo, graphOpts...), failures: sim.NoFailures()}, nil
+	g, err := sim.NewGraph(topo, graphOpts...)
+	if err != nil {
+		return Simulator{}, err
+	}
+	return Simulator{idx: idx, graph: g, failures: sim.NoFailures()}, nil
 }
 
 func (s Simulator) Graph() *sim.Graph {

@@ -283,7 +283,9 @@ func TestOSPFProcessesStaySeparatedByVRF(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	rib := domainroute.RIBTable{}
-	NewEngine(idx, rib).Simulate()
+	if err := NewEngine(idx, rib).Simulate(); err != nil {
+		t.Fatalf("Simulate() error = %v", err)
+	}
 	if routes := rib["r1"]["tenant-a"][model.MustPrefix("10.10.0.1/32")]; len(routes) == 0 || routes[0].Normalize().SourceKind != model.RouteSourceOSPF {
 		t.Fatalf("r1 tenant-a route to 10.10.0.1/32 = %#v, want OSPF", routes)
 	}
@@ -390,7 +392,9 @@ func TestOSPFAlternateSelectedUnderPrimaryLinkFailure(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	rib := domainroute.RIBTable{}
-	NewEngine(idx, rib).Simulate()
+	if err := NewEngine(idx, rib).Simulate(); err != nil {
+		t.Fatalf("Simulate() error = %v", err)
+	}
 
 	routes := rib["r1"][model.NetworkInstanceDefault][model.MustPrefix("10.255.6.6/32")]
 	if len(routes) < 2 {
@@ -445,7 +449,9 @@ func simulateOSPFTestRIB(t *testing.T, topo *model.Topology) map[model.NodeID]ma
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	rib := domainroute.RIBTable{}
-	NewEngine(idx, rib).Simulate()
+	if err := NewEngine(idx, rib).Simulate(); err != nil {
+		t.Fatalf("Simulate() error = %v", err)
+	}
 	out := map[model.NodeID]map[model.Prefix][]domainroute.RIBEntry{}
 	for node, byVRF := range rib {
 		out[node] = byVRF[model.NetworkInstanceDefault]
@@ -460,7 +466,9 @@ func TestOSPFSPFScalesWithDenseTopology(t *testing.T) {
 		t.Fatalf("BuildTopologyIndex() error = %v", err)
 	}
 	rib := domainroute.RIBTable{}
-	NewEngine(idx, rib).Simulate()
+	if err := NewEngine(idx, rib).Simulate(); err != nil {
+		t.Fatalf("Simulate() error = %v", err)
+	}
 	routes := rib["r1"][model.NetworkInstanceDefault][model.MustPrefix("10.255.12.12/32")]
 	if len(routes) == 0 {
 		t.Fatalf("r1 routes to r12 loopback missing")

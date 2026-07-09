@@ -26,7 +26,7 @@ func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable) *Engine {
 	return &Engine{idx: idx, rib: rib}
 }
 
-func (e *Engine) Simulate() {
+func (e *Engine) Simulate() error {
 	// ── Phase 1: Connected, static, and other non-BGP route installation ──
 	for _, origin := range e.idx.Topology.Nodes {
 		for _, route := range e.connectedRoutes(origin) {
@@ -85,7 +85,9 @@ func (e *Engine) Simulate() {
 	e.installOSPFRoutes()
 
 	// ── Phase 4: Initial route selection and condition convergence ──
-	e.selectAndConverge()
+	if err := e.selectAndConverge(); err != nil {
+		return err
+	}
 
 	// ── Phase 5: Aggregate route installation and BGP propagation ──
 	for _, origin := range e.idx.Topology.Nodes {
@@ -96,7 +98,7 @@ func (e *Engine) Simulate() {
 	}
 
 	// ── Phase 6: Final route selection and convergence ──
-	e.selectAndConverge()
+	return e.selectAndConverge()
 }
 
 func bgpEnabled(node model.Node) bool {
@@ -397,18 +399,18 @@ func (e *Engine) ApplyAdvertisementConditions() bool {
 	return changed
 }
 
-func (e *Engine) ConvergeAdvertisementConditions() {
+func (e *Engine) ConvergeAdvertisementConditions() error {
 	maxIterations := e.MaxRouteDepth() + 1
 	if maxIterations < 1 {
 		maxIterations = 1
 	}
 	for i := 0; i < maxIterations; i++ {
 		if !e.ApplyAdvertisementConditions() {
-			return
+			return nil
 		}
 		e.SelectRoutes()
 	}
-	panic(fmt.Sprintf("advertisement conditions did not converge within %d iterations", maxIterations))
+	return fmt.Errorf("advertisement conditions did not converge within %d iterations", maxIterations)
 }
 
 func (e *Engine) MaxRouteDepth() int {
@@ -564,7 +566,7 @@ func normalizeConfiguredRoute(route *model.ConfiguredRoute, nodeName string) {
 	}
 }
 
-func (e *Engine) selectAndConverge() {
+func (e *Engine) selectAndConverge() error {
 	e.SelectRoutes()
-	e.ConvergeAdvertisementConditions()
+	return e.ConvergeAdvertisementConditions()
 }
