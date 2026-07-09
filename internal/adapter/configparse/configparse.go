@@ -637,7 +637,7 @@ func parseFRRLike(dialect frrLikeDialect, path, text string, collectWarnings boo
 				AFI:             model.AFIIPv4,
 				Prefix:          prefix,
 				Kind:            model.RouteSourceBGP,
-				AdminDistance:   200,
+				AdminDistance:   model.AdminDistanceBGP,
 				Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: line},
 			})
 		case inBGP && inAF && len(fields) >= 2 && fields[0] == "aggregate-address":
