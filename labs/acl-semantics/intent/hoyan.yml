@@ -1,0 +1,83 @@
+version: hoyan/v1
+
+vars:
+  service_ip: 10.4.1.10
+  service_prefix: 10.4.0.0/16
+  customers: [cust-bj, cust-sh, cust-gz]
+  edges: [bj-edge1, sh-edge1, gz-edge1]
+
+snapshots:
+  current:
+    lab: labs/acl-semantics
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # Service prefix is visible on edge routers via BGP
+  - name: service-prefix-visible-on-edges
+    scenario: normal
+    forall:
+      edge: ${edges}
+    rcl:
+      rib_eval:
+        where:
+          device: ${edge}
+          prefix: ${service_prefix}
+        aggregate: count()
+        gte: 1
+
+  # HTTP (port 80) to service IP is denied by ACL on core routers
+  - name: customers-http-denied
+    scenario: normal
+    forall:
+      src: ${customers}
+    rcl:
+      packet_reachable:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 80
+        expect: false
+
+  # HTTPS (port 443) to service IP is allowed through ACL
+  - name: customers-https-allowed
+    scenario: normal
+    forall:
+      src: ${customers}
+    rcl:
+      packet_reachable:
+        from: ${src}
+        to: ${service_ip}
+        protocol: tcp
+        dst_port: 443
+        expect: true
+
+  # All customers have BGP routes to service prefix (ACL doesn't affect RIB)
+  - name: customers-see-service-prefix
+    scenario: normal
+    forall:
+      src: ${customers}
+    rcl:
+      rib_eval:
+        where:
+          device: ${src}
+          prefix: ${service_prefix}
+          protocol: bgp
+        aggregate: count()
+        gte: 1
+
+  # BGP routes exist on all edge routers (ACLs only affect forwarding, not routing)
+  - name: bgp-routes-on-all-edges
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [bj-edge1, sh-edge1, gz-edge1, hz-edge1]
+        intent:
+          rib_eval:
+            where:
+              protocol: bgp
+            aggregate: count()
+            gte: 1
