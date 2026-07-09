@@ -10,11 +10,11 @@ scenarios:
 
 intents:
   - name: missing-prefix-on-bj-edge1
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: bj-edge1
-        prefix: 203.0.113.0/24
-    assert:
-      exists: true
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+          prefix: 203.0.113.0/24
+        aggregate: count()
+        gte: 1

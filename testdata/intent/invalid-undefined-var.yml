@@ -10,10 +10,10 @@ scenarios:
 
 intents:
   - name: undefined-var
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: ${missing_device}
-    assert:
-      exists: true
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: ${missing_device}
+        aggregate: count()
+        gte: 1
