@@ -1,3 +1,8 @@
+// Package intent provides the intent DSL expansion engine.
+//
+// Expand resolves ${var} variable references using document-level Vars
+// and forall variable bindings, then expands forall clauses into their
+// cartesian product of concrete intents.
 package intent
 
 import (
@@ -298,8 +303,13 @@ func singleVarRef(raw any) (string, bool) {
 	return m[1], true
 }
 
-// refsInAny collects all variable references found recursively in v.
+// refsInAny collects all ${var} references found recursively in v.
 // It handles string, map[string]any, and []any types.
+//
+// This function is a building block for validation and analysis passes
+// that need to discover all variable dependencies in a subtree.
+// It is ported from the legacy intent engine per the spec requirement and
+// will be wired into RCLExpr-level validation in a follow-up task.
 func refsInAny(v any) []string {
 	var refs []string
 	switch x := v.(type) {
