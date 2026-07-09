@@ -47,7 +47,7 @@ func (e *Engine) Simulate() {
 				originCond := failure.NodeVar(origin.Name)
 				route := domainroute.RIBEntry{
 					NLRI:        domainroute.NLRI{Prefix: prefix},
-					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
+					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: model.DefaultLocalPreference},
 					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
 					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: model.AdminDistanceBGP},
@@ -65,7 +65,7 @@ func (e *Engine) Simulate() {
 				originCond := failure.NodeVar(origin.Name)
 				route := domainroute.RIBEntry{
 					NLRI:        domainroute.NLRI{Prefix: network.Prefix},
-					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
+					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: model.DefaultLocalPreference},
 					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
 					RouteSource: network,
@@ -190,7 +190,7 @@ func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.Config
 	cond := failure.NodeVar(node.Name)
 	entry := domainroute.RIBEntry{
 		NLRI:       domainroute.NLRI{Prefix: route.Prefix},
-		Attrs:      domainroute.BGPAttributes{OriginCode: model.BGPOriginIncomplete, LocalPref: 100},
+		Attrs:      domainroute.BGPAttributes{OriginCode: model.BGPOriginIncomplete, LocalPref: model.DefaultLocalPreference},
 		Provenance: domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 		SourceKind: model.RouteSourceBGP,
 		RouteSource: model.ConfiguredRoute{
@@ -224,7 +224,7 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 		}
 		entry := domainroute.RIBEntry{
 			NLRI:                  domainroute.NLRI{Prefix: route.Prefix},
-			Attrs:                 domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
+			Attrs:                 domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: model.DefaultLocalPreference},
 			Provenance:            domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 			SourceKind:            model.RouteSourceAggregate,
 			RouteSource:           route,
