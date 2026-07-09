@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"container/heap"
 	"sort"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
@@ -26,45 +27,179 @@ func (e *Engine) ospfCandidatePathsAnyArea(src string, states map[string]map[str
 }
 
 func (e *Engine) ospfCandidatePathsWithArea(src string, states map[string]map[string]InterfaceState, allowed AdjacencyFilter) map[string][]Path {
-	out := map[string][]Path{}
-	for _, firstHop := range e.ospfAdjacencies(src, states, allowed) {
-		spf := ShortestPathTree(e.idx.Topology.Nodes, firstHop.To, src, func(from string) []Adjacency {
-			return e.ospfAdjacencies(from, states, allowed)
-		})
-		condMemo := map[string]failure.Cond{}
-		for dst, state := range spf {
-			if dst == firstHop.To {
-				path := Path{
-					Cost:  firstHop.Cost,
-					Nodes: []string{src, firstHop.To},
-					Links: []string{firstHop.Link},
-					Areas: []string{firstHop.Area},
-					Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), failure.NodeVar(firstHop.To)),
-				}
-				out[dst] = append(out[dst], path)
-				continue
-			}
-			if state.Cost == UnreachableCost {
-				continue
-			}
-			nodes, links, areas, ok := RepresentativePath(firstHop.To, dst, spf)
-			if !ok {
-				continue
-			}
-			path := Path{
-				Cost:  firstHop.Cost + state.Cost,
-				Nodes: append([]string{src}, nodes...),
-				Links: append([]string{firstHop.Link}, links...),
-				Areas: append([]string{firstHop.Area}, areas...),
-				Cond:  failure.And(failure.NodeVar(src), failure.LinkVar(firstHop.Link), SPFCondition(firstHop.To, dst, spf, condMemo)),
-			}
-			out[dst] = append(out[dst], path)
+	return e.ospfCandidatePathsBounded(src, states, allowed)
+}
+
+// pathQueueItem represents a partial path in the bounded enumeration queue.
+type pathQueueItem struct {
+	Cost  int
+	Nodes []string
+	Links []string
+	Areas []string
+	Last  string
+}
+
+type pathQueue []pathQueueItem
+
+func (q pathQueue) Len() int { return len(q) }
+
+func (q pathQueue) Less(i, j int) bool {
+	if q[i].Cost != q[j].Cost {
+		return q[i].Cost < q[j].Cost
+	}
+	// Deterministic tie-breaking: prefer shorter paths, then lexicographic node order
+	if len(q[i].Nodes) != len(q[j].Nodes) {
+		return len(q[i].Nodes) < len(q[j].Nodes)
+	}
+	for k := 0; k < len(q[i].Nodes) && k < len(q[j].Nodes); k++ {
+		if q[i].Nodes[k] != q[j].Nodes[k] {
+			return q[i].Nodes[k] < q[j].Nodes[k]
 		}
 	}
-	for node, paths := range out {
-		SortPaths(paths)
-		out[node] = paths
+	return len(q[i].Nodes) < len(q[j].Nodes)
+}
+
+func (q pathQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+func (q *pathQueue) Push(x any)   { *q = append(*q, x.(pathQueueItem)) }
+func (q *pathQueue) Pop() any {
+	old := *q
+	n := len(old)
+	item := old[n-1]
+	*q = old[:n-1]
+	return item
+}
+
+// frontierEntry tracks a non-dominated path prefix reaching a node.
+type frontierEntry struct {
+	cost    int
+	visited map[string]bool
+}
+
+// frontierDominates reports whether a dominates b.
+// a dominates b if it is cheaper-or-equal AND its visited-node set is a subset.
+// Any extension from b is also possible from a at lower-or-equal cost,
+// so b can be safely pruned without missing any destination candidate.
+func frontierDominates(a, b frontierEntry) bool {
+	if a.cost > b.cost {
+		return false
 	}
+	for k := range a.visited {
+		if !b.visited[k] {
+			return false
+		}
+	}
+	return true
+}
+
+// ospfCandidatePathsBounded enumerates simple paths in increasing OSPF cost order
+// bounded by MaxPathsPerDestination per destination. It uses a priority-queue
+// approach to find multiple paths (not just the SPF shortest) including
+// same-first-hop higher-cost alternates.
+func (e *Engine) ospfCandidatePathsBounded(src string, states map[string]map[string]InterfaceState, allowed AdjacencyFilter) map[string][]Path {
+	out := map[string][]Path{}
+	found := map[string]int{}                // paths recorded per destination
+	frontier := map[string][]frontierEntry{} // per-node dominating frontier
+	maxHops := len(e.idx.Topology.Nodes)
+
+	q := &pathQueue{}
+	heap.Init(q)
+
+	// Seed with first-hop adjacencies
+	for _, adj := range e.ospfAdjacencies(src, states, allowed) {
+		heap.Push(q, pathQueueItem{
+			Cost:  adj.Cost,
+			Nodes: []string{src, adj.To},
+			Links: []string{adj.Link},
+			Areas: []string{adj.Area},
+			Last:  adj.To,
+		})
+	}
+
+	for q.Len() > 0 {
+		item := heap.Pop(q).(pathQueueItem)
+		dst := item.Last
+
+		// Record path to this destination if we haven't reached the cap
+		if found[dst] < MaxPathsPerDestination {
+			path := Path{
+				Cost:  item.Cost,
+				Nodes: item.Nodes,
+				Links: item.Links,
+				Areas: item.Areas,
+				Cond:  failure.And(PathCondition(Path{Nodes: item.Nodes, Links: item.Links})...),
+			}
+			out[dst] = append(out[dst], path)
+			found[dst]++
+		}
+
+		if len(item.Nodes) >= maxHops {
+			continue
+		}
+
+		// Build visited set for domination check
+		visitedSet := make(map[string]bool, len(item.Nodes))
+		for _, n := range item.Nodes {
+			visitedSet[n] = true
+		}
+		curr := frontierEntry{cost: item.Cost, visited: visitedSet}
+
+		// Check if this path is dominated: a cheaper-or-equal path with
+		// a subset of visited nodes already exists for this transit node.
+		// Such a path can reach every destination this one can, at lower cost.
+		dominated := false
+		for _, existing := range frontier[dst] {
+			if frontierDominates(existing, curr) {
+				dominated = true
+				break
+			}
+		}
+		if dominated {
+			continue
+		}
+
+		// Add to frontier; remove any entries now dominated by this one.
+		newFrontier := []frontierEntry{curr}
+		for _, existing := range frontier[dst] {
+			if !frontierDominates(curr, existing) {
+				newFrontier = append(newFrontier, existing)
+			}
+		}
+		frontier[dst] = newFrontier
+
+		// Expand from the last node
+		for _, adj := range e.ospfAdjacencies(item.Last, states, allowed) {
+			// Skip already-visited nodes (loop prevention)
+			if visitedSet[adj.To] {
+				continue
+			}
+
+			newNodes := make([]string, len(item.Nodes)+1)
+			copy(newNodes, item.Nodes)
+			newNodes[len(item.Nodes)] = adj.To
+
+			newLinks := make([]string, len(item.Links)+1)
+			copy(newLinks, item.Links)
+			newLinks[len(item.Links)] = adj.Link
+
+			newAreas := make([]string, len(item.Areas)+1)
+			copy(newAreas, item.Areas)
+			newAreas[len(item.Areas)] = adj.Area
+
+			heap.Push(q, pathQueueItem{
+				Cost:  item.Cost + adj.Cost,
+				Nodes: newNodes,
+				Links: newLinks,
+				Areas: newAreas,
+				Last:  adj.To,
+			})
+		}
+	}
+
+	// Sort paths per destination
+	for _, paths := range out {
+		SortPaths(paths)
+	}
+
 	return out
 }
 
