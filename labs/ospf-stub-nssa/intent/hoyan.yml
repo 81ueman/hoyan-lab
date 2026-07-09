@@ -1,5 +1,13 @@
 version: hoyan/v1
 
+# Model limitation: NSSA type7 routes are not exposed separately in the RIB.
+# The model translates type7 to type5 at the ABR, so NSSA externals appear
+# as external_type_2 on r2 (ABR) and r1 (area 0), but not as a distinct
+# nssa_external_* route type on r4. Only 4 ospf_route_type values exist:
+# intra_area, inter_area, external_type_2, and empty (default routes).
+# The nssa-external-route-reaches-area0 intent verifies the translated
+# type5 reaches area 0, which is the observable effect of NSSA type7.
+
 snapshots:
   current:
     lab: labs/ospf-stub-nssa
