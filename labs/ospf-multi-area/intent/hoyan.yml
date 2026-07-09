@@ -1,0 +1,72 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/ospf-multi-area
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # Both intra_area and inter_area routes exist (multi-area topology)
+  - name: both-route-types-exist
+    scenario: normal
+    rcl:
+      and:
+        - guard:
+            where:
+              protocol: ospf
+              route_type: intra_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
+        - guard:
+            where:
+              protocol: ospf
+              route_type: inter_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
+
+  # inter_area routes exist (cross-area routing)
+  - name: inter-area-routes-exist
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          protocol: ospf
+          route_type: inter_area
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # ABRs (r2, r3) have both intra_area and inter_area OSPF routes
+  # Uses RCL forall with device var so the row filter binds device=abr-name
+  - name: abrs-have-both-route-types
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [r2, r3]
+        intent:
+          and:
+            - guard:
+                where:
+                  protocol: ospf
+                  route_type: intra_area
+                intent:
+                  rib_eval:
+                    aggregate: count()
+                    gte: 1
+            - guard:
+                where:
+                  protocol: ospf
+                  route_type: inter_area
+                intent:
+                  rib_eval:
+                    aggregate: count()
+                    gte: 1

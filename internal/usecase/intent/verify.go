@@ -585,7 +585,8 @@ func distinctFieldValues(rows []routeRow, field string) []any {
 
 // routeFieldValue extracts a field value from a RIB route for aggregation.
 // Supported fields: nexthop, local_pref, localPref, protocol, as_path, asPath,
-// metric, preference, eligible, best, device, node, vrf.
+// metric, preference, eligible, best, device, node, vrf,
+// route_type, area, cost.
 func routeFieldValue(route observation.RIBRoute, field string) any {
 	switch strings.ToLower(field) {
 	case "nexthop", "next_hop":
@@ -618,6 +619,21 @@ func routeFieldValue(route observation.RIBRoute, field string) any {
 	case "weight":
 		if route.BGP != nil && len(route.BGP.Paths) > 0 {
 			return route.BGP.Paths[0].Weight
+		}
+		return 0
+	case "route_type":
+		if route.OSPF != nil {
+			return string(route.OSPF.RouteType)
+		}
+		return ""
+	case "area":
+		if route.OSPF != nil {
+			return route.OSPF.Area
+		}
+		return ""
+	case "cost":
+		if route.OSPF != nil && len(route.OSPF.Paths) > 0 {
+			return route.OSPF.Paths[0].Cost
 		}
 		return 0
 	default:
@@ -733,6 +749,7 @@ var validWhereKeys = map[string]bool{
 	"device_in": true, "selected": true,
 	"communities": true, "as_path": true, "weight": true, "connected_class": true,
 	"contains": true, "matches": true, "imply": true, "prefix_within": true,
+	"route_type": true, "area": true, "cost": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
