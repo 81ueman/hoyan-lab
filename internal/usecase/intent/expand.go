@@ -35,7 +35,10 @@ func Expand(doc *Document) (*ExpandedDocument, error) {
 // one expanded intent per combination, with variable substitution applied.
 func expandIntent(in Intent, vars map[string]any) ([]Intent, error) {
 	if len(in.Forall) == 0 {
-		out := substituteIntent(in, vars, nil)
+		out, err := substituteIntent(in, vars, nil)
+		if err != nil {
+			return nil, err
+		}
 		out.Forall = nil
 		return []Intent{out}, nil
 	}
@@ -59,7 +62,10 @@ func expandIntent(in Intent, vars map[string]any) ([]Intent, error) {
 	}
 	out := make([]Intent, 0, len(groups))
 	for _, group := range groups {
-		expanded := substituteIntent(in, vars, group)
+		expanded, err := substituteIntent(in, vars, group)
+		if err != nil {
+			return nil, err
+		}
 		expanded.Forall = nil
 		expanded.Group = map[string]any{}
 		parts := make([]string, 0, len(keys))
@@ -75,21 +81,16 @@ func expandIntent(in Intent, vars map[string]any) ([]Intent, error) {
 
 // substituteIntent creates a copy of the intent with all variable references
 // resolved. The group parameter carries forall variable bindings (may be nil).
-func substituteIntent(in Intent, vars map[string]any, group map[string]string) Intent {
+func substituteIntent(in Intent, vars map[string]any, group map[string]string) (Intent, error) {
+	rcl, err := expandRCLExpr(in.RCL, vars, group)
+	if err != nil {
+		return Intent{}, err
+	}
 	return Intent{
-		Name: in.Name,
-		RCL:  expandRCLExprPtr(in.RCL, vars, group),
-	}
-}
-
-// expandRCLExprPtr is a convenience wrapper that calls expandRCLExpr
-// and discards errors (inline expansion never fails with the current implementation).
-func expandRCLExprPtr(expr *RCLExpr, vars map[string]any, group map[string]string) *RCLExpr {
-	if expr == nil {
-		return nil
-	}
-	expanded, _ := expandRCLExpr(expr, vars, group)
-	return expanded
+		Name:     in.Name,
+		Scenario: in.Scenario,
+		RCL:      rcl,
+	}, nil
 }
 
 // expandRCLExpr recursively expands variable references in all fields of an RCLExpr.
@@ -101,32 +102,57 @@ func expandRCLExpr(expr *RCLExpr, vars map[string]any, group map[string]string) 
 	out := &RCLExpr{}
 	switch {
 	case expr.Guard != nil:
+		subIntent, err := expandRCLExpr(&expr.Guard.Intent, vars, group)
+		if err != nil {
+			return nil, err
+		}
 		out.Guard = &GuardExpr{
 			Where:  substituteMap(expr.Guard.Where, vars, group),
-			Intent: *expandRCLExprPtr(&expr.Guard.Intent, vars, group),
+			Intent: *subIntent,
 		}
 	case expr.Forall != nil:
+		subIntent, err := expandRCLExpr(&expr.Forall.Intent, vars, group)
+		if err != nil {
+			return nil, err
+		}
 		out.Forall = &ForallExpr{
 			Var:    substituteString(expr.Forall.Var, vars, group),
 			In:     substituteStringSlice(expr.Forall.In, vars, group),
-			Intent: *expandRCLExprPtr(&expr.Forall.Intent, vars, group),
+			Intent: *subIntent,
 		}
 	case len(expr.And) > 0:
 		out.And = make([]RCLExpr, len(expr.And))
 		for i := range expr.And {
-			out.And[i] = *expandRCLExprPtr(&expr.And[i], vars, group)
+			expanded, err := expandRCLExpr(&expr.And[i], vars, group)
+			if err != nil {
+				return nil, err
+			}
+			out.And[i] = *expanded
 		}
 	case len(expr.Or) > 0:
 		out.Or = make([]RCLExpr, len(expr.Or))
 		for i := range expr.Or {
-			out.Or[i] = *expandRCLExprPtr(&expr.Or[i], vars, group)
+			expanded, err := expandRCLExpr(&expr.Or[i], vars, group)
+			if err != nil {
+				return nil, err
+			}
+			out.Or[i] = *expanded
 		}
 	case expr.Not != nil:
-		out.Not = expandRCLExprPtr(expr.Not, vars, group)
+		var err error
+		out.Not, err = expandRCLExpr(expr.Not, vars, group)
+		if err != nil {
+			return nil, err
+		}
 	case expr.Imply[0] != nil || expr.Imply[1] != nil:
-		out.Imply = [2]*RCLExpr{
-			expandRCLExprPtr(expr.Imply[0], vars, group),
-			expandRCLExprPtr(expr.Imply[1], vars, group),
+		var err error
+		out.Imply[0], err = expandRCLExpr(expr.Imply[0], vars, group)
+		if err != nil {
+			return nil, err
+		}
+		out.Imply[1], err = expandRCLExpr(expr.Imply[1], vars, group)
+		if err != nil {
+			return nil, err
 		}
 	case expr.RIBEq != nil:
 		out.RIBEq = &RIBEqExpr{
