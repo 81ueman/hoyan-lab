@@ -116,6 +116,7 @@ func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 				return err
 			}
 		}
+		return nil
 
 	case len(expr.Or) > 0:
 		if len(expr.Or) < 2 {
@@ -126,13 +127,15 @@ func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 				return err
 			}
 		}
+		return nil
 
 	case expr.Not != nil:
 		if err := validateRCLExpr(expr.Not, path+".not", doc); err != nil {
 			return err
 		}
+		return nil
 
-	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+	case expr.Imply != [2]*RCLExpr{}: // YAML populates Imply as a 2-element array; zero-value check detects "set or not"
 		if expr.Imply[0] == nil || expr.Imply[1] == nil {
 			return fmt.Errorf("%s.imply: must have exactly 2 sub-expressions", path)
 		}
@@ -142,6 +145,7 @@ func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 		if err := validateRCLExpr(expr.Imply[1], path+".imply[1]", doc); err != nil {
 			return err
 		}
+		return nil
 
 	case expr.RIBEq != nil:
 		return validateRIBEqExpr(expr.RIBEq, path+".rib_eq", doc)
@@ -155,7 +159,6 @@ func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 	default:
 		return fmt.Errorf("%s: empty expression (no fields set)", path)
 	}
-	return nil
 }
 
 func validateGuardExpr(g *GuardExpr, path string, doc *Document) error {
@@ -323,7 +326,7 @@ func collectRefsInRCLExpr(expr *RCLExpr) []string {
 		}
 	case expr.Not != nil:
 		refs = append(refs, collectRefsInRCLExpr(expr.Not)...)
-	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+	case expr.Imply != [2]*RCLExpr{}: // zero-value check: if Imply field was set in YAML
 		if expr.Imply[0] != nil {
 			refs = append(refs, collectRefsInRCLExpr(expr.Imply[0])...)
 		}
