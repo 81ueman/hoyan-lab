@@ -21,7 +21,6 @@ func (p *frrLikeParser) handleRouterOSPF(fields []string) error {
 	return nil
 }
 
-
 func (p *frrLikeParser) handleInterfaceOSPF(fields []string, line, raw string, lineNo int) error {
 	if !p.dialect.SupportsOSPFConfig() || p.currentInterface == "" || len(fields) < 3 {
 		return nil

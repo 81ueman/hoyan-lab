@@ -328,4 +328,3 @@ func (p *frrLikeParser) handleStaticRoute(fields []string, raw string, lineNo in
 	p.cfg.Routes = append(p.cfg.Routes, route)
 	return nil
 }
-

@@ -27,7 +27,6 @@ func (p *frrLikeParser) handleRouterBGP(fields []string, raw string, lineNo int)
 	return nil
 }
 
-
 func (p *frrLikeParser) handleBGP(fields []string, line, raw string, lineNo int) error {
 	// bgp as-path access-list (global, outside BGP context)
 	if len(fields) >= 6 && p.dialect.SupportsBGPStringLists() && fields[1] == "as-path" && fields[2] == "access-list" && (fields[4] == "permit" || fields[4] == "deny") {
@@ -46,7 +45,6 @@ func (p *frrLikeParser) handleBGP(fields []string, line, raw string, lineNo int)
 	}
 	return nil
 }
-
 
 func (p *frrLikeParser) handleBGPCommon(fields []string) error {
 	if len(fields) >= 2 {
@@ -162,4 +160,3 @@ func (p *frrLikeParser) handleBGPRedistribute(fields []string, raw string, lineN
 	p.cfg.Redistribute = append(p.cfg.Redistribute, redist)
 	return nil
 }
-

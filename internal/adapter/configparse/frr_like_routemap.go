@@ -183,4 +183,3 @@ func (p *frrLikeParser) handleRouteMapCatchAll(line string, lineNo int) error {
 	}
 	return nil
 }
-
