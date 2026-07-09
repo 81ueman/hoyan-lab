@@ -94,6 +94,8 @@ func Validate(doc *Document) error {
 }
 
 // validateRCLExpr recursively validates an RCL expression tree.
+// Must be kept in sync with collectRefsInRCLExpr — every node type handled here
+// should also be handled there for variable reference collection.
 func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 	if expr == nil {
 		return fmt.Errorf("%s: nil expression", path)
@@ -207,7 +209,9 @@ func validateRIBEvalExpr(e *RIBEvalExpr, path string, doc *Document) error {
 		return fmt.Errorf("%s: at least one comparison operator (eq, ne, gt, gte, lt, lte) is required", path)
 	}
 
-	// Aggregate-specific type checks on comparison values
+	// Aggregate-specific type checks on comparison values.
+	// Note: Gt/Gte/Lt/Lte are *int — their type already guarantees numeric values,
+	// so only Eq and Ne need runtime type checking.
 	switch agg.Name {
 	case "count":
 		for j, v := range e.Eq {
@@ -295,6 +299,9 @@ func validateRefsRCL(path string, expr *RCLExpr, vars map[string]any, localVars 
 	return nil
 }
 
+// collectRefsInRCLExpr walks the expression tree and collects all ${var} references.
+// Must be kept in sync with validateRCLExpr — every node type handled there
+// should also be handled here so variable references are not missed.
 func collectRefsInRCLExpr(expr *RCLExpr) []string {
 	if expr == nil {
 		return nil

@@ -2,6 +2,7 @@ package intent
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -766,19 +767,8 @@ func TestValidateMultipleErrors(t *testing.T) {
 	}
 }
 
-// contains reports whether s contains substr.
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-// searchString is a simple substring search (avoiding strings.Contains for package independence).
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(s, substr)
 }
 
 func intPtr(v int) *int { return &v }
