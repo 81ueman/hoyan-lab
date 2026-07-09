@@ -65,6 +65,7 @@ var validWhereKeys = map[string]bool{
 	"contains": true, "matches": true, "imply": true, "prefix_within": true,
 	"route_type": true, "area": true, "cost": true,
 	"origin": true, "med": true, "large_communities": true,
+	"peer": true, "peer_as": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -274,6 +275,27 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				continue
 			}
 			if !prefixWithin(route.Common.Prefix, val) {
+				return false, nil
+			}
+
+		case "peer":
+			val, ok := raw.(string)
+			if !ok {
+				continue
+			}
+			if route.BGP == nil || len(route.BGP.Paths) == 0 {
+				return false, nil
+			}
+			if route.BGP.Paths[0].Peer != val {
+				return false, nil
+			}
+
+		case "peer_as":
+			want := toInt(raw)
+			if route.BGP == nil || len(route.BGP.Paths) == 0 {
+				return false, nil
+			}
+			if int(route.BGP.Paths[0].PeerAS) != want {
 				return false, nil
 			}
 
