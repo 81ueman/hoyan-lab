@@ -885,9 +885,11 @@ func containsCheck(actual any, containsVal any) bool {
 }
 
 func matchesCheck(actual any, pattern string) bool {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return false
+	re := regexp.MustCompile(pattern)
+	switch a := actual.(type) {
+	case []string:
+		return re.MatchString(strings.Join(a, " "))
+	default:
+		return re.MatchString(scalar(actual))
 	}
-	return re.MatchString(scalar(actual))
 }
