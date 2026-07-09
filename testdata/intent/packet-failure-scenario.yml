@@ -9,15 +9,16 @@ snapshots:
     lab: labs/base-wan
 
 scenarios:
-  one-core-link-failure:
+  one-link-failure:
     snapshot: current
     failures:
       max: 1
-      include_link_roles: [core]
 
 intents:
-  - name: customers-https-survives-one-core-link-failure
-    scenario: one-core-link-failure
+  # HTTPSが1本のリンク障害に耐えられるか検証
+  # → cust-hz直近のリンクが落ちると到達不能になるので fail になる
+  - name: customers-https-not-all-single-link-failures
+    scenario: one-link-failure
     forall:
       src: ${customers}
     rcl:
@@ -26,4 +27,4 @@ intents:
         to: ${service_ip}
         protocol: tcp
         dst_port: 443
-        expect: true
+        expect: false

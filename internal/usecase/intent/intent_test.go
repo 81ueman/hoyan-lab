@@ -209,11 +209,12 @@ func TestVerifyPacketFailureScenario(t *testing.T) {
 		t.Fatalf("Verify() error: %v", err)
 	}
 	// 1 forall intent × 3 customers = 3 expanded intents
+	// expect: false + max: 1 → HTTPS is NOT reachable under some single link failure
 	if report.Summary.Total != 3 {
 		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
 	}
-	if report.Summary.Passed != 3 {
-		t.Fatalf("Summary.Passed = %d, want 3 (HTTPS survives failure)", report.Summary.Passed)
+	if report.Summary.Failed != 3 {
+		t.Fatalf("Summary.Failed = %d, want 3 (some single link failure breaks HTTPS)", report.Summary.Failed)
 	}
 }
 

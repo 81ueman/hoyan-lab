@@ -34,7 +34,7 @@ func evalRCLExpr(expr *RCLExpr, snapshot SnapshotContext, rowFilter map[string]a
 	case expr.RIBEval != nil:
 		return evalRIBEval(expr.RIBEval, snapshot, rowFilter, scenario, ctx)
 	case expr.PacketReachable != nil:
-		return evalPacketReachable(expr.PacketReachable, snapshot)
+		return evalPacketReachable(expr.PacketReachable, snapshot, scenario)
 	default:
 		return "fail", Actual{Reason: "empty expression"}
 	}
