@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
@@ -254,15 +256,18 @@ type rowView struct {
 }
 
 type ribRouteView struct {
-	Device    string `json:"device"`
-	VRF       string `json:"vrf,omitempty"`
-	Prefix    string `json:"prefix"`
-	Protocol  string `json:"protocol,omitempty"`
-	NextHop   string `json:"nexthop,omitempty"`
-	LocalPref int    `json:"local_pref,omitempty"`
-	MED       int    `json:"med,omitempty"`
-	Selected  bool   `json:"selected"`
-	Installed bool   `json:"installed,omitempty"`
+	Device      string   `json:"device"`
+	VRF         string   `json:"vrf,omitempty"`
+	Prefix      string   `json:"prefix"`
+	Protocol    string   `json:"protocol,omitempty"`
+	NextHop     string   `json:"nexthop,omitempty"`
+	LocalPref   int      `json:"local_pref,omitempty"`
+	MED         int      `json:"med,omitempty"`
+	Selected    bool     `json:"selected"`
+	Installed   bool     `json:"installed,omitempty"`
+	Communities []string `json:"communities,omitempty"`
+	ASPath      string   `json:"as_path,omitempty"`
+	Weight      int      `json:"weight,omitempty"`
 }
 
 type fibEntryView struct {
@@ -316,7 +321,7 @@ func matchingRIBFacts(snapshot SnapshotContext, where map[string]any) []ribRoute
 func ribRouteViews(snapshot SnapshotContext, rib observation.RIB) []ribRouteView {
 	out := make([]ribRouteView, 0, len(rib.Routes))
 	for _, route := range rib.Routes {
-		nextHop, localPref, med := ribRouteBestPathFields(route)
+		nextHop, localPref, med, communities, asPath, weight := ribRouteBestPathFields(route)
 		out = append(out, ribRouteView{
 			Device:    string(rib.Node),
 			VRF:       string(rib.VRF),
@@ -327,27 +332,30 @@ func ribRouteViews(snapshot SnapshotContext, rib observation.RIB) []ribRouteView
 			MED:       med,
 			Selected:  route.Common.Best,
 			Installed: fibHasPrefix(FIBs(snapshot.Network), rib.Node, route.Common.Prefix),
+			Communities: communities,
+			ASPath:   asPath,
+			Weight:   weight,
 		})
 	}
 	return out
 }
 
-func ribRouteBestPathFields(route observation.RIBRoute) (string, int, int) {
+func ribRouteBestPathFields(route observation.RIBRoute) (string, int, int, []string, string, int) {
 	if route.BGP != nil {
 		for _, path := range route.BGP.Paths {
 			if path.Best {
-				return path.NextHop.Address, path.LocalPref, path.MED
+				return path.NextHop.Address, path.LocalPref, path.MED, path.Communities, asPathString(path.ASPath), path.Weight
 			}
 		}
 		if len(route.BGP.Paths) > 0 {
 			path := route.BGP.Paths[0]
-			return path.NextHop.Address, path.LocalPref, path.MED
+			return path.NextHop.Address, path.LocalPref, path.MED, path.Communities, asPathString(path.ASPath), path.Weight
 		}
 	}
 	for _, hop := range ribRouteNextHops(route) {
-		return hop.Address, 0, 0
+		return hop.Address, 0, 0, nil, "", 0
 	}
-	return "", 0, 0
+	return "", 0, 0, nil, "", 0
 }
 
 func ribRouteNextHops(route observation.RIBRoute) []observation.NextHop {
@@ -429,6 +437,12 @@ func matchRIB(row ribRouteView, where map[string]any) bool {
 			return row.Selected, true
 		case "installed":
 			return row.Installed, true
+		case "communities":
+			return row.Communities, true
+		case "as_path":
+			return row.ASPath, true
+		case "weight":
+			return row.Weight, true
 		}
 		return nil, false
 	})
@@ -503,6 +517,20 @@ func matchWhere(where map[string]any, fieldValue func(string) (any, bool)) bool 
 			actual, ok := fieldValue(key)
 			if !ok {
 				continue
+			}
+			if opMap, ok := value.(map[string]any); ok {
+				if containsVal, ok := opMap["contains"]; ok {
+					if !containsCheck(actual, containsVal) {
+						return false
+					}
+					continue
+				}
+				if matchesVal, ok := opMap["matches"]; ok {
+					if !matchesCheck(actual, scalar(matchesVal)) {
+						return false
+					}
+					continue
+				}
 			}
 			if key == "device_in" {
 				if !stringIn(scalar(actual), value) {
@@ -639,6 +667,12 @@ func rowField(row rowView, field string) any {
 			return row.RIB.Selected
 		case "installed":
 			return row.RIB.Installed
+		case "communities":
+			return row.RIB.Communities
+		case "as_path":
+			return row.RIB.ASPath
+		case "weight":
+			return row.RIB.Weight
 		}
 	}
 	if row.FIB != nil {
@@ -673,15 +707,18 @@ func summarizeRows(rows []rowView) []string {
 }
 
 type canonicalRIBRow struct {
-	Device    string `json:"device"`
-	VRF       string `json:"vrf,omitempty"`
-	Prefix    string `json:"prefix"`
-	Protocol  string `json:"protocol,omitempty"`
-	NextHop   string `json:"nexthop,omitempty"`
-	LocalPref int    `json:"local_pref,omitempty"`
-	MED       int    `json:"med,omitempty"`
-	Selected  bool   `json:"selected"`
-	Installed bool   `json:"installed,omitempty"`
+	Device      string   `json:"device"`
+	VRF         string   `json:"vrf,omitempty"`
+	Prefix      string   `json:"prefix"`
+	Protocol    string   `json:"protocol,omitempty"`
+	NextHop     string   `json:"nexthop,omitempty"`
+	LocalPref   int      `json:"local_pref,omitempty"`
+	MED         int      `json:"med,omitempty"`
+	Selected    bool     `json:"selected"`
+	Installed   bool     `json:"installed,omitempty"`
+	Communities []string `json:"communities,omitempty"`
+	ASPath      string   `json:"as_path,omitempty"`
+	Weight      int      `json:"weight,omitempty"`
 }
 
 func canonicalRIBRows(rows []ribRouteView) []canonicalRIBRow {
@@ -694,8 +731,8 @@ func canonicalRIBRows(rows []ribRouteView) []canonicalRIBRow {
 }
 
 func (row canonicalRIBRow) Key() string {
-	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%010d\x00%010d\x00%t\x00%t",
-		row.Device, row.VRF, row.Prefix, row.Protocol, row.NextHop, row.LocalPref, row.MED, row.Selected, row.Installed)
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%010d\x00%010d\x00%t\x00%t\x00%s\x00%s\x00%010d",
+		row.Device, row.VRF, row.Prefix, row.Protocol, row.NextHop, row.LocalPref, row.MED, row.Selected, row.Installed, row.ASPath, strings.Join(row.Communities, ","), row.Weight)
 }
 
 func ribDiff(left, right []canonicalRIBRow) ([]canonicalRIBRow, []canonicalRIBRow) {
@@ -820,4 +857,39 @@ func factKey(parts ...string) string {
 		key += "\x00" + part
 	}
 	return key
+}
+
+func asPathString(asPath []uint32) string {
+	parts := make([]string, 0, len(asPath))
+	for _, asn := range asPath {
+		parts = append(parts, strconv.Itoa(int(asn)))
+	}
+	return strings.Join(parts, " ")
+}
+
+func containsCheck(actual any, containsVal any) bool {
+	switch a := actual.(type) {
+	case []string:
+		want := scalar(containsVal)
+		for _, v := range a {
+			if v == want {
+				return true
+			}
+		}
+		return false
+	case string:
+		return strings.Contains(a, scalar(containsVal))
+	default:
+		return strings.Contains(scalar(a), scalar(containsVal))
+	}
+}
+
+func matchesCheck(actual any, pattern string) bool {
+	re := regexp.MustCompile(pattern)
+	switch a := actual.(type) {
+	case []string:
+		return re.MatchString(strings.Join(a, " "))
+	default:
+		return re.MatchString(scalar(actual))
+	}
 }
