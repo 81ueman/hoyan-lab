@@ -146,7 +146,7 @@ func evalRCLExpr(expr *RCLExpr, snapshot SnapshotContext, rowFilter map[string]a
 			return "fail", innerActual
 		}
 		return "pass", innerActual
-	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+	case expr.Imply != [2]*RCLExpr{}:
 		return evalImply(expr.Imply, snapshot, rowFilter, scenario, ctx)
 	case expr.RIBEq != nil:
 		return evalRIBEq(expr.RIBEq, snapshot, rowFilter, scenario, ctx)
@@ -421,7 +421,17 @@ func routesEqual(a, b observation.RIBRoute) bool {
 // ---------------------------------------------------------------------------
 
 func evalRIBEval(e *RIBEvalExpr, snapshot SnapshotContext, rowFilter map[string]any, scenario Scenario, ctx verifyContext) (string, Actual) {
-	rows := matchingRows(snapshot, e.Where, rowFilter)
+	// Resolve snapshot: use e.Snapshot if specified and different from scenario default
+	snap := snapshot
+	if e.Snapshot != "" && e.Snapshot != scenario.Snapshot {
+		var err error
+		snap, err = loadSnapshot(e.Snapshot, ctx)
+		if err != nil {
+			return "fail", Actual{Reason: fmt.Sprintf("load snapshot %q: %v", e.Snapshot, err)}
+		}
+	}
+
+	rows := matchingRows(snap, e.Where, rowFilter)
 	count := len(rows)
 
 	agg, err := ParseAggregate(e.Aggregate)
@@ -429,15 +439,11 @@ func evalRIBEval(e *RIBEvalExpr, snapshot SnapshotContext, rowFilter map[string]
 		return "fail", Actual{Reason: fmt.Sprintf("parse aggregate: %v", err)}
 	}
 
-	actual := Actual{
-		Count: count,
-	}
-
+	actual := Actual{Count: count}
 	var pass bool
 
 	switch agg.Name {
 	case "count":
-		actual.Count = count
 		pass = compareInt(e, count)
 
 	case "distCnt":
