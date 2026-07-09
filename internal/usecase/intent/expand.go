@@ -182,8 +182,9 @@ func expandRCLExpr(expr *RCLExpr, vars map[string]any, group map[string]string) 
 			Expect:   expr.PacketReachable.Expect,
 		}
 	default:
-		// No recognized field set – return the original expression unchanged.
-		return expr, nil
+		// No recognized field set – return a shallow copy to avoid pointer aliasing.
+		cpy := *expr
+		return &cpy, nil
 	}
 	return out, nil
 }
