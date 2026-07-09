@@ -109,10 +109,14 @@ func loadSnapshot(name string, ctx verifyContext) (SnapshotContext, error) {
 
 func evaluateTopLevel(in Intent, expr *RCLExpr, snapshot SnapshotContext, scenario Scenario, ctx verifyContext) Result {
 	status, actual := evalRCLExpr(expr, snapshot, nil, scenario, ctx)
+	scenarioName := in.Scenario
+	if scenarioName == "" {
+		scenarioName = "normal"
+	}
 	return Result{
 		Name:     in.Name,
 		Status:   status,
-		Scenario: scenario.Snapshot,
+		Scenario: scenarioName,
 		Snapshot: scenario.Snapshot,
 		Group:    in.Group,
 		Actual:   actual,
@@ -859,7 +863,9 @@ func toInt(v any) int {
 		return int(n)
 	case string:
 		var i int
-		fmt.Sscanf(n, "%d", &i)
+		if _, err := fmt.Sscanf(n, "%d", &i); err != nil {
+			return 0
+		}
 		return i
 	default:
 		return 0
@@ -867,7 +873,7 @@ func toInt(v any) int {
 }
 
 // combineActuals merges multiple Actuals from sub-expressions into one.
-func combineActuals(op string, actuals []Actual) Actual {
+func combineActuals(_ string, actuals []Actual) Actual {
 	if len(actuals) == 0 {
 		return Actual{Count: 0}
 	}
