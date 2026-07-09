@@ -273,6 +273,8 @@ func routeFieldValue(route observation.RIBRoute, field string) any {
 			return fmt.Sprintf("%v", route.BGP.Paths[0].ASPath)
 		}
 		return ""
+	case "as_path_len", "aspath_len":
+		return routeASPathLen(route)
 	case "metric":
 		return route.Common.Metric
 	case "preference":

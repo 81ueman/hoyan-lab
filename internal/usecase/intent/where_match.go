@@ -67,6 +67,7 @@ var validWhereKeys = map[string]bool{
 	"route_type": true, "area": true, "cost": true,
 	"origin": true, "med": true, "large_communities": true,
 	"peer": true, "peer_as": true,
+	"as_path_len": true, "aspath_len": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -237,6 +238,12 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				return false, nil
 			}
 
+		case "as_path_len", "aspath_len":
+			want := toInt(raw)
+			if routeASPathLen(route) != want {
+				return false, nil
+			}
+
 		case "weight":
 			if !valuesEqual(routeWeight(route), raw) {
 				return false, nil
@@ -378,6 +385,14 @@ func routeASPath(route observation.RIBRoute) string {
 		return fmt.Sprintf("%v", route.BGP.Paths[0].ASPath)
 	}
 	return ""
+}
+
+// routeASPathLen returns the length of the AS_PATH for a route.
+func routeASPathLen(route observation.RIBRoute) int {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return len(route.BGP.Paths[0].ASPath)
+	}
+	return 0
 }
 
 // routeWeight returns the BGP weight for a route.
