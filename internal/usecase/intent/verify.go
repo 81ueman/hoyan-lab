@@ -620,6 +620,36 @@ func routeFieldValue(route observation.RIBRoute, field string) any {
 			return route.BGP.Paths[0].Weight
 		}
 		return 0
+	case "route_type":
+		if route.OSPF != nil {
+			return string(route.OSPF.RouteType)
+		}
+		return ""
+	case "area":
+		if route.OSPF != nil {
+			return route.OSPF.Area
+		}
+		return ""
+	case "cost":
+		if route.OSPF != nil && len(route.OSPF.Paths) > 0 {
+			return route.OSPF.Paths[0].Cost
+		}
+		return 0
+	case "origin":
+		if route.BGP != nil && len(route.BGP.Paths) > 0 {
+			return string(route.BGP.Paths[0].Origin)
+		}
+		return ""
+	case "med":
+		if route.BGP != nil && len(route.BGP.Paths) > 0 {
+			return route.BGP.Paths[0].MED
+		}
+		return 0
+	case "large_communities", "largecommunities":
+		if route.BGP != nil && len(route.BGP.Paths) > 0 {
+			return route.BGP.Paths[0].LargeCommunities
+		}
+		return []string{}
 	default:
 		return fmt.Sprintf("%v", field)
 	}
@@ -733,6 +763,8 @@ var validWhereKeys = map[string]bool{
 	"device_in": true, "selected": true,
 	"communities": true, "as_path": true, "weight": true, "connected_class": true,
 	"contains": true, "matches": true, "imply": true, "prefix_within": true,
+	"route_type": true, "area": true, "cost": true,
+	"origin": true, "med": true, "large_communities": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -872,6 +904,17 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			if opMap, ok := raw.(map[string]any); ok {
 				if cv, ok := opMap["contains"]; ok {
 					if !containsCheck(routeCommunities(route), cv) {
+						return false, nil
+					}
+					continue
+				}
+			}
+			continue
+
+		case "large_communities":
+			if opMap, ok := raw.(map[string]any); ok {
+				if cv, ok := opMap["contains"]; ok {
+					if !containsCheck(routeLargeCommunities(route), cv) {
 						return false, nil
 					}
 					continue
@@ -1099,6 +1142,14 @@ func scalar(v any) string {
 // valuesEqual compares two values for equality using string representation.
 func valuesEqual(a, b any) bool {
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+}
+
+// routeLargeCommunities returns the BGP large communities for a route.
+func routeLargeCommunities(route observation.RIBRoute) []string {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return route.BGP.Paths[0].LargeCommunities
+	}
+	return nil
 }
 
 // routeCommunities returns the BGP communities for a route.
