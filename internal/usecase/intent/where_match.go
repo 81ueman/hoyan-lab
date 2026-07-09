@@ -67,7 +67,7 @@ var validWhereKeys = map[string]bool{
 	"route_type": true, "area": true, "cost": true,
 	"origin": true, "med": true, "large_communities": true,
 	"peer": true, "peer_as": true,
-	"as_path_len": true,
+	"as_path_len": true, "aspath_len": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
