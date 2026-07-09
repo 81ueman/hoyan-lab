@@ -274,65 +274,106 @@ func validatePacketReachableExpr(e *PacketReachableExpr, path string) error {
 // --- Variable reference checking ---
 
 func validateRefsRCL(path string, expr *RCLExpr, vars map[string]any, localVars map[string]bool) error {
-	refs := collectRefsInRCLExpr(expr)
-	for _, ref := range refs {
-		if localVars[ref] {
-			continue
+	if expr == nil {
+		return nil
+	}
+	switch {
+	case expr.Guard != nil:
+		refs := collectRefsInExpr(expr.Guard.Where)
+		for _, ref := range refs {
+			if err := checkVarRef(ref, vars, localVars); err != nil {
+				return fmt.Errorf("%s.guard.where: %w", path, err)
+			}
 		}
-		if _, ok := vars[ref]; !ok {
-			return fmt.Errorf("%s: undefined var %q", path, ref)
+		return validateRefsRCL(path+".guard.intent", &expr.Guard.Intent, vars, localVars)
+	case expr.Forall != nil:
+		// Forall introduces a new local variable binding
+		childLocals := copyLocalVars(localVars)
+		if expr.Forall.Var != "" {
+			childLocals[expr.Forall.Var] = true
+		}
+		return validateRefsRCL(path+".forall.intent", &expr.Forall.Intent, vars, childLocals)
+	case len(expr.And) > 0:
+		for i := range expr.And {
+			if err := validateRefsRCL(fmt.Sprintf("%s.and[%d]", path, i), &expr.And[i], vars, localVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	case len(expr.Or) > 0:
+		for i := range expr.Or {
+			if err := validateRefsRCL(fmt.Sprintf("%s.or[%d]", path, i), &expr.Or[i], vars, localVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	case expr.Not != nil:
+		return validateRefsRCL(path+".not", expr.Not, vars, localVars)
+	case expr.Imply[0] != nil || expr.Imply[1] != nil:
+		if expr.Imply[0] != nil {
+			if err := validateRefsRCL(path+".imply[0]", expr.Imply[0], vars, localVars); err != nil {
+				return err
+			}
+		}
+		if expr.Imply[1] != nil {
+			if err := validateRefsRCL(path+".imply[1]", expr.Imply[1], vars, localVars); err != nil {
+				return err
+			}
+		}
+		return nil
+	case expr.RIBEq != nil:
+		refs := collectRefsInExpr(expr.RIBEq.Where)
+		for _, ref := range refs {
+			if err := checkVarRef(ref, vars, localVars); err != nil {
+				return fmt.Errorf("%s.rib_eq.where: %w", path, err)
+			}
+		}
+	case expr.RIBEval != nil:
+		refs := collectRefsInExpr(expr.RIBEval.Where)
+		for _, ref := range refs {
+			if err := checkVarRef(ref, vars, localVars); err != nil {
+				return fmt.Errorf("%s.rib_eval.where: %w", path, err)
+			}
+		}
+	case expr.PacketReachable != nil:
+		refs := collectRefsInString(expr.PacketReachable.From)
+		refs = append(refs, collectRefsInString(expr.PacketReachable.VRF)...)
+		refs = append(refs, collectRefsInString(expr.PacketReachable.To)...)
+		for _, ref := range refs {
+			if err := checkVarRef(ref, vars, localVars); err != nil {
+				return fmt.Errorf("%s.packet_reachable: %w", path, err)
+			}
 		}
 	}
 	return nil
 }
 
-// collectRefsInRCLExpr walks the expression tree and collects all ${var} references.
-// Must be kept in sync with validateRCLExpr — every node type handled there
-// should also be handled here so variable references are not missed.
-func collectRefsInRCLExpr(expr *RCLExpr) []string {
-	if expr == nil {
+func checkVarRef(ref string, vars map[string]any, localVars map[string]bool) error {
+	if localVars[ref] {
 		return nil
 	}
-	var refs []string
-	switch {
-	case expr.Guard != nil:
-		refs = append(refs, refsInAny(expr.Guard.Where)...)
-		refs = append(refs, collectRefsInRCLExpr(&expr.Guard.Intent)...)
-	case expr.Forall != nil:
-		refs = append(refs, collectRefsInRCLExpr(&expr.Forall.Intent)...)
-	case len(expr.And) > 0:
-		for i := range expr.And {
-			refs = append(refs, collectRefsInRCLExpr(&expr.And[i])...)
-		}
-	case len(expr.Or) > 0:
-		for i := range expr.Or {
-			refs = append(refs, collectRefsInRCLExpr(&expr.Or[i])...)
-		}
-	case expr.Not != nil:
-		refs = append(refs, collectRefsInRCLExpr(expr.Not)...)
-	case expr.Imply != [2]*RCLExpr{}: // zero-value check: if Imply field was set in YAML
-		if expr.Imply[0] != nil {
-			refs = append(refs, collectRefsInRCLExpr(expr.Imply[0])...)
-		}
-		if expr.Imply[1] != nil {
-			refs = append(refs, collectRefsInRCLExpr(expr.Imply[1])...)
-		}
-	case expr.RIBEq != nil:
-		refs = append(refs, refsInAny(expr.RIBEq.Where)...)
-	case expr.RIBEval != nil:
-		refs = append(refs, refsInAny(expr.RIBEval.Where)...)
-	case expr.PacketReachable != nil:
-		refs = append(refs, refsInString(expr.PacketReachable.From)...)
-		refs = append(refs, refsInString(expr.PacketReachable.VRF)...)
-		refs = append(refs, refsInString(expr.PacketReachable.To)...)
+	if _, ok := vars[ref]; !ok {
+		return fmt.Errorf("undefined var %q", ref)
 	}
-	return refs
+	return nil
 }
 
-func refsInString(s string) []string {
+func collectRefsInExpr(raw any) []string {
+	return refsInAny(raw)
+}
+
+func collectRefsInString(s string) []string {
 	var refs []string
 	for _, m := range varRefRE.FindAllStringSubmatch(s, -1) {
 		refs = append(refs, m[1])
 	}
 	return refs
+}
+
+func copyLocalVars(orig map[string]bool) map[string]bool {
+	cpy := make(map[string]bool, len(orig)+1)
+	for k, v := range orig {
+		cpy[k] = v
+	}
+	return cpy
 }

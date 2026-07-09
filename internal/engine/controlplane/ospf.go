@@ -98,7 +98,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv Advertisement, path Path
 	}
 	entry := domainroute.RIBEntry{
 		NLRI:              domainroute.NLRI{Prefix: adv.Prefix},
-		Attrs:             domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
+		Attrs:             domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100, MED: metric},
 		Provenance:        domainroute.Provenance{OriginNode: adv.Node, FromNode: nextHop, PathNodes: path.Nodes, PathLinks: path.Links},
 		ForwardingNextHop: domainroute.NextHop{Node: nextHop, Addr: nextHopAddr},
 		SourceKind:        model.RouteSourceOSPF,
@@ -124,7 +124,7 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv Advertisement, state
 	cond := failure.NodeVar(node.Name)
 	entry := domainroute.RIBEntry{
 		NLRI:        domainroute.NLRI{Prefix: adv.Prefix},
-		Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
+		Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100, MED: adv.Cost},
 		Provenance:  domainroute.Provenance{OriginNode: node.Name, PathNodes: []string{node.Name}},
 		SourceKind:  model.RouteSourceOSPF,
 		RouteSource: route,

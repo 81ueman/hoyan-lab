@@ -585,7 +585,8 @@ func distinctFieldValues(rows []routeRow, field string) []any {
 
 // routeFieldValue extracts a field value from a RIB route for aggregation.
 // Supported fields: nexthop, local_pref, localPref, protocol, as_path, asPath,
-// metric, preference, eligible, best, device, node, vrf.
+// metric, preference, eligible, best, device, node, vrf,
+// route_type, area, cost.
 func routeFieldValue(route observation.RIBRoute, field string) any {
 	switch strings.ToLower(field) {
 	case "nexthop", "next_hop":

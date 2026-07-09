@@ -1,0 +1,12 @@
+name: bgp-ospf-igp
+description: Composite lab with BGP and OSPF. OSPF serves as IGP providing next-hop resolution for iBGP between edge routers.
+nos:
+  - frr
+checks:
+  - verify
+  - live check
+  - compare rib
+features:
+  - ospf
+  - bgp
+  - route-reachability
