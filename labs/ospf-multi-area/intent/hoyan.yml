@@ -9,8 +9,10 @@ scenarios:
     snapshot: current
 
 intents:
-  # Both intra_area and inter_area routes exist (multi-area topology)
-  - name: both-route-types-exist
+  # Both area 0 (intra_area) and area 1+ (inter_area) routes exist.
+  # Note: uses route_type instead of area because the OSPF area field
+  # is not populated by the model engine (area tracking is not implemented).
+  - name: both-areas-have-routes
     scenario: normal
     rcl:
       and:
@@ -44,9 +46,9 @@ intents:
             aggregate: count()
             gte: 1
 
-  # ABRs (r2, r3) have both intra_area and inter_area OSPF routes
-  # Uses RCL forall with device var so the row filter binds device=abr-name
-  - name: abrs-have-both-route-types
+  # ABRs (r2, r3) have both intra_area and inter_area OSPF routes.
+  # Uses RCL forall with device var so the row filter binds device=abr-name.
+  - name: abrs-have-both-areas
     scenario: normal
     rcl:
       forall:
