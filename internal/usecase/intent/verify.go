@@ -279,11 +279,11 @@ func evalAnd(exprs []RCLExpr, snapshot SnapshotContext, rowFilter map[string]any
 		status, a := evalRCLExpr(&exprs[i], snapshot, rowFilter, scenario, ctx)
 		actuals = append(actuals, a)
 		if status == "fail" {
-			return "fail", combineActuals("and", actuals)
+			return "fail", combineActuals(actuals)
 		}
 	}
 	if len(actuals) > 0 {
-		return "pass", combineActuals("and", actuals)
+		return "pass", combineActuals(actuals)
 	}
 	return "pass", Actual{Count: 0}
 }
@@ -294,10 +294,10 @@ func evalOr(exprs []RCLExpr, snapshot SnapshotContext, rowFilter map[string]any,
 		status, a := evalRCLExpr(&exprs[i], snapshot, rowFilter, scenario, ctx)
 		actuals = append(actuals, a)
 		if status == "pass" {
-			return "pass", combineActuals("or", actuals)
+			return "pass", combineActuals(actuals)
 		}
 	}
-	return "fail", combineActuals("or", actuals)
+	return "fail", combineActuals(actuals)
 }
 
 // ---------------------------------------------------------------------------
@@ -799,9 +799,11 @@ func matchesPrefix(routePrefix, wherePrefix string) bool {
 // Where filter merging
 // ---------------------------------------------------------------------------
 
-// mergeWhereFilters combines two where predicates into one using AND semantics.
-// Simple key-value pairs are merged; "not" clauses are preserved when they
-// don't conflict.
+// mergeWhereFilters merges two where predicates by overlaying inner over outer.
+// For simple key-value pairs the inner value wins on conflict. This is
+// sufficient when outer and inner come from nested Guard/Forall scopes
+// that constrain disjoint fields. A full AND-combination that properly
+// handles "not" clauses is not required for current use cases.
 func mergeWhereFilters(outer, inner map[string]any) map[string]any {
 	if len(outer) == 0 {
 		return copyMap(inner)
@@ -873,7 +875,7 @@ func toInt(v any) int {
 }
 
 // combineActuals merges multiple Actuals from sub-expressions into one.
-func combineActuals(_ string, actuals []Actual) Actual {
+func combineActuals(actuals []Actual) Actual {
 	if len(actuals) == 0 {
 		return Actual{Count: 0}
 	}
