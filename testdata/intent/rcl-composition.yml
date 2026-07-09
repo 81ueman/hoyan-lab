@@ -1,0 +1,60 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/base-wan
+  pre:
+    lab: labs/intent-change-before
+  post:
+    lab: labs/intent-change-after
+
+scenarios:
+  normal:
+    snapshot: current
+  post:
+    snapshot: post
+
+intents:
+  # and: 複数条件の同時検証
+  - name: both-conditions-hold
+    scenario: normal
+    rcl:
+      and:
+        - rib_eval:
+            where:
+              device: bj-edge1
+              prefix: 10.4.0.0/16
+            aggregate: count()
+            gte: 1
+        - rib_eval:
+            where:
+              device: sh-edge1
+              prefix: 10.4.0.0/16
+            aggregate: count()
+            gte: 1
+
+  # or: いずれかが成立
+  - name: either-condition-holds
+    scenario: normal
+    rcl:
+      or:
+        - rib_eval:
+            aggregate: count()
+            gte: 999999
+        - rib_eval:
+            where:
+              device: bj-edge1
+            aggregate: count()
+            gte: 1
+
+  # not: 否定
+  - name: no-matching-route
+    scenario: normal
+    rcl:
+      not:
+        rib_eval:
+          where:
+            device: bj-edge1
+            prefix: 203.0.113.0/24
+          aggregate: count()
+          gte: 1
