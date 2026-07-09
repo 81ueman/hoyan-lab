@@ -68,6 +68,7 @@ var validWhereKeys = map[string]bool{
 	"origin": true, "med": true, "large_communities": true,
 	"peer": true, "peer_as": true,
 	"as_path_len": true, "aspath_len": true,
+	"nexthop": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -293,6 +294,19 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 
 		case "peer_as":
 			if !valuesEqual(routePeerAS(route), raw) {
+				return false, nil
+			}
+
+		case "nexthop", "next_hop":
+			val, ok := raw.(string)
+			if !ok {
+				continue
+			}
+			actual := extractNextHops(route)
+			if actual == "" {
+				return false, nil
+			}
+			if !strings.Contains(actual, val) {
 				return false, nil
 			}
 
