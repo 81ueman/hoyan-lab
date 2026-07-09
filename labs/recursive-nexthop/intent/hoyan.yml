@@ -1,0 +1,94 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/recursive-nexthop
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # BGP routes exist on all edge routers
+  - name: bgp-routes-on-edge-routers
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [bj-edge1, sh-edge1, gz-edge1, hz-edge1]
+        intent:
+          rib_eval:
+            where:
+              protocol: bgp
+            aggregate: count()
+            gte: 1
+
+  # BGP routes exist on all core routers
+  - name: bgp-routes-on-core-routers
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [core-bj, core-sh, core-gz, core-hz]
+        intent:
+          rib_eval:
+            where:
+              protocol: bgp
+            aggregate: count()
+            gte: 1
+
+  # Service prefix (10.4.0.0/16 from hz-edge1) visible across WAN via BGP
+  - name: service-prefix-visible-via-bgp
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [bj-edge1, sh-edge1, gz-edge1, core-bj, core-sh, core-gz]
+        intent:
+          rib_eval:
+            where:
+              protocol: bgp
+              prefix: 10.4.0.0/16
+            aggregate: count()
+            gte: 1
+
+  # Each router with BGP routes has at least one resolved nexthop
+  # (recursive nexthop resolution working per device, not just globally)
+  - name: bgp-routes-have-nexthops
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [bj-edge1, sh-edge1, gz-edge1, hz-edge1, bj-edge2, sh-edge2, gz-edge2, hz-edge2, core-bj, core-sh, core-gz, core-hz]
+        intent:
+          guard:
+            where:
+              protocol: bgp
+            intent:
+              rib_eval:
+                aggregate: distCnt(nexthop)
+                gte: 1
+
+  # bj-edge1 sees sh-edge1's service prefix (east-west BGP reachability)
+  - name: bj-edge1-sees-sh-service-prefix
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+          protocol: bgp
+          prefix: 10.2.0.0/16
+        aggregate: count()
+        gte: 1
+
+  # hz-edge1 sees bj-edge1's service prefix (east-west BGP reachability)
+  - name: hz-edge1-sees-bj-service-prefix
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: hz-edge1
+          protocol: bgp
+          prefix: 10.1.0.0/16
+        aggregate: count()
+        gte: 1

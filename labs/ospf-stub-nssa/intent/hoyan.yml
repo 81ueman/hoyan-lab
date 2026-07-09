@@ -1,0 +1,186 @@
+version: hoyan/v1
+
+# Model limitation: NSSA type7 routes are not exposed separately in the RIB.
+# The model translates type7 to type5 at the ABR, so NSSA externals appear
+# as external_type_2 on r2 (ABR) and r1 (area 0), but not as a distinct
+# nssa_external_* route type on r4. Only 4 ospf_route_type values exist:
+# intra_area, inter_area, external_type_2, and empty (default routes).
+# The nssa-external-route-reaches-area0 intent verifies the translated
+# type5 reaches area 0, which is the observable effect of NSSA type7.
+
+snapshots:
+  current:
+    lab: labs/ospf-stub-nssa
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # Both intra_area (area 0) and inter_area (across area boundaries) routes exist
+  - name: both-areas-have-routes
+    scenario: normal
+    rcl:
+      and:
+        - guard:
+            where:
+              protocol: ospf
+              route_type: intra_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
+        - guard:
+            where:
+              protocol: ospf
+              route_type: inter_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
+
+  # r3 in stub area has a default route (stub default originated by ABR r2)
+  - name: stub-router-has-default-route
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r3
+          prefix: 0.0.0.0/0
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # r4 in NSSA area has a default route (NSSA default originated by ABR r2)
+  - name: nssa-router-has-default-route
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r4
+          prefix: 0.0.0.0/0
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # r3 in stub area has no external type-5 routes
+  # (stub area blocks type-5 externals; count each external type separately)
+  - name: stub-area-no-external-routes
+    scenario: normal
+    rcl:
+      and:
+        - guard:
+            where:
+              device: r3
+              protocol: ospf
+              route_type: external_type_1
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+        - guard:
+            where:
+              device: r3
+              protocol: ospf
+              route_type: external_type_2
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+
+  # r4 in NSSA area has no normal external type-5 routes
+  # (NSSA allows type-7 translated to type-5 at ABR, but r4 itself shouldn't
+  # see external routes from area 0 via type-5)
+  - name: nssa-area-no-type5-external-routes
+    scenario: normal
+    rcl:
+      and:
+        - guard:
+            where:
+              device: r4
+              protocol: ospf
+              route_type: external_type_1
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+        - guard:
+            where:
+              device: r4
+              protocol: ospf
+              route_type: external_type_2
+            intent:
+              rib_eval:
+                aggregate: count()
+                eq: [0]
+
+  # NSSA external route (198.18.4.0/24 from r4) is visible in area 0 via ABR translation
+  - name: nssa-external-route-reaches-area0
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r1
+          protocol: ospf
+          prefix: 198.18.4.0/24
+          route_type: external_type_2
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # r1 has inter_area routes to stub/NSSA router loopbacks
+  - name: area0-sees-stub-router-loopback
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r1
+          protocol: ospf
+          prefix: 10.255.3.3/32
+          route_type: inter_area
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # r1 has inter_area route to NSSA router loopback
+  - name: area0-sees-nssa-router-loopback
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r1
+          protocol: ospf
+          prefix: 10.255.4.4/32
+          route_type: inter_area
+        intent:
+          rib_eval:
+            aggregate: count()
+            gte: 1
+
+  # ABR r2 has routes of both intra_area and inter_area types
+  - name: abr-has-both-route-types
+    scenario: normal
+    rcl:
+      and:
+        - guard:
+            where:
+              device: r2
+              protocol: ospf
+              route_type: intra_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
+        - guard:
+            where:
+              device: r2
+              protocol: ospf
+              route_type: inter_area
+            intent:
+              rib_eval:
+                aggregate: count()
+                gte: 1
