@@ -39,7 +39,7 @@ Hoyan stores runnable inputs under `labs/<name>/`. A scenario lab contains:
 labs/<name>/
   hoyan.clab.yml
   configs/
-  intent/hoyan.yml
+  intent/hoyan.hoyan
   lab.yml
   README.md
 ```
@@ -57,7 +57,7 @@ names or Docker network.
 
 Use `--lab` to select a scenario. When `--lab` is set, model and live commands
 default to `<lab>/hoyan.clab.yml`; `hoyan intent verify --lab ...` reads
-`<lab>/intent/hoyan.yml`. Explicit `--topology` flags override topology
+`<lab>/intent/hoyan.hoyan`. Explicit `--topology` flags override topology
 defaults for commands that use a containerlab file.
 Without `--lab`, commands use `labs/base-wan`.
 
@@ -92,7 +92,7 @@ Strict config errors include the vendor, config file, line number, raw
 statement, and unsupported reason so CI logs point at the config syntax that
 needs parser support or an intentional non-strict run.
 
-Checks are defined in each lab's `intent/hoyan.yml`:
+Checks are defined in each lab's `intent/hoyan.hoyan`:
 
 - RIB/FIB fact assertions over modeled rows
 - packet reachability assertions with `packet.from`, `packet.to`, protocol, and destination port
@@ -128,46 +128,51 @@ reachable flow.
 
 ## Intent DSL and Fact Tables
 
-`hoyan intent` provides the first `version: hoyan/v1` intent DSL for modeled
-RIB/FIB and packet checks. Intent files define snapshots, scenarios, variables,
-failure constraints, and assertions over deterministic fact rows or modeled
-packet reachability:
+`hoyan intent` uses the `.hoyan` text DSL for modeled RIB/FIB and packet
+checks. Intent files define snapshots, scenarios, variables, failure
+constraints, and assertions over deterministic fact rows or modeled packet
+reachability. YAML intent definitions are no longer supported.
 
 ```bash
-go run ./cmd/hoyan intent validate --file testdata/intent/minimal.yml
-go run ./cmd/hoyan intent expand --file testdata/intent/forall.yml --format json
-go run ./cmd/hoyan intent verify --file testdata/intent/rib-fib-basic.yml --format json
+go run ./cmd/hoyan intent validate --file testdata/intentdsl/minimal.hoyan
+go run ./cmd/hoyan intent expand --file testdata/intentdsl/forall.hoyan --format json
+go run ./cmd/hoyan intent verify --file testdata/intentdsl/rib-fib-basic.hoyan --format json
 go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 ```
 
-The MVP supports scalar/list `vars`, `forall` expansion, `table: rib` and
-`table: fib`, simple `where` selectors such as `device`, `device_in`, `prefix`,
-`selected`, and `installed`, plus `exists` and `count` assertions. Packet
-intents use `table: packet`, a `packet` block, and `assert.reachable`:
+The DSL supports `let` variables, document-level `forall`, RIB queries with
+`rib where ... { count() >= N }`, logical combinators (`and`, `or`, `not`,
+`if ... then ...`), conditional guards with `when`, RIB snapshot comparison via
+`rib_eq`, and packet reachability checks with `packet from ... to ... tcp/PORT
+expect BOOL`:
 
-```yaml
-scenarios:
-  one-core-link-failure:
-    snapshot: current
-    failures:
-      max: 1
-      include_link_roles: [core]
+```hoyan
+version = "hoyan/v1"
 
-intents:
-  - name: customers-https-allowed
-    check:
-      table: packet
-      scenario: one-core-link-failure
-      packet:
-        from: cust-bj
-        to: 10.4.1.10
-        protocol: tcp
-        dst_port: 443
-      assert:
-        reachable: true
+let service_ip = "10.4.1.10"
+let customers = ["cust-bj", "cust-sh", "cust-gz"]
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "one-core-link-failure" {
+  snapshot = "current"
+  failures {
+    max = 1
+    include_link_roles = ["core"]
+  }
+}
+
+intent "customers-https-allowed" {
+  scenario = "one-core-link-failure"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/443 expect true
+}
 ```
 
-For example, `labs/base-wan/intent/hoyan.yml` checks that `10.4.0.0/16` is
+For example, `labs/base-wan/intent/hoyan.hoyan` checks that `10.4.0.0/16` is
 visible in the modeled RIB on edge routers, HTTP to `10.4.1.10` is denied from
 customers, and HTTPS is allowed. The JSON report uses
 `hoyan.intent.report/v1` with deterministic result ordering so CI can compare

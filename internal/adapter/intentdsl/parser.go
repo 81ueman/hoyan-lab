@@ -328,7 +328,10 @@ func (p *parser) parseIntentDecl() (intent.Intent, error) {
 			}
 			in.Forall = forall
 		default:
-			// It's the RCL expression
+			// It's the RCL expression. IntentBody allows exactly one top-level RCL expression.
+			if in.RCL != nil {
+				return in, p.errorf("multiple top-level expressions in intent %q", in.Name)
+			}
 			expr, err := p.parseRCLExpr()
 			if err != nil {
 				return in, err
@@ -860,14 +863,13 @@ type aggregateResult struct {
 // blockToAggregate extracts an aggregate expression from a block.
 // The block should contain exactly one aggregate expression.
 func (p *parser) blockToAggregate(block []*intent.RCLExpr) (*aggregateResult, error) {
-	// The block should contain a single bare aggregate, but we may have
-	// parsed it as a rib_eval. Try to find the aggregate from it.
-	for _, expr := range block {
-		if agg := extractAggregate(expr); agg != nil {
-			return agg, nil
-		}
+	if len(block) != 1 {
+		return nil, p.errorf("rib block must contain exactly one aggregate expression")
 	}
-	return nil, fmt.Errorf("expected aggregate expression in block")
+	if agg := extractAggregate(block[0]); agg != nil {
+		return agg, nil
+	}
+	return nil, p.errorf("expected aggregate expression in block")
 }
 
 // extractAggregate tries to extract aggregate info from an RCLExpr.
@@ -1084,8 +1086,13 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 			p.next()
 		}
 
-		// Check for termination: we're done if next token is not a predicate start
+		// Check for termination: we're done if next token is not a predicate start.
+		// A where/when clause itself must contain at least one predicate; only a
+		// trailing comma after an already parsed predicate may terminate here.
 		if !p.isWherePredicateStart() {
+			if first {
+				return nil, p.errorf("expected where predicate")
+			}
 			break
 		}
 		first = false
@@ -1213,8 +1220,8 @@ func (p *parser) parseSingleWherePredicate() (map[string]any, error) {
 	p.next()
 
 	switch p.tok.kind {
-	case tokAssign:
-		// ident = value  (exact match)
+	case tokAssign, tokEq:
+		// ident = value or ident == value (exact match)
 		p.next()
 		val, err := p.parseValue()
 		if err != nil {

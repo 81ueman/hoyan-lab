@@ -298,6 +298,86 @@ func TestReportsLexerErrorToken(t *testing.T) {
 	}
 }
 
+func TestRejectsMultipleTopLevelRCLExpressions(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "two-rcls" {
+  scenario = "normal"
+  rib where device = "bj-edge1" { count() >= 1 }
+  rib where device = "sh-edge1" { count() >= 1 }
+}
+`)
+	if err == nil {
+		t.Fatal("expected multiple top-level RCL parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "multiple top-level expressions") {
+		t.Fatalf("error = %v, want multiple top-level expressions message", err)
+	}
+}
+
+func TestRejectsExtraExpressionInRIBBlock(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "extra-in-rib" {
+  scenario = "normal"
+  rib where device = "bj-edge1" {
+    count() >= 1
+    packet from "cust-bj" to "10.4.1.10" tcp/443 expect true
+  }
+}
+`)
+	if err == nil {
+		t.Fatal("expected extra expression in RIB block parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exactly one aggregate expression") {
+		t.Fatalf("error = %v, want aggregate block cardinality message", err)
+	}
+	if !strings.Contains(err.Error(), ":") {
+		t.Fatalf("error = %v, want line/column info", err)
+	}
+}
+
+func TestRejectsEmptyWhenPredicates(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "empty-when" {
+  scenario = "normal"
+  when { count() >= 1 }
+}
+`)
+	if err == nil {
+		t.Fatal("expected empty where predicates parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "expected where predicate") {
+		t.Fatalf("error = %v, want expected where predicate message", err)
+	}
+}
+
+func TestWhereAllowsDoubleEquals(t *testing.T) {
+	doc, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "where-eqeq" {
+  scenario = "normal"
+  rib where device == "bj-edge1" { count() >= 1 }
+}
+`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	got := doc.Intents[0].RCL.RIBEval.Where["device"]
+	if got != "bj-edge1" {
+		t.Fatalf("where device = %v, want bj-edge1", got)
+	}
+}
+
 func parseStringForTest(src string) (*intent.Document, error) {
 	lex := newLexer(src, "test.hoyan")
 	p := newParser(lex)
