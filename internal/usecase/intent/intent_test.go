@@ -243,6 +243,31 @@ func TestVerifyRIBFibBasic(t *testing.T) {
 	}
 }
 
+func TestExpandDocumentForallCartesianProduct(t *testing.T) {
+	doc := loadTestDoc(t, "testdata/intentdsl/forall-cartesian.hoyan")
+	expanded, err := Expand(doc)
+	if err != nil {
+		t.Fatalf("Expand() error: %v", err)
+	}
+	if len(expanded.Intents) != 4 {
+		t.Fatalf("len(expanded.Intents) = %d, want 4", len(expanded.Intents))
+	}
+	seen := map[string]bool{}
+	for _, in := range expanded.Intents {
+		seen[in.Name] = true
+	}
+	for _, want := range []string{
+		"cartesian-rib-check[device=bj-edge1,prefix=10.4.0.0/16]",
+		"cartesian-rib-check[device=bj-edge1,prefix=203.0.113.0/24]",
+		"cartesian-rib-check[device=sh-edge1,prefix=10.4.0.0/16]",
+		"cartesian-rib-check[device=sh-edge1,prefix=203.0.113.0/24]",
+	} {
+		if !seen[want] {
+			t.Fatalf("expanded names missing %q; got %#v", want, seen)
+		}
+	}
+}
+
 func TestVerifyRCLForallVarRef(t *testing.T) {
 	doc := loadTestDoc(t, "testdata/intentdsl/rcl-forall-var.hoyan")
 	expanded, err := Expand(doc)

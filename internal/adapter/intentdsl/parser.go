@@ -354,22 +354,32 @@ func (p *parser) parseIntentDecl() (intent.Intent, error) {
 // e.g.: forall src in $customers
 func (p *parser) parseDocLevelForall() (map[string]any, error) {
 	p.next() // consume 'forall'
-	if p.tok.kind != tokIdent {
-		return nil, p.errorf("expected variable name after 'forall', got %s (%q)", p.tok.kind, p.tok.text)
-	}
-	varName := p.tok.text
-	p.next()
+	bindings := map[string]any{}
 
-	if err := p.expect(tokKeywordIn); err != nil {
-		return nil, err
+	for {
+		if p.tok.kind != tokIdent {
+			return nil, p.errorf("expected variable name after 'forall', got %s (%q)", p.tok.kind, p.tok.text)
+		}
+		varName := p.tok.text
+		p.next()
+
+		if err := p.expect(tokKeywordIn); err != nil {
+			return nil, err
+		}
+
+		val, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+		bindings[varName] = val
+
+		if p.tok.kind != tokComma {
+			break
+		}
+		p.next()
 	}
 
-	val, err := p.parseValue()
-	if err != nil {
-		return nil, err
-	}
-
-	return map[string]any{varName: val}, nil
+	return bindings, nil
 }
 
 // parseRCLExpr parses an RCL-level expression.
@@ -1383,19 +1393,30 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 // isWherePredicateStart checks if the current token can start a where predicate.
 func (p *parser) isWherePredicateStart() bool {
 	switch p.tok.kind {
-	case tokIdent, tokKeywordAnd, tokKeywordOr, tokKeywordNot, tokKeywordImply, tokKeywordIf:
+	case tokIdent, tokKeywordAnd, tokKeywordOr, tokKeywordNot, tokKeywordImply, tokKeywordIf, tokKeywordVrf:
 		return true
 	default:
 		return false
 	}
 }
 
+func (p *parser) whereKey() (string, bool) {
+	switch p.tok.kind {
+	case tokIdent:
+		return p.tok.text, true
+	case tokKeywordVrf:
+		return "vrf", true
+	default:
+		return "", false
+	}
+}
+
 // parseSingleWherePredicate parses one where predicate like: ident = value, ident contains value, etc.
 func (p *parser) parseSingleWherePredicate() (map[string]any, error) {
-	if p.tok.kind != tokIdent {
+	key, ok := p.whereKey()
+	if !ok {
 		return nil, p.errorf("expected identifier for where predicate, got %s (%q)", p.tok.kind, p.tok.text)
 	}
-	key := p.tok.text
 	p.next()
 
 	switch p.tok.kind {

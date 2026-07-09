@@ -417,6 +417,50 @@ intent "where-shapes" {
 	}
 }
 
+func TestWhereAllowsKeywordFieldNames(t *testing.T) {
+	doc, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "where-vrf" {
+  scenario = "normal"
+  rib where vrf = "default" { count() >= 1 }
+}
+`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	got := doc.Intents[0].RCL.RIBEval.Where["vrf"]
+	if got != "default" {
+		t.Fatalf("where vrf = %v, want default", got)
+	}
+}
+
+func TestDocumentForallAllowsMultipleBindings(t *testing.T) {
+	doc, err := parseStringForTest(`version = "hoyan/v1"
+
+let customers = ["cust-bj", "cust-sh"]
+let services = ["10.4.1.10", "10.4.1.11"]
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "cartesian" {
+  scenario = "normal"
+  forall src in $customers, dst in $services
+  packet from $src to $dst tcp/443 expect true
+}
+`)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	forall := doc.Intents[0].Forall
+	if len(forall) != 2 {
+		t.Fatalf("forall bindings = %#v, want 2 bindings", forall)
+	}
+	if forall["src"] != "${customers}" || forall["dst"] != "${services}" {
+		t.Fatalf("forall bindings = %#v, want src/dst var refs", forall)
+	}
+}
+
 func TestWhereAllowsDoubleEquals(t *testing.T) {
 	doc, err := parseStringForTest(`version = "hoyan/v1"
 
