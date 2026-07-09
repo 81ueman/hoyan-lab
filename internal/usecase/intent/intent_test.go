@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
@@ -318,5 +319,51 @@ func TestVerifyUndefinedVarFails(t *testing.T) {
 	_, err := Verify(doc)
 	if err == nil {
 		t.Fatal("Verify() expected error for undefined var, got nil")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Auto-discovery smoke test
+// ---------------------------------------------------------------------------
+
+func TestAllIntentYAMLFiles(t *testing.T) {
+	files, err := filepath.Glob("testdata/intent/*.yml")
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no intent YAML files found")
+	}
+
+	for _, file := range files {
+		name := filepath.Base(file)
+		t.Run(name, func(t *testing.T) {
+			doc := loadTestDoc(t, file)
+
+			// invalid-* files expect a validation error
+			if strings.HasPrefix(name, "invalid-") {
+				err := Validate(doc)
+				if err == nil {
+					t.Fatalf("expected validation error for %s", name)
+				}
+				t.Logf("expected error: %v", err)
+				return
+			}
+
+			// Normal files: Verify should succeed without error
+			report, err := Verify(doc)
+			if err != nil {
+				t.Fatalf("Verify(%s) error: %v", name, err)
+			}
+			if report.Summary.Failed > 0 {
+				// Log failures but don't fail the test (negative test files intentionally fail)
+				for _, r := range report.Results {
+					if r.Status == "fail" {
+						t.Logf("[expected fail] %s: %s (count=%d, reason=%s)",
+							name, r.Name, r.Actual.Count, r.Actual.Reason)
+					}
+				}
+			}
+		})
 	}
 }
