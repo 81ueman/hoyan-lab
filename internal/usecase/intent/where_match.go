@@ -67,6 +67,7 @@ var validWhereKeys = map[string]bool{
 	"route_type": true, "area": true, "cost": true,
 	"origin": true, "med": true, "large_communities": true,
 	"peer": true, "peer_as": true,
+	"as_path_len": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -234,6 +235,16 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				}
 			}
 			if routeASPath(route) != scalar(raw) {
+				return false, nil
+			}
+
+		case "as_path_len", "aspath_len":
+			want := toInt(raw)
+			actual := 0
+			if route.BGP != nil && len(route.BGP.Paths) > 0 {
+				actual = len(route.BGP.Paths[0].ASPath)
+			}
+			if actual != want {
 				return false, nil
 			}
 
