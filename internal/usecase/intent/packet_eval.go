@@ -46,6 +46,36 @@ func evalPacketReachable(e *PacketReachableExpr, snapshot SnapshotContext, scena
 		return "pass", Actual{Reachable: &e.Expect}
 	}
 
+	if scenario.Failures.Max > 0 && !e.Expect {
+		// Backward check: expect NOT reachable under up to MaxFailures failures.
+		// The test expects some failure to break reachability (blast radius / negative testing).
+		target := sim.PacketTarget{
+			To:       e.To,
+			Protocol: e.Protocol,
+			DstPort:  e.DstPort,
+			VRF:      e.VRF,
+		}
+		opts := sim.FailureSearchOptions{
+			MaxFailures:  scenario.Failures.Max,
+			IncludeLinks: true,
+			IncludeNodes: true,
+			Domain:       buildFailureDomain(scenario.Failures),
+		}
+		result, err := snapshot.Graph.FindBreakingFailuresSymbolic(e.From, target, opts)
+		if err != nil {
+			return "fail", Actual{Reason: fmt.Sprintf("failure search error: %v", err)}
+		}
+		// Sat=true → a failure was found that breaks reachability → expected behavior → pass
+		if result.Sat {
+			return "pass", Actual{Reachable: &e.Expect}
+		}
+		// Sat=false → reachable remains reachable under all failure scenarios → unexpected → fail
+		return "fail", Actual{
+			Reachable: &e.Expect,
+			Reason:    "reachable remains reachable under all failure scenarios (expected some failure to break it)",
+		}
+	}
+
 	var reachable bool
 	var reason string
 
