@@ -316,7 +316,7 @@ func comparablePaths(route RIBRoute) []comparablePath {
 	case route.Static != nil:
 		return comparablePathsFromNextHops(route.Static.NextHops)
 	case route.Connected != nil, route.Blackhole != nil:
-		return []comparablePath{{Best: route.Common.Best, Valid: route.Common.Eligible, Origin: model.BGPOriginIGP, LocalPref: 100}}
+		return []comparablePath{{Best: route.Common.Best, Valid: route.Common.Eligible, Origin: model.BGPOriginIGP, LocalPref: model.DefaultLocalPreference}}
 	default:
 		return nil
 	}
@@ -353,7 +353,7 @@ func comparablePathsFromOSPFPaths(paths []OSPFPath) []comparablePath {
 			Valid:     true,
 			NextHop:   path.NextHop.Address,
 			Origin:    model.BGPOriginIGP,
-			LocalPref: 100,
+			LocalPref: model.DefaultLocalPreference,
 			MED:       path.Cost,
 		})
 	}
@@ -362,7 +362,7 @@ func comparablePathsFromOSPFPaths(paths []OSPFPath) []comparablePath {
 
 func comparablePathsFromNextHops(hops []NextHop) []comparablePath {
 	if len(hops) == 0 {
-		return []comparablePath{{Best: true, Valid: true, Origin: model.BGPOriginIGP, LocalPref: 100}}
+		return []comparablePath{{Best: true, Valid: true, Origin: model.BGPOriginIGP, LocalPref: model.DefaultLocalPreference}}
 	}
 	out := make([]comparablePath, 0, len(hops))
 	for _, hop := range hops {
@@ -371,7 +371,7 @@ func comparablePathsFromNextHops(hops []NextHop) []comparablePath {
 			Valid:     true,
 			NextHop:   hop.Address,
 			Origin:    model.BGPOriginIGP,
-			LocalPref: 100,
+			LocalPref: model.DefaultLocalPreference,
 			Weight:    hop.Weight,
 		})
 	}
@@ -445,15 +445,11 @@ func normalizeOrigin(origin model.BGPOriginCode) model.BGPOriginCode {
 	}
 }
 
-func defaultLocalPref(v int) int {
+func DefaultLocalPref(v int) int {
 	if v == 0 {
-		return 100
+		return model.DefaultLocalPreference
 	}
 	return v
-}
-
-func DefaultLocalPref(v int) int {
-	return defaultLocalPref(v)
 }
 
 func sortRoutes(routes []RIBRoute) {

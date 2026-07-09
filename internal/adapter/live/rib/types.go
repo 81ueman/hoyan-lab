@@ -9,5 +9,7 @@ type RIBRoute = observation.RIBRoute
 type CompareOptions = observation.CompareOptions
 type Runner = liveadapter.Runner
 
-var DefaultCompareOptions = observation.DefaultCompareOptions
+func DefaultCompareOptions() observation.CompareOptions {
+	return observation.DefaultCompareOptions()
+}
 var SortRoutes = observation.SortRoutes
