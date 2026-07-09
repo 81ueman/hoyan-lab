@@ -27,7 +27,7 @@ intents:
       rib_eval:
         where:
           as_path:
-            matches: ".*65004.*"
+            matches: ".*99999.*"
         aggregate: count()
         eq: [0]
 
