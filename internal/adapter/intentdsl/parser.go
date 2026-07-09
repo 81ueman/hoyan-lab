@@ -21,9 +21,6 @@ func newParser(lex *lexer) *parser {
 
 func (p *parser) next() {
 	p.tok = p.lex.next()
-	if p.tok.kind == tokError {
-		// will be reported by the caller
-	}
 }
 
 // pos returns the current token's position.
@@ -140,6 +137,9 @@ func (p *parser) parseSnapshotDecl(doc *intent.Document) error {
 	for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
 		switch p.tok.kind {
 		case tokIdent, tokKeywordLab:
+			if p.tok.text != "lab" {
+				return p.errorf("unexpected field %q in snapshot body", p.tok.text)
+			}
 			p.next()
 			if err := p.expect(tokAssign); err != nil {
 				return err
@@ -823,6 +823,9 @@ func (p *parser) parseBlock() ([]*intent.RCLExpr, error) {
 
 	if err := p.expect(tokRBrace); err != nil {
 		return nil, err
+	}
+	if len(exprs) == 0 {
+		return nil, p.errorf("empty block")
 	}
 
 	return exprs, nil

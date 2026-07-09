@@ -255,6 +255,55 @@ func TestLoadPredicateExtra(t *testing.T) {
 	}
 }
 
+func TestRejectsEmptyBlock(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lab = "labs/base-wan" }
+scenario "normal" { snapshot = "current" }
+intent "empty-guard" {
+  scenario = "normal"
+  when device = "r1" { }
+}
+`)
+	if err == nil {
+		t.Fatal("expected empty block parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty block") {
+		t.Fatalf("error = %v, want empty block message", err)
+	}
+}
+
+func TestRejectsUnknownSnapshotField(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+
+snapshot "current" { lba = "labs/base-wan" }
+`)
+	if err == nil {
+		t.Fatal("expected unknown snapshot field parse error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected field") {
+		t.Fatalf("error = %v, want unexpected field message", err)
+	}
+}
+
+func TestReportsLexerErrorToken(t *testing.T) {
+	_, err := parseStringForTest(`version = "hoyan/v1"
+# invalid comment syntax
+`)
+	if err == nil {
+		t.Fatal("expected lexer error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unexpected character") {
+		t.Fatalf("error = %v, want lexer error message", err)
+	}
+}
+
+func parseStringForTest(src string) (*intent.Document, error) {
+	lex := newLexer(src, "test.hoyan")
+	p := newParser(lex)
+	return p.ParseDocument()
+}
+
 func TestAllDSLFiles(t *testing.T) {
 	files, err := filepath.Glob("testdata/intentdsl/*.hoyan")
 	if err != nil {

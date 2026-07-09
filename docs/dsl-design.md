@@ -530,22 +530,22 @@ Error: intent "bar":5:8: undefined variable $unknown_var
 
 ### CLI統合
 
-`internal/adapter/cli/intent.go` の `loadIntentFile()` を修正:
+`internal/adapter/cli/intent.go` の `loadIntentFile()` は DSL パーサーのみを呼び出す。YAML サポートは削除し、`internal/adapter/intentfile/` パッケージも削除する。
 
 ```go
 func loadIntentFile(path string) (*domainintent.Document, error) {
-    switch {
-    case strings.HasSuffix(path, ".hoyan"):
-        return intentdsl.Load(path)
-    default:
-        return intentfile.Load(path)
+    if path == "" {
+        return nil, fmt.Errorf("--file is required")
     }
+    return intentdsl.Load(path)
 }
 ```
 
+lab の intent ファイルパスも `intent/hoyan.hoyan` に統一する。
+
 ### テスト戦略
 
-既存の `testdata/intent/*.yml` に対応する DSL テストファイルを `testdata/intentdsl/` に作成し、同じ評価結果になることを確認する。
+既存の `testdata/intent/*.yml` は `testdata/intentdsl/*.hoyan` に移行し、旧 `.yml` ファイルは削除する。既存の評価テストは `.hoyan` ファイルを直接ロードして同じ評価結果になることを確認する。
 
 ---
 
@@ -559,4 +559,4 @@ func loadIntentFile(path string) (*domainintent.Document, error) {
 
 4. **trailing comma**: 許容する。`where device = "r1", protocol = "ospf",` もOK。
 
-5. **ファイル拡張子**: `.hoyan`。既存 `.yml` との共存。
+5. **ファイル拡張子**: `.hoyan` に統一する。既存 `.yml` intent 定義との共存はしない。
