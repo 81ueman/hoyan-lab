@@ -1,19 +1,17 @@
 package fib
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/adapter/live/shared"
+)
 
 func mapValue(v any) map[string]any {
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return nil
+	return shared.AsMap(v)
 }
 
 func sliceValue(v any) []any {
-	if xs, ok := v.([]any); ok {
-		return xs
-	}
-	return nil
+	return shared.AsSlice(v)
 }
 
 func boolValue(v any) bool {
