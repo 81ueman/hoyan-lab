@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"fmt"
 	"net/netip"
 	"regexp"
 	"sort"
@@ -38,7 +37,7 @@ func ApplyRoutePolicy(resolver PolicyNextHopResolver, node model.Node, peerName 
 			out.Attrs.LocalPref = *rule.SetLocalPref
 		}
 		if rule.SetLocalPrefDelta != nil {
-			out.Attrs.LocalPref = bgp.DefaultLocalPref(out.Attrs.LocalPref) + *rule.SetLocalPrefDelta
+			out.Attrs.LocalPref = model.DefaultLocalPref(out.Attrs.LocalPref) + *rule.SetLocalPrefDelta
 		}
 		if rule.SetMED != nil {
 			out.Attrs.MED = *rule.SetMED
@@ -127,7 +126,7 @@ func PrefixListPermitsPrefix(node model.Node, name string, want netip.Prefix) bo
 }
 
 func ASPathListPermits(node model.Node, name string, asPath []uint32) bool {
-	path := formatASPath(asPath)
+	path := model.FormatASPath(asPath)
 	for _, list := range node.ASPathLists {
 		if list.Name != name {
 			continue
@@ -192,14 +191,6 @@ func prefixListRuleMatches(rule model.PrefixListRule, want model.Prefix) bool {
 		}
 	}
 	return model.MatchesNLRI(match, want)
-}
-
-func formatASPath(path []uint32) string {
-	parts := make([]string, 0, len(path))
-	for _, asn := range path {
-		parts = append(parts, fmt.Sprint(asn))
-	}
-	return strings.Join(parts, " ")
 }
 
 func appendUniqueStrings(xs []string, more ...string) []string {

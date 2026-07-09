@@ -139,7 +139,7 @@ func sortedNodeMapKeys(a, b map[model.NodeID]NodeSnapshot) []model.NodeID {
 	for k := range seen {
 		out = append(out, k)
 	}
-	sortNodeIDs(out)
+	SortNodeIDs(out)
 	return out
 }
 
@@ -155,7 +155,7 @@ func sortedVRFMapKeys(a, b map[model.NetworkInstanceID]VRFSnapshot) []model.Netw
 	for k := range seen {
 		out = append(out, k)
 	}
-	sortNetworkInstanceIDs(out)
+	SortNetworkInstanceIDs(out)
 	return out
 }
 

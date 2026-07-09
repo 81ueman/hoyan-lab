@@ -28,7 +28,7 @@ func (c SnapshotBackedCollector) Nodes(context.Context) ([]model.NodeID, error) 
 	for _, node := range c.snapshot.Nodes {
 		out = append(out, node.Node)
 	}
-	sortNodeIDs(out)
+	SortNodeIDs(out)
 	return out, nil
 }
 
@@ -41,7 +41,7 @@ func (c SnapshotBackedCollector) VRFs(_ context.Context, node model.NodeID) ([]m
 	for _, vrf := range ns.VRFs {
 		out = append(out, vrf.VRF)
 	}
-	sortNetworkInstanceIDs(out)
+	SortNetworkInstanceIDs(out)
 	return out, nil
 }
 

@@ -2,7 +2,6 @@ package collect
 
 import (
 	"context"
-	"sort"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
@@ -38,7 +37,7 @@ func CollectSnapshot(ctx context.Context, collector Collector, opts observation.
 	if err != nil {
 		return observation.NetworkSnapshot{}, err
 	}
-	sortNodeIDs(nodes)
+	observation.SortNodeIDs(nodes)
 	snapshot := observation.NetworkSnapshot{Nodes: make([]observation.NodeSnapshot, 0, len(nodes))}
 	if provider, ok := collector.(MetadataProvider); ok {
 		metadata := provider.Metadata(ctx)
@@ -50,7 +49,7 @@ func CollectSnapshot(ctx context.Context, collector Collector, opts observation.
 		if err != nil {
 			return observation.NetworkSnapshot{}, err
 		}
-		sortNetworkInstanceIDs(vrfs)
+		observation.SortNetworkInstanceIDs(vrfs)
 		nodeSnapshot := observation.NodeSnapshot{Node: node, VRFs: make([]observation.VRFSnapshot, 0, len(vrfs))}
 		for _, vrf := range vrfs {
 			rib, err := collector.CollectRIB(ctx, node, vrf, opts)
@@ -97,18 +96,6 @@ func normalizeFIBForSnapshot(node model.NodeID, vrf model.NetworkInstanceID, fib
 	fib.Node = node
 	fib.VRF = vrf
 	return observation.FilterFIB(fib, opts)
-}
-
-func sortNodeIDs(nodes []model.NodeID) {
-	sort.SliceStable(nodes, func(i, j int) bool {
-		return nodes[i] < nodes[j]
-	})
-}
-
-func sortNetworkInstanceIDs(vrfs []model.NetworkInstanceID) {
-	sort.SliceStable(vrfs, func(i, j int) bool {
-		return vrfs[i] < vrfs[j]
-	})
 }
 
 func cloneStringMap(in map[string]string) map[string]string {

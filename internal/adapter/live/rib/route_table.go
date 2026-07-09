@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
+
+	"github.com/81ueman/hoyan-lab/internal/adapter/live/shared"
 )
 
 type routeTableNextHop struct {
@@ -352,7 +354,7 @@ func ceosRouteTableNextHops(raw any) []routeTableNextHop {
 
 func srlinuxRouteTableNextHops(m map[string]any) []routeTableNextHop {
 	hop := routeTableNextHop{
-		Address:   srlinuxNextHopAddress(firstString(m, "Next-hop (Type)", "Next-hop", "next-hop")),
+		Address:   shared.SRLinuxNextHopAddress(firstString(m, "Next-hop (Type)", "Next-hop", "next-hop")),
 		Interface: firstString(m, "Next-hop Interface", "next-hop-interface"),
 	}
 	if hop.Address == "" && hop.Interface == "" {
@@ -394,23 +396,4 @@ func jsonPayload(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("no JSON object found")
 	}
 	return []byte(s[start : end+1]), nil
-}
-
-func srlinuxNextHopAddress(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "None" {
-		return ""
-	}
-	fields := strings.Fields(raw)
-	if len(fields) == 0 {
-		return ""
-	}
-	addr := fields[0]
-	if pfx, err := netip.ParsePrefix(addr); err == nil {
-		return pfx.Addr().String()
-	}
-	if ip, err := netip.ParseAddr(addr); err == nil {
-		return ip.String()
-	}
-	return addr
 }

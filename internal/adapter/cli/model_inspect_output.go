@@ -77,7 +77,7 @@ func writeRIBTable(out io.Writer, rows []modelinspect.RIBRow, showCond bool, pro
 			row.RouteInterface,
 			row.OriginNode,
 			row.FromNode,
-			formatASPath(row.ASPath),
+			model.FormatASPath(row.ASPath),
 			formatIntPtr(row.LocalPref),
 			formatIntPtr(row.MED),
 			formatStringPtr(row.OriginCode),
@@ -339,15 +339,4 @@ func writeJSON(out io.Writer, value any) error {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	return enc.Encode(value)
-}
-
-func formatASPath(path []uint32) string {
-	if len(path) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(path))
-	for _, asn := range path {
-		parts = append(parts, fmt.Sprint(asn))
-	}
-	return strings.Join(parts, " ")
 }
