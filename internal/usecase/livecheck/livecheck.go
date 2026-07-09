@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 	"time"
 
@@ -275,7 +274,22 @@ func checkSnapshotHashes(checker InputHashChecker, topologyPath string, snap *sn
 }
 
 func isZeroCompareOptions(opts observation.CompareOptions) bool {
-	return reflect.DeepEqual(opts, observation.CompareOptions{})
+	return !opts.CompareBest &&
+		!opts.CompareValid &&
+		!opts.CompareNextHop &&
+		!opts.CompareASPath &&
+		!opts.CompareOrigin &&
+		!opts.CompareLocalPref &&
+		!opts.CompareMED &&
+		!opts.CompareWeight &&
+		!opts.CompareCommunities &&
+		!opts.CompareLargeCommunities &&
+		!opts.CompareOriginatorID &&
+		!opts.CompareClusterList &&
+		!opts.ComparePeer &&
+		!opts.ComparePeerAS &&
+		!opts.AllowExtraPrefixes &&
+		!opts.AllowExtraPaths
 }
 
 func WaitForExpectedRoutes(ctx context.Context, collector RIBCollector, nodes []model.Node, expected []observation.RIBRoute, interval time.Duration, maxPolls int) ([]observation.RIBRoute, error) {
@@ -428,9 +442,6 @@ func CountExpectedRoutes(expected []observation.RIBRoute, actual []observation.R
 func ribRouteSourceKey(route observation.RIBRoute) string {
 	afi := string(route.Common.AFI)
 	protocol := strings.ToLower(strings.TrimSpace(string(route.Common.Protocol)))
-	// Protocol is always set by current producers; the old fallback defaulting
-	// empty protocol to "bgp" has been removed. New producers must emit
-	// explicit protocol; old snapshots are migrated at file-load boundary.
 	return afi + "|" + protocol + "|" + route.Common.Prefix
 }
 

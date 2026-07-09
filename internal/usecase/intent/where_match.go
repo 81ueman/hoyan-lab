@@ -8,6 +8,7 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	"github.com/81ueman/hoyan-lab/internal/domain/observation"
+	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
 )
 
 // ---------------------------------------------------------------------------
@@ -379,7 +380,7 @@ func routeWeight(route observation.RIBRoute) int {
 // routeConnectedClass returns a simplified connected route class string.
 func routeConnectedClass(route observation.RIBRoute) string {
 	if route.Connected != nil && route.Connected.Interface != "" {
-		if strings.Contains(route.Connected.Interface, "lo") {
+		if controlplane.IsLoopbackInterface(route.Connected.Interface) {
 			return "loopback"
 		}
 		return "link"
