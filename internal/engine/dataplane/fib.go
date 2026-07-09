@@ -158,13 +158,13 @@ func fibAdminDistance(route domainroute.RIBEntry) int {
 	}
 	switch route.SourceKind {
 	case model.RouteSourceConnected:
-		return 0
+		return model.AdminDistanceConnected
 	case model.RouteSourceStatic, model.RouteSourceBlackhole:
-		return 1
+		return model.AdminDistanceStatic
 	case model.RouteSourceOSPF:
-		return 110
+		return model.AdminDistanceOSPF
 	default:
-		return 200
+		return model.AdminDistanceBGP
 	}
 }
 
