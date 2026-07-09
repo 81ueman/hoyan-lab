@@ -100,7 +100,7 @@ func TestConnectedAndStaticRoutesInstallInFIB(t *testing.T) {
 					Prefix:        staticPrefix,
 					NextHop:       "192.0.2.2",
 					Kind:          model.RouteSourceStatic,
-					AdminDistance: 1,
+					AdminDistance: model.AdminDistanceStatic,
 				}},
 			},
 			{Name: "r2", Kind: model.KindFRR, Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30"}}},
@@ -185,7 +185,7 @@ func TestBGPVRFPropagationIsScoped(t *testing.T) {
 				Name: "r2", Kind: model.KindFRR, ASN: 65002,
 				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30", VRF: "tenant-a"}},
 				Routes: []model.ConfiguredRoute{{
-					NetworkInstance: "tenant-a", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200,
+					NetworkInstance: "tenant-a", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: model.AdminDistanceBGP,
 				}},
 				Neighbors: []model.BGPNeighbor{{NetworkInstance: "tenant-a", Address: "192.0.2.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
 			},
@@ -193,7 +193,7 @@ func TestBGPVRFPropagationIsScoped(t *testing.T) {
 				Name: "r3", Kind: model.KindFRR, ASN: 65003,
 				Interfaces: []model.Interface{{Name: "eth1", Address: "198.51.100.2/30", VRF: "tenant-b"}},
 				Routes: []model.ConfiguredRoute{{
-					NetworkInstance: "tenant-b", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200,
+					NetworkInstance: "tenant-b", Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: model.AdminDistanceBGP,
 				}},
 				Neighbors: []model.BGPNeighbor{{NetworkInstance: "tenant-b", Address: "198.51.100.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
 			},
@@ -314,7 +314,7 @@ func twoNodeRedistributeTopology(prefix model.Prefix, redist []model.BGPRedistri
 			{
 				Name: "r1", Kind: model.KindFRR, ASN: 65001,
 				Interfaces:   []model.Interface{{Name: "eth1", Address: "192.0.2.1/30"}},
-				Routes:       []model.ConfiguredRoute{{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0", AdminDistance: 1}},
+				Routes:       []model.ConfiguredRoute{{Prefix: prefix, Kind: model.RouteSourceBlackhole, Interface: "Null0", AdminDistance: model.AdminDistanceBlackhole}},
 				Redistribute: redist,
 				Neighbors:    []model.BGPNeighbor{{Address: "192.0.2.2", RemoteAS: 65002, Activated: true, PeerNode: "r2"}},
 			},
@@ -332,7 +332,7 @@ func threeNodeAggregateTopology(aggregate, contributor model.Prefix, summaryOnly
 	r1Routes := []model.ConfiguredRoute{{
 		Prefix:        aggregate,
 		Kind:          model.RouteSourceAggregate,
-		AdminDistance: 200,
+		AdminDistance: model.AdminDistanceAggregate,
 		SummaryOnly:   summaryOnly,
 	}}
 	var r2Prefixes []model.Prefix
