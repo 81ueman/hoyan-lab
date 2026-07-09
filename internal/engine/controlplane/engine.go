@@ -50,7 +50,7 @@ func (e *Engine) Simulate() {
 					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
 					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
-					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200},
+					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: model.AdminDistanceBGP},
 					BaseCond:    originCond,
 					Condition:   originCond,
 				}
@@ -119,7 +119,7 @@ func (e *Engine) connectedRoutes(node model.Node) []model.ConfiguredRoute {
 			Interface:       iface.Name,
 			Kind:            model.RouteSourceConnected,
 			ConnectedClass:  e.idx.ConnectedClass(node.Name, iface, prefix),
-			AdminDistance:   0,
+			AdminDistance:   model.AdminDistanceConnected,
 		})
 	}
 	return out
@@ -130,8 +130,8 @@ func (e *Engine) installConfiguredRoute(node model.Node, route model.ConfiguredR
 		return
 	}
 	normalizeConfiguredRoute(&route, node.Name)
-	if route.AdminDistance == 0 && route.Kind != model.RouteSourceConnected {
-		route.AdminDistance = 1
+	if route.AdminDistance == model.AdminDistanceConnected && route.Kind != model.RouteSourceConnected {
+		route.AdminDistance = model.AdminDistanceStatic
 	}
 	cond := failure.NodeVar(node.Name)
 	entry := domainroute.RIBEntry{
@@ -200,7 +200,7 @@ func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.Config
 			Prefix:          route.Prefix,
 			Kind:            model.RouteSourceBGP,
 			Source:          route.Source,
-			AdminDistance:   200,
+			AdminDistance:   model.AdminDistanceBGP,
 		},
 		BaseCond:  cond,
 		Condition: cond,
@@ -215,8 +215,8 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 			continue
 		}
 		normalizeConfiguredRoute(&route, node.Name)
-		if route.AdminDistance == 0 {
-			route.AdminDistance = 200
+		if route.AdminDistance == model.AdminDistanceConnected {
+			route.AdminDistance = model.AdminDistanceAggregate
 		}
 		cond, contributors, ok := e.aggregateContributorCondVRF(node.Name, route.NetworkInstance, route.Prefix)
 		if !ok {

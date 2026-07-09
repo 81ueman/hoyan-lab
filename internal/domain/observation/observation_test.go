@@ -48,20 +48,22 @@ func TestRIBRouteCommonNewFieldsAreOmitempty(t *testing.T) {
 func TestRIBRouteCommonNewFieldsMarshalWhenSet(t *testing.T) {
 	route := RIBRoute{
 		Common: RIBRouteCommon{
-			AFI:              model.AFIIPv4,
-			Prefix:           "10.0.0.0/24",
-			Protocol:         model.RouteSourceBGP,
-			Eligible:         true,
-			Best:             true,
-			SAFI:             "unicast",
-			TableID:          "254",
-			TableName:        "main",
-			ProtocolInstance: "BGP 65000",
-			Age:              "00:12:34",
-			AgeSeconds:       754,
-			Tag:              42,
-			InstalledReason:  "active",
-			Raw:              map[string]any{"vendor": "test"},
+			AFI:      model.AFIIPv4,
+			Prefix:   "10.0.0.0/24",
+			Protocol: model.RouteSourceBGP,
+			Eligible: true,
+			Best:     true,
+			RouteMetadata: RouteMetadata{
+				SAFI:             "unicast",
+				TableID:          "254",
+				TableName:        "main",
+				ProtocolInstance: "BGP 65000",
+				Age:              "00:12:34",
+				AgeSeconds:       754,
+				Tag:              42,
+				InstalledReason:  "active",
+				Raw:              map[string]any{"vendor": "test"},
+			},
 		},
 		BGP: &BGPRIBRoute{Paths: []BGPPath{
 			{NextHop: NextHop{Address: "192.0.2.1"}, Eligible: true, Best: true},
@@ -119,10 +121,12 @@ func TestFIBEntryNewFieldsMarshalWhenSet(t *testing.T) {
 		Source:   RouteSource{Protocol: model.RouteSourceBGP},
 		Action:   ActionForward,
 		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
-		SAFI:     "unicast",
-		TableID:  "254",
-		Tag:      42,
-		Raw:      map[string]any{"asic": "trident3"},
+		RouteMetadata: RouteMetadata{
+			SAFI:    "unicast",
+			TableID: "254",
+			Tag:     42,
+			Raw:     map[string]any{"asic": "trident3"},
+		},
 	}
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -329,9 +333,11 @@ func TestNormalizeFIBEntryPreservesNewFields(t *testing.T) {
 		Source:   RouteSource{Protocol: model.RouteSourceBGP},
 		Action:   ActionForward,
 		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
-		SAFI:     "unicast",
-		Tag:      100,
-		TableID:  "main",
+		RouteMetadata: RouteMetadata{
+			SAFI:    "unicast",
+			Tag:     100,
+			TableID: "main",
+		},
 	}
 	normalized := normalizeFIBEntryForCompare(entry)
 	if normalized.SAFI != "unicast" || normalized.Tag != 100 || normalized.TableID != "main" {
@@ -370,8 +376,10 @@ func TestMergeDuplicateRouteNewFields(t *testing.T) {
 		Source:   RouteSource{Protocol: model.RouteSourceBGP},
 		Action:   ActionForward,
 		NextHops: []NextHop{{Address: "192.0.2.1", Interface: "eth1"}},
-		SAFI:     "unicast",
-		Tag:      42,
+		RouteMetadata: RouteMetadata{
+			SAFI: "unicast",
+			Tag:  42,
+		},
 	}
 	b := FIBEntry{
 		AFI:      model.AFIIPv4,
@@ -379,8 +387,10 @@ func TestMergeDuplicateRouteNewFields(t *testing.T) {
 		Source:   RouteSource{Protocol: model.RouteSourceBGP},
 		Action:   ActionForward,
 		NextHops: []NextHop{{Address: "192.0.2.2", Interface: "eth2"}},
-		TableID:  "254",
-		Age:      "00:01:00",
+		RouteMetadata: RouteMetadata{
+			TableID: "254",
+			Age:     "00:01:00",
+		},
 	}
 	merged, reason, ok := mergeDuplicateRoute(a, b)
 	if !ok {

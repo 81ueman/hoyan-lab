@@ -749,7 +749,7 @@ router bgp 65001
 		t.Fatalf("routes = %#v, want one aggregate route", cfg.Routes)
 	}
 	route := cfg.Routes[0]
-	if route.Kind != model.RouteSourceAggregate || route.Prefix.String() != "10.0.0.0/16" || !route.SummaryOnly || route.AdminDistance != 200 {
+	if route.Kind != model.RouteSourceAggregate || route.Prefix.String() != "10.0.0.0/16" || !route.SummaryOnly || route.AdminDistance != model.AdminDistanceAggregate {
 		t.Fatalf("aggregate route = %#v", route)
 	}
 	if len(cfg.Prefixes) != 0 {

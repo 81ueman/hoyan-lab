@@ -92,7 +92,7 @@ func (e *Engine) installRemoteOSPFRoute(src string, adv Advertisement, path Path
 		AFI:             model.AFIIPv4,
 		Prefix:          adv.Prefix,
 		Kind:            model.RouteSourceOSPF,
-		AdminDistance:   110,
+		AdminDistance:   model.AdminDistanceOSPF,
 		Metric:          metric,
 		OSPFRouteType:   routeType,
 	}
@@ -116,7 +116,7 @@ func (e *Engine) installLocalOSPFRoute(node model.Node, adv Advertisement, state
 		AFI:             model.AFIIPv4,
 		Prefix:          adv.Prefix,
 		Kind:            model.RouteSourceOSPF,
-		AdminDistance:   110,
+		AdminDistance:   model.AdminDistanceOSPF,
 		Metric:          adv.Cost,
 		OSPFRouteType:   RouteTypeIntraArea,
 		Interface:       ospfInterfaceForPrefix(states, adv.Prefix),
