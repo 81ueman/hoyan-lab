@@ -250,7 +250,7 @@ func (s Simulator) expectedBGPPath(node model.Node, route sim.RIBEntry, ctx sim.
 		NextHop:   observation.NextHop{Address: s.routeNextHopAddress(node.Name, route)},
 		ASPath:    append([]uint32(nil), route.Attrs.ASPath...),
 		Origin:    expectedRouteOrigin(route),
-		LocalPref: observation.DefaultLocalPref(route.Attrs.LocalPref),
+		LocalPref: model.DefaultLocalPref(route.Attrs.LocalPref),
 		MED:       route.Attrs.MED,
 	}
 }

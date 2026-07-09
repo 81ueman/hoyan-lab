@@ -97,7 +97,7 @@ func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node,
 		if collector == nil {
 			continue
 		}
-		selected := bgpRouteCollectionNodes(profile, NodesByKind(nodes, kind))
+		selected := bgpRouteCollectionNodes(profile, device.NodesByKind(nodes, kind))
 		if len(selected) == 0 {
 			continue
 		}
@@ -112,11 +112,7 @@ func (c LiveCollector) collectBGPRoutes(ctx context.Context, nodes []model.Node,
 }
 
 func FRRNodes(nodes []model.Node) []model.Node {
-	return NodesByKind(nodes, model.KindFRR)
-}
-
-func NodesByKind(nodes []model.Node, kind model.DeviceKind) []model.Node {
-	return device.NodesByKind(nodes, kind)
+	return device.NodesByKind(nodes, model.KindFRR)
 }
 
 func bgpRouteCollectionNodes(profile model.LiveProfile, nodes []model.Node) []model.Node {
@@ -245,7 +241,7 @@ func (c LiveCollector) collectOSPFRoutes(ctx context.Context, nodes []model.Node
 		if collector == nil {
 			continue
 		}
-		selected := NodesByKind(nodes, kind)
+		selected := device.NodesByKind(nodes, kind)
 		if len(selected) == 0 {
 			continue
 		}
@@ -271,7 +267,7 @@ func (c LiveCollector) collectRouteTableRoutes(ctx context.Context, nodes []mode
 		if collector == nil {
 			continue
 		}
-		selected := NodesByKind(nodes, kind)
+		selected := device.NodesByKind(nodes, kind)
 		if len(selected) == 0 {
 			continue
 		}

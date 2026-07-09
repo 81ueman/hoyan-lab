@@ -3,10 +3,10 @@ package fib
 import (
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"regexp"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/adapter/live/shared"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -95,7 +95,7 @@ func srlinuxRoute(node, networkInstance string, m map[string]any) (FIBEntry, boo
 		Metric:     intValue(m["Metric"]),
 	}
 	hop := NextHop{
-		Address:   srlinuxNextHopAddress(stringValue(m["Next-hop (Type)"])),
+		Address:   shared.SRLinuxNextHopAddress(stringValue(m["Next-hop (Type)"])),
 		Interface: strings.TrimSpace(stringValue(m["Next-hop Interface"])),
 	}
 	if hop.Address != "" || hop.Interface != "" {
@@ -143,7 +143,7 @@ func srlinuxDetailNextHops(m map[string]any, key string) []NextHop {
 	matches := srlinuxDetailNextHopRE.FindAllStringSubmatch(raw, -1)
 	out := make([]NextHop, 0, len(matches))
 	for _, match := range matches {
-		addr := srlinuxNextHopAddress(match[1])
+		addr := shared.SRLinuxNextHopAddress(match[1])
 		iface := strings.TrimSpace(match[2])
 		if addr == "" && iface == "" {
 			continue
@@ -151,25 +151,6 @@ func srlinuxDetailNextHops(m map[string]any, key string) []NextHop {
 		out = append(out, NextHop{Address: addr, Interface: iface})
 	}
 	return out
-}
-
-func srlinuxNextHopAddress(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "None" {
-		return ""
-	}
-	fields := strings.Fields(raw)
-	if len(fields) == 0 {
-		return ""
-	}
-	addr := fields[0]
-	if pfx, err := netip.ParsePrefix(addr); err == nil {
-		return pfx.Addr().String()
-	}
-	if ip, err := netip.ParseAddr(addr); err == nil {
-		return ip.String()
-	}
-	return addr
 }
 
 func firstIntValue(values ...any) int {

@@ -103,13 +103,13 @@ func normalizeFIBForSnapshot(node model.NodeID, vrf model.NetworkInstanceID, fib
 	return FilterFIB(fib, opts)
 }
 
-func sortNodeIDs(nodes []model.NodeID) {
+func SortNodeIDs(nodes []model.NodeID) {
 	sort.SliceStable(nodes, func(i, j int) bool {
 		return nodes[i] < nodes[j]
 	})
 }
 
-func sortNetworkInstanceIDs(vrfs []model.NetworkInstanceID) {
+func SortNetworkInstanceIDs(vrfs []model.NetworkInstanceID) {
 	sort.SliceStable(vrfs, func(i, j int) bool {
 		return vrfs[i] < vrfs[j]
 	})

@@ -129,7 +129,7 @@ func (r Runtime) WaitContainers(ctx context.Context, nodes []model.Node, interva
 }
 
 func (r Runtime) WaitSRLinuxCLI(ctx context.Context, nodes []model.Node, interval time.Duration) error {
-	srlinuxNodes := liverib.NodesByKind(nodes, model.KindSRLinux)
+	srlinuxNodes := device.NodesByKind(nodes, model.KindSRLinux)
 	if len(srlinuxNodes) == 0 {
 		return nil
 	}

@@ -104,7 +104,7 @@ func WalkRoute(ctx PropagationContext, route route.RIBEntry) {
 		entry.Provenance.PathLinks = append([]string(nil), nextLinks...)
 		entry.BaseCond = nextCond
 		entry.Condition = nextCond
-		entry.Attrs.LocalPref = DefaultLocalPref(entry.Attrs.LocalPref)
+		entry.Attrs.LocalPref = model.DefaultLocalPref(entry.Attrs.LocalPref)
 		entry = entry.Normalize()
 
 		ctx.AddRIB(next, entry.NLRI.Prefix, entry)
