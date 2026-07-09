@@ -31,6 +31,27 @@ intents:
         aggregate: count()
         eq: [0]
 
+  # nexthop where predicate (string match)
+  - name: nexthop-filter-basic
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          nexthop: "10.255.1.1"
+        aggregate: count()
+        gte: 0
+
+  # nexthop where predicate with contains operator
+  - name: nexthop-filter-contains
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          nexthop:
+            contains: "10.255"
+        aggregate: count()
+        gte: 0
+
   # where内のimply
   - name: if-device-is-edge-then-has-service-prefix
     scenario: normal

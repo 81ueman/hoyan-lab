@@ -298,16 +298,12 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "nexthop", "next_hop":
+			actual := extractNextHops(route)
 			if val, ok := raw.(string); ok {
-				actual := extractNextHops(route)
-				if actual == "" {
-					return false, nil
-				}
-				if !strings.Contains(actual, val) {
+				if actual == "" || !strings.Contains(actual, val) {
 					return false, nil
 				}
 			} else if opMap, ok := raw.(map[string]any); ok {
-				actual := extractNextHops(route)
 				if cv, ok := opMap["contains"]; ok {
 					if !containsCheck(actual, cv) {
 						return false, nil
@@ -318,6 +314,7 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 					}
 				}
 			}
+			continue
 
 		default:
 			if opMap, ok := raw.(map[string]any); ok {
