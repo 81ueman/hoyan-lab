@@ -21,5 +21,5 @@ intents:
           prefix: ${changed_prefix}
           device_in: ${edges}
           selected: true
-        aggregate: count()
+        aggregate: distCnt(nexthop)
         gte: 999
