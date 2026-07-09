@@ -26,7 +26,7 @@ func TestRedistributedExternalRouteRewritesOSPFAttributes(t *testing.T) {
 	if got.SourceKind != model.RouteSourceOSPF {
 		t.Fatalf("source kind = %q, want %q", got.SourceKind, model.RouteSourceOSPF)
 	}
-	if got.RouteSource.Node != "r1" || got.RouteSource.Kind != model.RouteSourceOSPF || got.RouteSource.AdminDistance != 110 {
+	if got.RouteSource.Node != "r1" || got.RouteSource.Kind != model.RouteSourceOSPF || got.RouteSource.AdminDistance != model.AdminDistanceOSPF {
 		t.Fatalf("route source = %#v, want OSPF source from r1 with AD 110", got.RouteSource)
 	}
 	if got.RouteSource.MetricType != 1 || got.RouteSource.OSPFRouteType != RouteTypeExternal1 || got.RouteSource.Metric != 7 {

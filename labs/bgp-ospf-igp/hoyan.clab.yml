@@ -1,0 +1,41 @@
+name: hoyan-bgp-ospf-igp
+mgmt:
+    network: hoyan-bgp-ospf-igp
+    ipv4-subnet: 172.86.93.0/24
+topology:
+    kinds:
+        linux:
+            image: hoyan-frr-nftables:10.6.1
+    nodes:
+        edge1:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.11
+            binds:
+                - configs/frr/edge1/daemons:/etc/frr/daemons:ro
+                - configs/frr/edge1/frr.conf:/etc/frr/frr.conf:ro
+        core1:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.12
+            binds:
+                - configs/frr/core1/daemons:/etc/frr/daemons:ro
+                - configs/frr/core1/frr.conf:/etc/frr/frr.conf:ro
+        core2:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.13
+            binds:
+                - configs/frr/core2/daemons:/etc/frr/daemons:ro
+                - configs/frr/core2/frr.conf:/etc/frr/frr.conf:ro
+        edge2:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.14
+            binds:
+                - configs/frr/edge2/daemons:/etc/frr/daemons:ro
+                - configs/frr/edge2/frr.conf:/etc/frr/frr.conf:ro
+    links:
+        - endpoints: ["edge1:eth1", "core1:eth1"]
+        - endpoints: ["core1:eth2", "core2:eth1"]
+        - endpoints: ["core2:eth2", "edge2:eth1"]

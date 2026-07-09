@@ -30,7 +30,7 @@ func parseFRRLikeStaticRoute(kind model.DeviceKind, path string, lineNo int, raw
 		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
 		Kind:            model.RouteSourceStatic,
-		AdminDistance:   1,
+		AdminDistance:   model.AdminDistanceStatic,
 		Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
 	}
 	target := fields[3]
@@ -61,7 +61,7 @@ func parseAggregateRoute(kind model.DeviceKind, path string, lineNo int, raw str
 		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
 		Kind:            model.RouteSourceAggregate,
-		AdminDistance:   200,
+		AdminDistance:   model.AdminDistanceAggregate,
 		Source:          model.ConfigSource{Vendor: string(kind), File: path, Line: lineNo, Raw: raw},
 	}
 	for _, opt := range fields[2:] {
@@ -109,7 +109,7 @@ func parseSRLinuxStaticRoute(path string, lineNo int, raw string, fields []strin
 		AFI:             model.AFIIPv4,
 		Prefix:          prefix,
 		Kind:            model.RouteSourceStatic,
-		AdminDistance:   5,
+		AdminDistance:   model.AdminDistanceSRLinuxStatic,
 		Source:          model.ConfigSource{Vendor: "srlinux", File: path, Line: lineNo, Raw: raw},
 	}
 	if nh := fieldAfter(fields, "next-hop"); nh != "" {

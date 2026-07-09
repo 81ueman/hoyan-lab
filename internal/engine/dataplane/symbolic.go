@@ -358,24 +358,12 @@ func (e *Engine) symbolicPacketReachabilityForPrefixSet(from, vrf string, dst mo
 	spec.DstSet = dst
 	packet := device.PacketMessage{Node: from, Spec: spec}
 	var reasons []SymbolicUnreachableReason
-	addUnreachableReason(&reasons, SymbolicUnreachableReason{
-		Kind:    UnreachableNodeFailed,
-		Node:    from,
-		Cond:    failure.Not(failure.NodeVar(from)),
-		Path:    Path{Nodes: []string{from}},
-		Message: "source node is down",
-	})
+	handleNodeFailed(&reasons, from, failure.Not(failure.NodeVar(from)), Path{Nodes: []string{from}}, "source node is down")
 	for _, dstNode := range e.originNodesForPrefixSetVRF(vrf, dst) {
 		if dstNode == from {
 			continue
 		}
-		addUnreachableReason(&reasons, SymbolicUnreachableReason{
-			Kind:    UnreachableNodeFailed,
-			Node:    dstNode,
-			Cond:    failure.Not(failure.NodeVar(dstNode)),
-			Path:    Path{Nodes: []string{from}},
-			Message: "destination node is down",
-		})
+		handleNodeFailed(&reasons, dstNode, failure.Not(failure.NodeVar(dstNode)), Path{Nodes: []string{from}}, "destination node is down")
 	}
 	initial := SymbolicPacketState{
 		Node:   from,
@@ -414,13 +402,7 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 		return
 	}
 	if visited[state.Node] {
-		addUnreachableReason(reasons, SymbolicUnreachableReason{
-			Kind:    UnreachableLoop,
-			Node:    state.Node,
-			Cond:    condOrTrue(state.Cond),
-			Path:    state.Path,
-			Message: "forwarding loop",
-		})
+		handleLoop(reasons, state)
 		return
 	}
 	states = append(states, state)
@@ -441,22 +423,8 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 	packet.Spec.IngressInterface = state.IngressInterface
 	ingressDecision := e.dataACLDecision(currentNode, packet, "ingress")
 	if ingressDecision.Denied {
-		denyCond := failure.And(state.Cond, ingressDecision.Cond)
-		e.appendBlockedPolicyPath(blocked, state.Path, denyCond, ingressDecision, state.Node, packet.Spec.IngressInterface, "ingress")
-		addUnreachableReason(reasons, SymbolicUnreachableReason{
-			Kind:          UnreachableIngressPolicy,
-			Node:          state.Node,
-			Interface:     packet.Spec.IngressInterface,
-			PolicyName:    ingressDecision.PolicyName,
-			ACLName:       ingressDecision.ACLName,
-			RuleSeq:       ingressDecision.RuleSeq,
-			Action:        ingressDecision.Action,
-			DefaultAction: ingressDecision.DefaultAction,
-			PolicyRaw:     ingressDecision.Source.Raw,
-			Cond:          denyCond,
-			Path:          state.Path,
-			Message:       ingressDecision.Reason,
-		})
+		e.appendBlockedPolicyPath(blocked, state.Path, failure.And(state.Cond, ingressDecision.Cond), ingressDecision, state.Node, packet.Spec.IngressInterface, "ingress")
+		handleIngressPolicy(reasons, state, ingressDecision)
 		return
 	}
 	nextVisited := copyVisited(visited)
@@ -466,84 +434,34 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 	for _, candidate := range candidates {
 		candidateConds = append(candidateConds, candidate.Cond)
 	}
-	addUnreachableReason(reasons, SymbolicUnreachableReason{
-		Kind:    UnreachableNoRoute,
-		Node:    state.Node,
-		Cond:    failure.And(state.Cond, failure.Not(failure.Or(candidateConds...))),
-		Path:    state.Path,
-		Message: "no forwarding route",
-	})
+	handleNoRoute(reasons, state, candidateConds)
 	for _, candidate := range candidates {
 		entry := candidate.Entry
 		if entry.Discard {
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:    UnreachableDiscard,
-				Node:    state.Node,
-				Cond:    failure.And(state.Cond, candidate.Cond),
-				Path:    state.Path,
-				Message: "discard route selected",
-			})
+			handleDiscard(reasons, state, candidate)
 			continue
 		}
 		switch entry.effectiveResolutionStatus() {
 		case NextHopResolutionUnresolvedRecursive:
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:    UnreachableRecursiveNextHopUnresolved,
-				Node:    state.Node,
-				Cond:    failure.And(state.Cond, candidate.Cond),
-				Path:    state.Path,
-				Message: "recursive next-hop unresolved",
-			})
+			handleRecursiveNextHop(reasons, state, candidate)
 			continue
 		case NextHopResolutionManagementFallback:
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:      UnreachableNextHopManagementFallback,
-				Node:      state.Node,
-				Interface: entry.Interface,
-				Cond:      failure.And(state.Cond, candidate.Cond),
-				Path:      state.Path,
-				Message:   "next-hop resolved via management interface",
-			})
+			handleManagementFallback(reasons, state, candidate, entry.Interface)
 			continue
 		}
 		if entry.NextHop == "" {
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:    UnreachableNoNextHop,
-				Node:    state.Node,
-				Cond:    failure.And(state.Cond, candidate.Cond),
-				Path:    state.Path,
-				Message: "selected route has no next-hop",
-			})
+			handleNoNextHop(reasons, state, candidate)
 			continue
 		}
-		addUnreachableReason(reasons, SymbolicUnreachableReason{
-			Kind:    UnreachableNodeFailed,
-			Node:    entry.NextHop,
-			Cond:    failure.And(state.Cond, candidate.Cond, failure.Not(failure.NodeVar(entry.NextHop))),
-			Path:    state.Path,
-			Message: "next-hop node is down",
-		})
+		handleNodeFailed(reasons, entry.NextHop, failure.And(state.Cond, candidate.Cond, failure.Not(failure.NodeVar(entry.NextHop))), state.Path, "next-hop node is down")
 		link, ok := e.idx.LinkBetween(state.Node, entry.NextHop)
 		if !ok {
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:    UnreachableNextHopNotAdjacent,
-				Node:    state.Node,
-				Link:    state.Node + "-" + entry.NextHop,
-				Cond:    failure.And(state.Cond, candidate.Cond, failure.NodeVar(entry.NextHop)),
-				Path:    state.Path,
-				Message: "next-hop is not adjacent",
-			})
+			handleNextHopNotAdjacent(reasons, state, candidate, entry.NextHop)
 			continue
 		}
 		packet.Spec.EgressInterface = ingressInterface(link, state.Node)
-		addUnreachableReason(reasons, SymbolicUnreachableReason{
-			Kind:    UnreachableLinkFailed,
-			Node:    state.Node,
-			Link:    link.Name,
-			Cond:    failure.And(state.Cond, candidate.Cond, failure.NodeVar(entry.NextHop), failure.Not(e.linkUpCond(link))),
-			Path:    state.Path,
-			Message: "next-hop link is down",
-		})
+		linkUpCond := e.linkUpCond(link)
+		handleLinkFailed(reasons, state, candidate, link, linkUpCond)
 		nextPath := Path{
 			Nodes: append(append([]string(nil), state.Path.Nodes...), entry.NextHop),
 			Links: append(append([]string(nil), state.Path.Links...), link.Name),
@@ -551,29 +469,15 @@ func (e *Engine) symbolicForward(state SymbolicPacketState, vrf string, dst mode
 		}
 		egressDecision := e.dataACLDecision(currentNode, packet, "egress")
 		if egressDecision.Denied {
-			denyCond := failure.And(state.Cond, candidate.Cond, egressDecision.Cond)
-			e.appendBlockedPolicyPath(blocked, nextPath, denyCond, egressDecision, state.Node, packet.Spec.EgressInterface, "egress")
-			addUnreachableReason(reasons, SymbolicUnreachableReason{
-				Kind:          UnreachableEgressPolicy,
-				Node:          state.Node,
-				Interface:     packet.Spec.EgressInterface,
-				PolicyName:    egressDecision.PolicyName,
-				ACLName:       egressDecision.ACLName,
-				RuleSeq:       egressDecision.RuleSeq,
-				Action:        egressDecision.Action,
-				DefaultAction: egressDecision.DefaultAction,
-				PolicyRaw:     egressDecision.Source.Raw,
-				Cond:          denyCond,
-				Path:          nextPath,
-				Message:       egressDecision.Reason,
-			})
+			e.appendBlockedPolicyPath(blocked, nextPath, failure.And(state.Cond, candidate.Cond, egressDecision.Cond), egressDecision, state.Node, packet.Spec.EgressInterface, "egress")
+			handleEgressPolicy(reasons, state, candidate, egressDecision, nextPath, packet.Spec.EgressInterface)
 			continue
 		}
 		nextCond := failure.And(
 			state.Cond,
 			candidate.Cond,
 			failure.Not(egressDecision.Cond),
-			e.linkUpCond(link),
+			linkUpCond,
 		)
 		nextState := SymbolicPacketState{
 			Node:             entry.NextHop,
@@ -613,6 +517,137 @@ func clonePath(path Path) Path {
 	}
 }
 
+// ---- Unreachable reason handler functions ----
+
+func handleLoop(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableLoop,
+		Node:    state.Node,
+		Cond:    condOrTrue(state.Cond),
+		Path:    state.Path,
+		Message: "forwarding loop",
+	})
+}
+
+func handleIngressPolicy(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, ingressDecision device.PolicyDecision) {
+	denyCond := failure.And(state.Cond, ingressDecision.Cond)
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:          UnreachableIngressPolicy,
+		Node:          state.Node,
+		Interface:     state.IngressInterface,
+		PolicyName:    ingressDecision.PolicyName,
+		ACLName:       ingressDecision.ACLName,
+		RuleSeq:       ingressDecision.RuleSeq,
+		Action:        ingressDecision.Action,
+		DefaultAction: ingressDecision.DefaultAction,
+		PolicyRaw:     ingressDecision.Source.Raw,
+		Cond:          denyCond,
+		Path:          state.Path,
+		Message:       ingressDecision.Reason,
+	})
+}
+
+func handleNoRoute(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidateConds []failure.Cond) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableNoRoute,
+		Node:    state.Node,
+		Cond:    failure.And(state.Cond, failure.Not(failure.Or(candidateConds...))),
+		Path:    state.Path,
+		Message: "no forwarding route",
+	})
+}
+
+func handleDiscard(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableDiscard,
+		Node:    state.Node,
+		Cond:    failure.And(state.Cond, candidate.Cond),
+		Path:    state.Path,
+		Message: "discard route selected",
+	})
+}
+
+func handleRecursiveNextHop(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableRecursiveNextHopUnresolved,
+		Node:    state.Node,
+		Cond:    failure.And(state.Cond, candidate.Cond),
+		Path:    state.Path,
+		Message: "recursive next-hop unresolved",
+	})
+}
+
+func handleManagementFallback(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate, iface string) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:      UnreachableNextHopManagementFallback,
+		Node:      state.Node,
+		Interface: iface,
+		Cond:      failure.And(state.Cond, candidate.Cond),
+		Path:      state.Path,
+		Message:   "next-hop resolved via management interface",
+	})
+}
+
+func handleNoNextHop(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableNoNextHop,
+		Node:    state.Node,
+		Cond:    failure.And(state.Cond, candidate.Cond),
+		Path:    state.Path,
+		Message: "selected route has no next-hop",
+	})
+}
+
+func handleNodeFailed(reasons *[]SymbolicUnreachableReason, node string, cond failure.Cond, path Path, message string) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableNodeFailed,
+		Node:    node,
+		Cond:    cond,
+		Path:    path,
+		Message: message,
+	})
+}
+
+func handleNextHopNotAdjacent(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate, nextHop string) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableNextHopNotAdjacent,
+		Node:    state.Node,
+		Link:    state.Node + "-" + nextHop,
+		Cond:    failure.And(state.Cond, candidate.Cond, failure.NodeVar(nextHop)),
+		Path:    state.Path,
+		Message: "next-hop is not adjacent",
+	})
+}
+
+func handleLinkFailed(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate, link model.Link, linkUpCond failure.Cond) {
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:    UnreachableLinkFailed,
+		Node:    state.Node,
+		Link:    link.Name,
+		Cond:    failure.And(state.Cond, candidate.Cond, failure.NodeVar(candidate.Entry.NextHop), failure.Not(linkUpCond)),
+		Path:    state.Path,
+		Message: "next-hop link is down",
+	})
+}
+
+func handleEgressPolicy(reasons *[]SymbolicUnreachableReason, state SymbolicPacketState, candidate SymbolicFIBCandidate, egressDecision device.PolicyDecision, path Path, egressInterface string) {
+	denyCond := failure.And(state.Cond, candidate.Cond, egressDecision.Cond)
+	addUnreachableReason(reasons, SymbolicUnreachableReason{
+		Kind:          UnreachableEgressPolicy,
+		Node:          state.Node,
+		Interface:     egressInterface,
+		PolicyName:    egressDecision.PolicyName,
+		ACLName:       egressDecision.ACLName,
+		RuleSeq:       egressDecision.RuleSeq,
+		Action:        egressDecision.Action,
+		DefaultAction: egressDecision.DefaultAction,
+		PolicyRaw:     egressDecision.Source.Raw,
+		Cond:          denyCond,
+		Path:          path,
+		Message:       egressDecision.Reason,
+	})
+}
+
 func addUnreachableReason(reasons *[]SymbolicUnreachableReason, reason SymbolicUnreachableReason) {
 	if reasons == nil || isFalseCond(reason.Cond) {
 		return
@@ -630,15 +665,7 @@ func matchingFIBEntries(entries []FIBEntry, ip netip.Addr) []FIBEntry {
 			out = append(out, entry)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Prefix.Bits() == out[j].Prefix.Bits() {
-			if out[i].Rank == out[j].Rank {
-				return false
-			}
-			return out[i].Rank < out[j].Rank
-		}
-		return out[i].Prefix.Bits() > out[j].Prefix.Bits()
-	})
+	sortFIBEntriesByPrefixAndRank(out)
 	return out
 }
 
@@ -653,16 +680,21 @@ func matchingFIBEntriesForPrefixSet(entries []FIBEntry, dst model.PrefixSet) []F
 			out = append(out, entry)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Prefix.Bits() == out[j].Prefix.Bits() {
-			if out[i].Rank == out[j].Rank {
+	sortFIBEntriesByPrefixAndRank(out)
+	return out
+}
+
+// sortFIBEntriesByPrefixAndRank sorts FIB entries by prefix length (descending) then rank (ascending).
+func sortFIBEntriesByPrefixAndRank(entries []FIBEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Prefix.Bits() == entries[j].Prefix.Bits() {
+			if entries[i].Rank == entries[j].Rank {
 				return false
 			}
-			return out[i].Rank < out[j].Rank
+			return entries[i].Rank < entries[j].Rank
 		}
-		return out[i].Prefix.Bits() > out[j].Prefix.Bits()
+		return entries[i].Prefix.Bits() > entries[j].Prefix.Bits()
 	})
-	return out
 }
 
 func representativePrefixForSet(set model.PrefixSet) (model.Prefix, bool) {

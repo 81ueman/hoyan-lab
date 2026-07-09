@@ -744,3 +744,48 @@ route-map RM permit 10
 		t.Fatalf("configparse.ParseConfig() error = %v, want unsupported cEOS match", err)
 	}
 }
+func TestParseFRRRouteMapMatchExtensions(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+bgp as-path access-list FROM-BJ permit ^65001$
+bgp community-list standard BJ-COMM permit 65001:100
+ip prefix-list NH seq 10 permit 198.18.10.0/30
+route-map RM permit 10
+ match as-path FROM-BJ
+ match community BJ-COMM exact-match
+ match ip next-hop prefix-list NH
+ set local-preference +50
+ set metric -10
+`)
+	if got, want := cfg.ASPathLists, []model.ASPathList{{Name: "FROM-BJ", Rules: []model.StringListRule{{Action: "permit", Pattern: "^65001$"}}}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ASPathLists = %#v, want %#v", got, want)
+	}
+	if got, want := cfg.CommunityLists, []model.CommunityList{{Name: "BJ-COMM", Rules: []model.StringListRule{{Action: "permit", Pattern: "65001:100"}}}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("CommunityLists = %#v, want %#v", got, want)
+	}
+	policy := routePolicyByName(cfg.RoutePolicies, "RM")
+	if policy == nil || len(policy.Rules) != 1 {
+		t.Fatalf("RM = %#v", policy)
+	}
+	rule := policy.Rules[0]
+	if rule.MatchASPathList != "FROM-BJ" || rule.MatchCommunityList != "BJ-COMM" || !rule.MatchCommunityExact || rule.MatchNextHopPrefixList != "NH" {
+		t.Fatalf("match fields = %#v", rule)
+	}
+	if rule.SetLocalPrefDelta == nil || *rule.SetLocalPrefDelta != 50 || rule.SetMEDDelta == nil || *rule.SetMEDDelta != -10 {
+		t.Fatalf("delta fields = %#v", rule)
+	}
+}
+
+func TestParseFRRRouteMapSetIPAddressNextHop(t *testing.T) {
+	cfg := parseFRRConfigText(t, `
+route-map RM permit 10
+ set ip next-hop 192.0.2.1
+`)
+	policy := routePolicyByName(cfg.RoutePolicies, "RM")
+	if policy == nil || len(policy.Rules) != 1 {
+		t.Fatalf("RM = %#v", policy)
+	}
+	if got := policy.Rules[0].SetNextHop; got != "192.0.2.1" {
+		t.Fatalf("SetNextHop = %q, want 192.0.2.1", got)
+	}
+}
+

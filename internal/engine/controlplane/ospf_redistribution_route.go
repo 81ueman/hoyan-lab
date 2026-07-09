@@ -10,7 +10,7 @@ func RedistributedExternalRoute(node string, redist model.OSPFRedistribution, in
 	source := out.RouteSource
 	source.Node = node
 	source.Kind = model.RouteSourceOSPF
-	source.AdminDistance = 110
+	source.AdminDistance = model.AdminDistanceOSPF
 	source.MetricType = ExternalMetricType(redist.MetricType)
 	source.OSPFRouteType = ExternalRouteType(source.MetricType)
 	source.Metric = ExternalMetric(redist, out)
