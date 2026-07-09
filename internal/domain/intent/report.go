@@ -35,6 +35,9 @@ type Actual struct {
 	AddedRows     []any    `json:"added_rows,omitempty"`
 	RemovedRows   []any    `json:"removed_rows,omitempty"`
 	ChangedRows   []any    `json:"changed_rows,omitempty"`
+	AddedCount    int      `json:"added_count,omitempty"`
+	RemovedCount  int      `json:"removed_count,omitempty"`
+	ChangedCount  int      `json:"changed_count,omitempty"`
 }
 
 type FailureCounterexample struct {

@@ -74,7 +74,9 @@ func validateCompare(path string, compare *CompareCheck, doc *Document) error {
 	default:
 		return fmt.Errorf("%s.check.compare.table: unsupported table %q", path, compare.Table)
 	}
-	if compare.Relation != "equal" {
+	switch compare.Relation {
+	case "equal", "added_count", "removed_count", "changed_count", "no_change":
+	default:
 		return fmt.Errorf("%s.check.compare.relation: unsupported relation %q", path, compare.Relation)
 	}
 	if _, ok := doc.Snapshots[compare.Left.Snapshot]; !ok {

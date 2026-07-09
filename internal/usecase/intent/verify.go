@@ -208,6 +208,10 @@ func evaluateCompare(in Intent, loadSnapshot func(string) (SnapshotContext, erro
 	leftRows := canonicalRIBRows(matchingRIBFacts(left, compare.Left.Where))
 	rightRows := canonicalRIBRows(matchingRIBFacts(right, compare.Right.Where))
 	added, removed := ribDiff(leftRows, rightRows)
+	addedCount := len(added)
+	removedCount := len(removed)
+	changedCount := addedCount + removedCount
+
 	assertion := Assertion{Relation: compare.Relation}
 	result := Result{
 		Name:      in.Name,
@@ -215,12 +219,27 @@ func evaluateCompare(in Intent, loadSnapshot func(string) (SnapshotContext, erro
 		Table:     compare.Table,
 		Assertion: assertion,
 		Actual: Actual{
-			Count:       len(rightRows),
-			AddedRows:   canonicalRowsAsAny(added),
-			RemovedRows: canonicalRowsAsAny(removed),
+			Count:        len(rightRows),
+			AddedRows:    canonicalRowsAsAny(added),
+			RemovedRows:  canonicalRowsAsAny(removed),
+			AddedCount:   addedCount,
+			RemovedCount: removedCount,
+			ChangedCount: changedCount,
 		},
 	}
-	if len(added) > 0 || len(removed) > 0 {
+
+	var failed bool
+	switch compare.Relation {
+	case "equal", "changed_count":
+		failed = changedCount != 0
+	case "no_change":
+		failed = addedCount != 0 || removedCount != 0
+	case "added_count":
+		failed = addedCount != 0
+	case "removed_count":
+		failed = removedCount != 0
+	}
+	if failed {
 		result.Status = "fail"
 		result.Actual.Reason = "canonical rows differ"
 		result.Counterexamples = []any{result.Actual.Reason}
