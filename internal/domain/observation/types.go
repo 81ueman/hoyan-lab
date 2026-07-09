@@ -2,6 +2,36 @@ package observation
 
 import "github.com/81ueman/hoyan-lab/internal/domain/model"
 
+// RouteMetadata holds shared metadata fields present in both RIB and FIB entries.
+// These fields are duplicated across RIB and FIB snapshots to avoid forcing
+// callers to unwrap an intermediate struct, while the shared type ensures
+// they stay in sync when new fields are added.
+type RouteMetadata struct {
+	// SAFI is the Subsequent Address Family Identifier (e.g. "unicast",
+	// "multicast", "vpn-unicast"). Zero value means unknown / not reported.
+	SAFI string `json:"safi,omitempty"`
+	// TableID is the routing table identifier as reported by the device.
+	TableID string `json:"table_id,omitempty"`
+	// TableName is a human-friendly name for the routing table.
+	TableName string `json:"table_name,omitempty"`
+	// ProtocolInstance identifies the specific protocol process or
+	// instance (e.g. "BGP 65000", "OSPF 100", "OSPFv3 1").
+	ProtocolInstance string `json:"protocol_instance,omitempty"`
+	// Age is the route age as a human-readable string (e.g. "00:12:34",
+	// "1h2m3s").
+	Age string `json:"age,omitempty"`
+	// AgeSeconds is the route age in seconds.
+	AgeSeconds int `json:"age_seconds,omitempty"`
+	// Tag is an administratively assigned route tag value.
+	Tag uint32 `json:"tag,omitempty"`
+	// InstalledReason describes why the route was or was not installed
+	// into the FIB (e.g. "active", "inactive", "fib", "not_selected").
+	InstalledReason string `json:"installed_reason,omitempty"`
+	// Raw holds vendor-specific attributes that do not have a dedicated
+	// field in this schema. It is never compared by default.
+	Raw map[string]any `json:"raw,omitempty"`
+}
+
 type RouteSource struct {
 	Protocol model.RouteSourceKind `json:"protocol"`
 	Origin   string                `json:"origin,omitempty"`

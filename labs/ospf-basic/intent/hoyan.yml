@@ -1,0 +1,63 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/ospf-basic
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # All OSPF routes are intra_area (single area 0)
+  - name: all-ospf-routes-are-intra-area
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          protocol: ospf
+        intent:
+          rib_eval:
+            aggregate: distVals(route_type)
+            eq: [[intra_area]]
+
+  # r1's loopback (10.255.1.1/32) is reachable from all other routers (r2, r3, r4)
+  - name: r1-loopback-reachable-from-all-routers
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          protocol: ospf
+          prefix: 10.255.1.1/32
+        aggregate: count()
+        gte: 3
+
+  # r4's loopback (10.255.4.4/32) cost from r1
+  # Observation shows r1→10.255.4.4/32 has cost 1 (direct via r4)
+  - name: r4-loopback-cost-from-r1
+    scenario: normal
+    rcl:
+      guard:
+        where:
+          device: r1
+          protocol: ospf
+          prefix: 10.255.4.4/32
+        intent:
+          rib_eval:
+            aggregate: distVals(cost)
+            ne: [[0]]
+
+  # Each router has at least one OSPF route with a nexthop
+  # Uses RCL forall with device var so the row filter binds device=router-name
+  - name: each-router-has-ospf-nexthops
+    scenario: normal
+    rcl:
+      forall:
+        var: device
+        in: [r1, r2, r3, r4]
+        intent:
+          rib_eval:
+            where:
+              protocol: ospf
+            aggregate: distCnt(nexthop)
+            gte: 1

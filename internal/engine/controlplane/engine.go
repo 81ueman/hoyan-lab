@@ -27,6 +27,7 @@ func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable) *Engine {
 }
 
 func (e *Engine) Simulate() {
+	// ── Phase 1: Connected, static, and other non-BGP route installation ──
 	for _, origin := range e.idx.Topology.Nodes {
 		for _, route := range e.connectedRoutes(origin) {
 			e.installConfiguredRoute(origin, route)
@@ -37,6 +38,10 @@ func (e *Engine) Simulate() {
 			}
 			e.installConfiguredRoute(origin, route)
 		}
+	}
+
+	// ── Phase 2: BGP network statements and redistribution ──
+	for _, origin := range e.idx.Topology.Nodes {
 		if bgpEnabled(origin) {
 			for _, prefix := range origin.Prefixes {
 				originCond := failure.NodeVar(origin.Name)
@@ -45,7 +50,7 @@ func (e *Engine) Simulate() {
 					Attrs:       domainroute.BGPAttributes{OriginCode: model.BGPOriginIGP, LocalPref: 100},
 					Provenance:  domainroute.Provenance{OriginNode: origin.Name, PathNodes: []string{origin.Name}},
 					SourceKind:  model.RouteSourceBGP,
-					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: 200},
+					RouteSource: model.ConfiguredRoute{Node: origin.Name, NetworkInstance: model.NetworkInstanceDefault, AFI: model.AFIIPv4, Prefix: prefix, Kind: model.RouteSourceBGP, AdminDistance: model.AdminDistanceBGP},
 					BaseCond:    originCond,
 					Condition:   originCond,
 				}
@@ -56,13 +61,7 @@ func (e *Engine) Simulate() {
 				if network.Kind != model.RouteSourceBGP || network.Prefix.IsZero() {
 					continue
 				}
-				network.Node = origin.Name
-				if network.NetworkInstance == "" {
-					network.NetworkInstance = model.NetworkInstanceDefault
-				}
-				if network.AFI == "" {
-					network.AFI = model.AFIIPv4
-				}
+				normalizeConfiguredRoute(&network, origin.Name)
 				originCond := failure.NodeVar(origin.Name)
 				route := domainroute.RIBEntry{
 					NLRI:        domainroute.NLRI{Prefix: network.Prefix},
@@ -81,17 +80,23 @@ func (e *Engine) Simulate() {
 			e.walkBGP(route)
 		}
 	}
+
+	// ── Phase 3: OSPF route installation ──
 	e.installOSPFRoutes()
-	e.SelectRoutes()
-	e.ConvergeAdvertisementConditions()
+
+	// ── Phase 4: Initial route selection and condition convergence ──
+	e.selectAndConverge()
+
+	// ── Phase 5: Aggregate route installation and BGP propagation ──
 	for _, origin := range e.idx.Topology.Nodes {
 		for _, route := range e.aggregateRoutes(origin) {
 			e.addRIB(origin.Name, route.NLRI.Prefix, route)
 			e.walkBGP(route)
 		}
 	}
-	e.SelectRoutes()
-	e.ConvergeAdvertisementConditions()
+
+	// ── Phase 6: Final route selection and convergence ──
+	e.selectAndConverge()
 }
 
 func bgpEnabled(node model.Node) bool {
@@ -114,7 +119,7 @@ func (e *Engine) connectedRoutes(node model.Node) []model.ConfiguredRoute {
 			Interface:       iface.Name,
 			Kind:            model.RouteSourceConnected,
 			ConnectedClass:  e.idx.ConnectedClass(node.Name, iface, prefix),
-			AdminDistance:   0,
+			AdminDistance:   model.AdminDistanceConnected,
 		})
 	}
 	return out
@@ -124,15 +129,9 @@ func (e *Engine) installConfiguredRoute(node model.Node, route model.ConfiguredR
 	if route.Prefix.IsZero() {
 		return
 	}
-	route.Node = node.Name
-	if route.NetworkInstance == "" {
-		route.NetworkInstance = model.NetworkInstanceDefault
-	}
-	if route.AFI == "" {
-		route.AFI = model.AFIIPv4
-	}
-	if route.AdminDistance == 0 && route.Kind != model.RouteSourceConnected {
-		route.AdminDistance = 1
+	normalizeConfiguredRoute(&route, node.Name)
+	if route.AdminDistance == model.AdminDistanceConnected && route.Kind != model.RouteSourceConnected {
+		route.AdminDistance = model.AdminDistanceStatic
 	}
 	cond := failure.NodeVar(node.Name)
 	entry := domainroute.RIBEntry{
@@ -201,7 +200,7 @@ func (e *Engine) bgpRouteFromConfiguredRoute(node model.Node, route model.Config
 			Prefix:          route.Prefix,
 			Kind:            model.RouteSourceBGP,
 			Source:          route.Source,
-			AdminDistance:   200,
+			AdminDistance:   model.AdminDistanceBGP,
 		},
 		BaseCond:  cond,
 		Condition: cond,
@@ -215,15 +214,9 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 		if route.Kind != model.RouteSourceAggregate || route.Prefix.IsZero() {
 			continue
 		}
-		route.Node = node.Name
-		if route.NetworkInstance == "" {
-			route.NetworkInstance = model.NetworkInstanceDefault
-		}
-		if route.AFI == "" {
-			route.AFI = model.AFIIPv4
-		}
-		if route.AdminDistance == 0 {
-			route.AdminDistance = 200
+		normalizeConfiguredRoute(&route, node.Name)
+		if route.AdminDistance == model.AdminDistanceConnected {
+			route.AdminDistance = model.AdminDistanceAggregate
 		}
 		cond, contributors, ok := e.aggregateContributorCondVRF(node.Name, route.NetworkInstance, route.Prefix)
 		if !ok {
@@ -452,70 +445,46 @@ func (e *Engine) ParentRoute(route domainroute.RIBEntry) (domainroute.RIBEntry, 
 	return domainroute.RIBEntry{}, false
 }
 
-func (e *Engine) walkBGP(route domainroute.RIBEntry) {
-	route = route.Normalize()
-	current := route.Provenance.PathNodes[len(route.Provenance.PathNodes)-1]
-	curNode, _ := e.idx.Node(current)
-	curBehavior := BehaviorFor(curNode.Kind)
-	for _, adj := range e.idx.Adj[model.NodeID(current)] {
-		next := string(adj.To)
-		session, ok := e.bgpSession(current, next, route.RouteSource.NetworkInstance)
-		if !ok {
-			continue
-		}
-		nextNode, _ := e.idx.Node(next)
-		nextBehavior := BehaviorFor(nextNode.Kind)
-		exportMsg := device.ControlMessage{From: current, To: next, Prefix: route.NLRI.Prefix.String(), Route: route}
-		if !curBehavior.CheckControlEgress(curNode, exportMsg) {
-			continue
-		}
-		routeForExport := e.applyAggregateSuppression(curNode, route)
-		exported := curBehavior.ExportRoute(curNode, nextNode, session, routeForExport)
-		if !exported.Accept {
-			continue
-		}
-		exportPolicy := routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, curNode, next, session.ExportPolicy, exported.Route)
-		if !exportPolicy.Accept {
-			continue
-		}
-		exported.Route = exportPolicy.Route
-		importMsg := device.ControlMessage{From: current, To: next, Prefix: exported.Route.NLRI.Prefix.String(), Route: exported.Route}
-		if !nextBehavior.CheckControlIngress(nextNode, importMsg) {
-			continue
-		}
-		receiverSession, _ := e.bgpSession(next, current, route.RouteSource.NetworkInstance)
-		imported := nextBehavior.ImportRoute(nextNode, curNode, receiverSession, exported.Route)
-		if !imported.Accept {
-			continue
-		}
-		importPolicy := routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, nextNode, current, receiverSession.ImportPolicy, imported.Route)
-		if !importPolicy.Accept {
-			continue
-		}
-		imported.Route = importPolicy.Route
-		revisitsNode := containsString(route.Provenance.PathNodes, next)
-		if revisitsNode && !imported.Route.Attrs.Invalid {
-			continue
-		}
-		nextLinks := append(append([]string(nil), imported.Route.Provenance.PathLinks...), adj.Link.Name)
-		nextNodes := append(append([]string(nil), imported.Route.Provenance.PathNodes...), next)
-		nextCond := failure.And(imported.Route.Condition, failure.LinkVar(adj.Link.Name), failure.NodeVar(next))
-
-		entry := imported.Route
-		entry.Provenance.FromNode = current
-		entry.Provenance.PathNodes = append([]string(nil), nextNodes...)
-		entry.Provenance.PathLinks = append([]string(nil), nextLinks...)
-		entry.BaseCond = nextCond
-		entry.Condition = nextCond
-		entry.Attrs.LocalPref = bgp.DefaultLocalPref(entry.Attrs.LocalPref)
-		entry = entry.Normalize()
-
-		e.addRIB(next, entry.NLRI.Prefix, entry)
-		if !nextBehavior.RouteEligibleForAdvertisement(nextNode, entry) {
-			continue
-		}
-		e.walkBGP(entry)
+func (e *Engine) bgpPropagationContext() bgp.PropagationContext {
+	return bgp.PropagationContext{
+		Adjacencies: func(nodeID model.NodeID) []model.AdjEdge {
+			return e.idx.Adj[nodeID]
+		},
+		Node: e.idx.Node,
+		BGPSession: func(a, b string, vrf model.NetworkInstanceID) (model.BGPNeighbor, bool) {
+			return e.bgpSession(a, b, vrf)
+		},
+		ExportRoute: func(from, to model.Node, session model.BGPNeighbor, route domainroute.RIBEntry) bgp.RouteDecision {
+			return BehaviorFor(from.Kind).ExportRoute(from, to, session, route)
+		},
+		ImportRoute: func(to, from model.Node, session model.BGPNeighbor, route domainroute.RIBEntry) bgp.RouteDecision {
+			return BehaviorFor(to.Kind).ImportRoute(to, from, session, route)
+		},
+		ApplyRoutePolicy: func(node model.Node, peer, policyName string, route domainroute.RIBEntry) bgp.RouteDecision {
+			return routingpolicy.ApplyRoutePolicy(routePolicyResolver{idx: e.idx}, node, peer, policyName, route)
+		},
+		AddRIB: e.addRIB,
+		ControlEgress: func(from, to string, route domainroute.RIBEntry) bool {
+			curNode, _ := e.idx.Node(from)
+			return BehaviorFor(curNode.Kind).CheckControlEgress(curNode, device.ControlMessage{
+				From: from, To: to, Prefix: route.NLRI.Prefix.String(), Route: route,
+			})
+		},
+		ControlIngress: func(from, to string, route domainroute.RIBEntry) bool {
+			nextNode, _ := e.idx.Node(to)
+			return BehaviorFor(nextNode.Kind).CheckControlIngress(nextNode, device.ControlMessage{
+				From: from, To: to, Prefix: route.NLRI.Prefix.String(), Route: route,
+			})
+		},
+		EligibleForAdvertisement: func(node model.Node, route domainroute.RIBEntry) bool {
+			return BehaviorFor(node.Kind).RouteEligibleForAdvertisement(node, route)
+		},
+		ApplyAggregateSuppression: e.applyAggregateSuppression,
 	}
+}
+
+func (e *Engine) walkBGP(route domainroute.RIBEntry) {
+	bgp.WalkRoute(e.bgpPropagationContext(), route)
 }
 
 func (e *Engine) applyAggregateSuppression(node model.Node, route domainroute.RIBEntry) domainroute.RIBEntry {
@@ -585,11 +554,17 @@ func routeKey(r domainroute.RIBEntry) string {
 	return string(r.RouteSource.NetworkInstance) + "|" + r.NLRI.Prefix.String() + "|" + string(r.SourceKind) + "|" + r.RouteSource.OSPFRouteType + "|" + r.Provenance.OriginNode + "|" + r.ForwardingNextHop.Node + "|" + r.RouteSource.Interface + "|" + strings.Join(r.Provenance.PathNodes, ">") + "|" + valid
 }
 
-func containsString(xs []string, x string) bool {
-	for _, v := range xs {
-		if v == x {
-			return true
-		}
+func normalizeConfiguredRoute(route *model.ConfiguredRoute, nodeName string) {
+	route.Node = nodeName
+	if route.NetworkInstance == "" {
+		route.NetworkInstance = model.NetworkInstanceDefault
 	}
-	return false
+	if route.AFI == "" {
+		route.AFI = model.AFIIPv4
+	}
+}
+
+func (e *Engine) selectAndConverge() {
+	e.SelectRoutes()
+	e.ConvergeAdvertisementConditions()
 }
