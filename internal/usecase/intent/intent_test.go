@@ -160,6 +160,47 @@ func TestVerifyAndOrNot(t *testing.T) {
 	}
 }
 
+func TestVerifyGuard(t *testing.T) {
+	doc := loadTestDoc(t, "testdata/intent/guard-basic.yml")
+	report, err := Verify(doc)
+	if err != nil {
+		t.Fatalf("Verify() error: %v", err)
+	}
+	// 3 intents: 2 pass (premise-true-inner-passes + premise-false-vacuous-pass), 1 fail (premise-true-inner-fails)
+	if report.Summary.Total != 3 {
+		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
+	}
+	if report.Summary.Passed != 2 {
+		t.Fatalf("Summary.Passed = %d, want 2", report.Summary.Passed)
+	}
+	if report.Summary.Failed != 1 {
+		t.Fatalf("Summary.Failed = %d, want 1", report.Summary.Failed)
+	}
+
+	// Verify individual results
+	for _, r := range report.Results {
+		switch r.Name {
+		case "guard-premise-true-inner-passes":
+			if r.Status != "pass" {
+				t.Fatalf("Result %q Status = %q, want \"pass\"", r.Name, r.Status)
+			}
+		case "guard-premise-false-vacuous-pass":
+			if r.Status != "pass" {
+				t.Fatalf("Result %q Status = %q, want \"pass\"", r.Name, r.Status)
+			}
+			if r.Actual.Count != 0 {
+				t.Fatalf("Result %q Actual.Count = %d, want 0 (vacuous pass)", r.Name, r.Actual.Count)
+			}
+		case "guard-premise-true-inner-fails":
+			if r.Status != "fail" {
+				t.Fatalf("Result %q Status = %q, want \"fail\"", r.Name, r.Status)
+			}
+		default:
+			t.Fatalf("unexpected result name %q", r.Name)
+		}
+	}
+}
+
 func TestVerifyPacketFailureScenario(t *testing.T) {
 	doc := loadTestDoc(t, "testdata/intent/packet-failure-scenario.yml")
 	report, err := Verify(doc)
