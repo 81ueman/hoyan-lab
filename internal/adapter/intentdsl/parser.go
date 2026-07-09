@@ -239,7 +239,15 @@ func (p *parser) parseFailureBlock() (intent.FailureConstraints, error) {
 			if p.tok.kind == tokComma {
 				p.next()
 			}
-		case tokKeywordIncludeLinkRoles:
+		case tokKeywordIncludeLinkRoles,
+			tokKeywordExcludeLinkRoles,
+			tokKeywordIncludeLinks,
+			tokKeywordExcludeLinks,
+			tokKeywordIncludeNodeRoles,
+			tokKeywordExcludeNodeRoles,
+			tokKeywordIncludeNodes,
+			tokKeywordExcludeNodes:
+			kind := p.tok.kind
 			p.next()
 			if err := p.expect(tokAssign); err != nil {
 				return fc, err
@@ -248,98 +256,7 @@ func (p *parser) parseFailureBlock() (intent.FailureConstraints, error) {
 			if err != nil {
 				return fc, err
 			}
-			fc.IncludeLinkRoles = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordExcludeLinkRoles:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.ExcludeLinkRoles = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordIncludeLinks:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.IncludeLinks = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordExcludeLinks:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.ExcludeLinks = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordIncludeNodeRoles:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.IncludeNodeRoles = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordExcludeNodeRoles:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.ExcludeNodeRoles = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordIncludeNodes:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.IncludeNodes = toStringSlice(val)
-			if p.tok.kind == tokComma {
-				p.next()
-			}
-		case tokKeywordExcludeNodes:
-			p.next()
-			if err := p.expect(tokAssign); err != nil {
-				return fc, err
-			}
-			val, err := p.parseValue()
-			if err != nil {
-				return fc, err
-			}
-			fc.ExcludeNodes = toStringSlice(val)
+			p.setFailureArrayField(&fc, kind, toStringSlice(val))
 			if p.tok.kind == tokComma {
 				p.next()
 			}
@@ -353,6 +270,29 @@ func (p *parser) parseFailureBlock() (intent.FailureConstraints, error) {
 	}
 
 	return fc, nil
+}
+
+// setFailureArrayField assigns the parsed string slice to the correct
+// FailureConstraints field based on the keyword token kind.
+func (p *parser) setFailureArrayField(fc *intent.FailureConstraints, kind tokenKind, vals []string) {
+	switch kind {
+	case tokKeywordIncludeLinkRoles:
+		fc.IncludeLinkRoles = vals
+	case tokKeywordExcludeLinkRoles:
+		fc.ExcludeLinkRoles = vals
+	case tokKeywordIncludeLinks:
+		fc.IncludeLinks = vals
+	case tokKeywordExcludeLinks:
+		fc.ExcludeLinks = vals
+	case tokKeywordIncludeNodeRoles:
+		fc.IncludeNodeRoles = vals
+	case tokKeywordExcludeNodeRoles:
+		fc.ExcludeNodeRoles = vals
+	case tokKeywordIncludeNodes:
+		fc.IncludeNodes = vals
+	case tokKeywordExcludeNodes:
+		fc.ExcludeNodes = vals
+	}
 }
 
 func (p *parser) parseIntentDecl() (intent.Intent, error) {
@@ -695,7 +635,7 @@ func (p *parser) parsePacket() (*intent.RCLExpr, error) {
 		if err != nil {
 			return nil, err
 		}
-		vrf = strval(val)
+		vrf = stringValue(val)
 	}
 
 	if err := p.expect(tokKeywordExpect); err != nil {
@@ -710,8 +650,8 @@ func (p *parser) parsePacket() (*intent.RCLExpr, error) {
 
 	return &intent.RCLExpr{
 		PacketReachable: &intent.PacketReachableExpr{
-			From:     strval(from),
-			To:       strval(to),
+			From:     stringValue(from),
+			To:       stringValue(to),
 			Protocol: protocol,
 			DstPort:  dstPort,
 			VRF:      vrf,
@@ -768,30 +708,17 @@ func (p *parser) parseRibEq() (*intent.RCLExpr, error) {
 
 // parseAnd parses: and { expr+ }
 func (p *parser) parseAnd() (*intent.RCLExpr, error) {
-	p.next() // consume 'and'
-	if err := p.expect(tokLBrace); err != nil {
-		return nil, err
-	}
-
-	var exprs []intent.RCLExpr
-	for p.tok.kind != tokRBrace && p.tok.kind != tokEOF {
-		expr, err := p.parseRCLExpr()
-		if err != nil {
-			return nil, err
-		}
-		exprs = append(exprs, *expr)
-	}
-
-	if err := p.expect(tokRBrace); err != nil {
-		return nil, err
-	}
-
-	return &intent.RCLExpr{And: exprs}, nil
+	return p.parseCombinator("and")
 }
 
 // parseOr parses: or { expr+ }
 func (p *parser) parseOr() (*intent.RCLExpr, error) {
-	p.next() // consume 'or'
+	return p.parseCombinator("or")
+}
+
+// parseCombinator parses an and{...} or or{...} block, consuming the keyword.
+func (p *parser) parseCombinator(kw string) (*intent.RCLExpr, error) {
+	p.next() // consume 'and' or 'or'
 	if err := p.expect(tokLBrace); err != nil {
 		return nil, err
 	}
@@ -809,6 +736,9 @@ func (p *parser) parseOr() (*intent.RCLExpr, error) {
 		return nil, err
 	}
 
+	if kw == "and" {
+		return &intent.RCLExpr{And: exprs}, nil
+	}
 	return &intent.RCLExpr{Or: exprs}, nil
 }
 
@@ -898,9 +828,9 @@ func (p *parser) parseBlock() ([]*intent.RCLExpr, error) {
 	return exprs, nil
 }
 
-// blockToRCLExpr converts a block (list of exprs) to a single RCLExpr.
-// If the block contains exactly one expr, return it directly.
-// Otherwise, wrap in an AND.
+// blockToRCLExpr converts a block (list of parsed RCLExprs) to a single RCLExpr.
+// A single-element block returns that element directly.
+// Multiple elements are implicitly AND-combined (wrapped in an And expression).
 func (p *parser) blockToRCLExpr(block []*intent.RCLExpr) *intent.RCLExpr {
 	if len(block) == 1 {
 		return block[0]
@@ -1389,8 +1319,8 @@ func (p *parser) parseArray() ([]any, error) {
 	return vals, nil
 }
 
-// strval converts an any value to string.
-func strval(v any) string {
+// stringValue converts an any value to string.
+func stringValue(v any) string {
 	switch val := v.(type) {
 	case string:
 		return val

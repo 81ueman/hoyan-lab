@@ -151,9 +151,7 @@ var keywords = map[string]tokenKind{
 
 // lexer wraps text/scanner and emits tokens.
 type lexer struct {
-	s     scanner.Scanner
-	last  token
-	sawNL bool // did the last token end with a newline?
+	s scanner.Scanner
 }
 
 func newLexer(src string, filename string) *lexer {
@@ -166,13 +164,7 @@ func newLexer(src string, filename string) *lexer {
 }
 
 func (l *lexer) next() token {
-	// If we have a buffered token, return it and mark EOL.
-	l.sawNL = false
 	tok := l.scanNext()
-	if tok.kind == tokEOF {
-		return tok
-	}
-	l.last = tok
 	return tok
 }
 

@@ -133,7 +133,7 @@ func NewIntentVerifyCommand() *cobra.Command {
 }
 
 func addIntentInputFlags(cmd *cobra.Command, opts *intentOptions) {
-	cmd.Flags().StringVar(&opts.file, "file", "", "intent YAML file")
+	cmd.Flags().StringVar(&opts.file, "file", "", "intent .hoyan file")
 	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.hoyan")
 }
 
