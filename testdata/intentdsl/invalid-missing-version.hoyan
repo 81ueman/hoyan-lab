@@ -1,0 +1,15 @@
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "missing-version" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() >= 1
+  }
+}

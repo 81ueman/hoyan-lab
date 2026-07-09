@@ -1,0 +1,48 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/ospf-multi-area"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+// Both area 0 (intra_area) and area 1+ (inter_area) routes exist.
+intent "both-areas-have-routes" {
+  scenario = "normal"
+
+  and {
+    when protocol = "ospf", route_type = "intra_area" {
+      count() >= 1
+    }
+    when protocol = "ospf", route_type = "inter_area" {
+      count() >= 1
+    }
+  }
+}
+
+// inter_area routes exist (cross-area routing)
+intent "inter-area-routes-exist" {
+  scenario = "normal"
+
+  when protocol = "ospf", route_type = "inter_area" {
+    count() >= 1
+  }
+}
+
+// ABRs (r2, r3) have both intra_area and inter_area OSPF routes.
+intent "abrs-have-both-areas" {
+  scenario = "normal"
+
+  for device in ["r2", "r3"] {
+    and {
+      when protocol = "ospf", route_type = "intra_area" {
+        count() >= 1
+      }
+      when protocol = "ospf", route_type = "inter_area" {
+        count() >= 1
+      }
+    }
+  }
+}

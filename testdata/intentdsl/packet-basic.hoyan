@@ -1,0 +1,26 @@
+version = "hoyan/v1"
+
+let service_ip = "10.4.1.10"
+let customers = ["cust-bj", "cust-sh", "cust-gz"]
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "customers-http-denied" {
+  scenario = "normal"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/80 expect false
+}
+
+intent "customers-https-allowed" {
+  scenario = "normal"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/443 expect true
+}

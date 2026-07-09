@@ -18,11 +18,11 @@ type srlinuxParser struct {
 	collectWarnings bool
 
 	// Accumulators
-	groupAS            map[string]uint32
-	groupImportPolicy  map[string]string
-	groupExportPolicy  map[string]string
-	groupNextHopSelf   map[string]bool
-	neighborGroup      map[string]string
+	groupAS              map[string]uint32
+	groupImportPolicy    map[string]string
+	groupExportPolicy    map[string]string
+	groupNextHopSelf     map[string]bool
+	neighborGroup        map[string]string
 	neighborImportPolicy map[string]string
 	neighborExportPolicy map[string]string
 	neighborNextHopSelf  map[string]bool
@@ -35,14 +35,14 @@ type srlinuxParser struct {
 
 func newSRLinuxParser(path, text string, collectWarnings bool) *srlinuxParser {
 	return &srlinuxParser{
-		path:               path,
-		text:               text,
-		collectWarnings:    collectWarnings,
-		groupAS:            make(map[string]uint32),
-		groupImportPolicy:  make(map[string]string),
-		groupExportPolicy:  make(map[string]string),
-		groupNextHopSelf:   make(map[string]bool),
-		neighborGroup:      make(map[string]string),
+		path:                 path,
+		text:                 text,
+		collectWarnings:      collectWarnings,
+		groupAS:              make(map[string]uint32),
+		groupImportPolicy:    make(map[string]string),
+		groupExportPolicy:    make(map[string]string),
+		groupNextHopSelf:     make(map[string]bool),
+		neighborGroup:        make(map[string]string),
 		neighborImportPolicy: make(map[string]string),
 		neighborExportPolicy: make(map[string]string),
 		neighborNextHopSelf:  make(map[string]bool),
@@ -157,7 +157,6 @@ func (p *srlinuxParser) finalize() ParseResult {
 // ---------------------------------------------------------------------------
 // Handler methods
 // ---------------------------------------------------------------------------
-
 
 func (p *srlinuxParser) handleHostname(fields []string) error {
 	if len(fields) > 0 {

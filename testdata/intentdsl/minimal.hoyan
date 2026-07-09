@@ -1,0 +1,17 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "bj-edge1-has-service-prefix" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1", prefix = "10.4.0.0/16" {
+    count() >= 1
+  }
+}

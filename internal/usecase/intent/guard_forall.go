@@ -113,66 +113,66 @@ func collectDistinctValues(snapshot SnapshotContext, field string) ([]string, er
 			}
 		}
 	case "route_type":
-	for _, rib := range RIBs(snapshot.Network) {
-		for _, route := range rib.Routes {
-			if route.OSPF == nil {
-				continue
-			}
-			v := string(route.OSPF.RouteType)
-			if v != "" && !seen[v] {
-				seen[v] = true
-				values = append(values, v)
-			}
-		}
-	}
-case "area":
-	for _, rib := range RIBs(snapshot.Network) {
-		for _, route := range rib.Routes {
-			if route.OSPF == nil {
-				continue
-			}
-			v := string(route.OSPF.Area)
-			if v != "" && !seen[v] {
-				seen[v] = true
-				values = append(values, v)
-			}
-		}
-	}
-case "origin":
-	for _, rib := range RIBs(snapshot.Network) {
-		for _, route := range rib.Routes {
-			if route.BGP == nil || len(route.BGP.Paths) == 0 {
-				continue
-			}
-			v := string(route.BGP.Paths[0].Origin)
-			if v != "" && !seen[v] {
-				seen[v] = true
-				values = append(values, v)
-			}
-		}
-	}
-case "connected_class":
-	for _, rib := range RIBs(snapshot.Network) {
-		for _, route := range rib.Routes {
-			if route.Connected == nil {
-				continue
-			}
-			v := ""
-			if route.Connected.Interface != "" {
-				if route.Connected.Interface == "lo" || strings.HasPrefix(route.Connected.Interface, "lo") {
-					v = "loopback"
-				} else {
-					v = "link"
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.OSPF == nil {
+					continue
+				}
+				v := string(route.OSPF.RouteType)
+				if v != "" && !seen[v] {
+					seen[v] = true
+					values = append(values, v)
 				}
 			}
-			if v != "" && !seen[v] {
-				seen[v] = true
-				values = append(values, v)
+		}
+	case "area":
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.OSPF == nil {
+					continue
+				}
+				v := string(route.OSPF.Area)
+				if v != "" && !seen[v] {
+					seen[v] = true
+					values = append(values, v)
+				}
 			}
 		}
-	}
-default:
-	return nil, fmt.Errorf("unrecognized forall field %q (valid: device, node, vrf, protocol, route_type, area, origin, connected_class)", field)
+	case "origin":
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.BGP == nil || len(route.BGP.Paths) == 0 {
+					continue
+				}
+				v := string(route.BGP.Paths[0].Origin)
+				if v != "" && !seen[v] {
+					seen[v] = true
+					values = append(values, v)
+				}
+			}
+		}
+	case "connected_class":
+		for _, rib := range RIBs(snapshot.Network) {
+			for _, route := range rib.Routes {
+				if route.Connected == nil {
+					continue
+				}
+				v := ""
+				if route.Connected.Interface != "" {
+					if route.Connected.Interface == "lo" || strings.HasPrefix(route.Connected.Interface, "lo") {
+						v = "loopback"
+					} else {
+						v = "link"
+					}
+				}
+				if v != "" && !seen[v] {
+					seen[v] = true
+					values = append(values, v)
+				}
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unrecognized forall field %q (valid: device, node, vrf, protocol, route_type, area, origin, connected_class)", field)
 	}
 
 	return values, nil

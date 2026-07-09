@@ -23,7 +23,7 @@ import (
 
 const (
 	labTopologyFile     = "hoyan.clab.yml"
-	labIntentPath       = "intent/hoyan.yml"
+	labIntentPath       = "intent/hoyan.hoyan"
 	defaultLabsDir      = "labs"
 	defaultLabDir       = "labs/base-wan"
 	defaultTopologyPath = defaultLabDir + "/" + labTopologyFile

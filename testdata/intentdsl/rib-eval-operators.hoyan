@@ -1,0 +1,57 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "exact-bgp-count-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1", protocol = "bgp" {
+    count() == [9]
+  }
+}
+
+intent "non-zero-route-count-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() != [0]
+  }
+}
+
+intent "more-than-10-routes-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() > 10
+  }
+}
+
+intent "at-least-21-routes-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() >= 21
+  }
+}
+
+intent "less-than-22-routes-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() < 22
+  }
+}
+
+intent "at-most-21-routes-on-bj-edge1" {
+  scenario = "normal"
+
+  rib where device = "bj-edge1" {
+    count() <= 21
+  }
+}

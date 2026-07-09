@@ -1,0 +1,21 @@
+version = "hoyan/v1"
+
+let sources = ["cust-bj", "cust-sh", "cust-gz"]
+let service_prefix = "10.4.0.0/16"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "customer-http-denied" {
+  scenario = "normal"
+  forall src in $sources
+
+  rib where device = $src, prefix = $service_prefix {
+    count() >= 1
+  }
+}

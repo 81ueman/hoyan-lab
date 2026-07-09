@@ -1,0 +1,53 @@
+version = "hoyan/v1"
+
+let changed_prefix = "10.4.0.0/16"
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+
+snapshot "post" {
+  lab = "labs/intent-change-after"
+}
+
+scenario "post" {
+  snapshot = "post"
+}
+
+intent "logical-and-selects-edge-routes" {
+  scenario = "post"
+
+  rib where device_in = $edges, prefix = $changed_prefix, selected = true {
+    count() == [3]
+  }
+}
+
+intent "logical-or-selects-static-and-connected" {
+  scenario = "post"
+
+  rib where and {
+    device = "bj-edge1"
+    or {
+      protocol = "static"
+      protocol = "connected"
+    }
+  } {
+    count() >= 1
+  }
+}
+
+intent "logical-not-excludes-changed-prefix" {
+  scenario = "post"
+
+  rib where and {
+    device_in = $edges
+    not prefix = $changed_prefix
+  } {
+    count() >= 3
+  }
+}
+
+intent "prefix-within-matches-child-space" {
+  scenario = "post"
+
+  rib where device_in = $edges, prefix = $changed_prefix {
+    count() == [3]
+  }
+}

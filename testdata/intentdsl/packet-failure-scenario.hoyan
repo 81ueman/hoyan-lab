@@ -1,0 +1,22 @@
+version = "hoyan/v1"
+
+let service_ip = "10.4.1.10"
+let customers = ["cust-bj", "cust-sh", "cust-gz"]
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "one-link-failure" {
+  snapshot = "current"
+  failures {
+    max = 1
+  }
+}
+
+intent "customers-https-not-all-single-link-failures" {
+  scenario = "one-link-failure"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/443 expect false
+}
