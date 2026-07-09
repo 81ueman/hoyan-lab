@@ -77,8 +77,6 @@ func (p *frrLikeParser) handleInterfaceOSPF(fields []string, line, raw string, l
 	}
 }
 
-// handleStaticRoute handles "ip route ..." statements.
-
 func (p *frrLikeParser) handleOSPFRouterID(fields []string) error {
 	if len(fields) < 2 {
 		return nil

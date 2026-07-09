@@ -184,4 +184,3 @@ func (p *frrLikeParser) handleRouteMapCatchAll(line string, lineNo int) error {
 	return nil
 }
 
-// handleInterfaceAddress handles "ip address ADDR" under an interface.

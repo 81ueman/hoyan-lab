@@ -276,8 +276,6 @@ func (p *frrLikeParser) handleIP(fields []string, line, raw string, lineNo int) 
 	return nil
 }
 
-// handleIPAccessList starts a new ACL context.
-// handleRouteMapStart starts a new route-map entry.
 func (p *frrLikeParser) handleInterfaceAddress(fields []string) error {
 	if p.currentInterface == "" || len(fields) < 3 {
 		return nil
@@ -319,7 +317,6 @@ func (p *frrLikeParser) handleInterfaceACLBinding(fields []string, line, raw str
 	return nil
 }
 
-// handleInterfaceOSPF handles "ip ospf ..." sub-statements under an interface.
 func (p *frrLikeParser) handleStaticRoute(fields []string, raw string, lineNo int) error {
 	if len(fields) < 4 {
 		return nil
@@ -332,4 +329,3 @@ func (p *frrLikeParser) handleStaticRoute(fields []string, raw string, lineNo in
 	return nil
 }
 
-// handleBGPCommon handles "router-id X" under BGP.

@@ -163,4 +163,3 @@ func (p *frrLikeParser) handleBGPRedistribute(fields []string, raw string, lineN
 	return nil
 }
 
-// handleOSPFRouterID handles "router-id X" inside OSPF context.
