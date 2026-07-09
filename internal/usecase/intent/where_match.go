@@ -279,23 +279,12 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 			}
 
 		case "peer":
-			val, ok := raw.(string)
-			if !ok {
-				continue
-			}
-			if route.BGP == nil || len(route.BGP.Paths) == 0 {
-				return false, nil
-			}
-			if route.BGP.Paths[0].Peer != val {
+			if !valuesEqual(routePeer(route), raw) {
 				return false, nil
 			}
 
 		case "peer_as":
-			want := toInt(raw)
-			if route.BGP == nil || len(route.BGP.Paths) == 0 {
-				return false, nil
-			}
-			if int(route.BGP.Paths[0].PeerAS) != want {
+			if !valuesEqual(routePeerAS(route), raw) {
 				return false, nil
 			}
 
@@ -394,6 +383,22 @@ func routeASPath(route observation.RIBRoute) string {
 func routeWeight(route observation.RIBRoute) int {
 	if route.BGP != nil && len(route.BGP.Paths) > 0 {
 		return route.BGP.Paths[0].Weight
+	}
+	return 0
+}
+
+// routePeer returns the BGP peer address for a route.
+func routePeer(route observation.RIBRoute) string {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return route.BGP.Paths[0].Peer
+	}
+	return ""
+}
+
+// routePeerAS returns the BGP peer AS number for a route.
+func routePeerAS(route observation.RIBRoute) int {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return int(route.BGP.Paths[0].PeerAS)
 	}
 	return 0
 }
