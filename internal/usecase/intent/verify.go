@@ -114,12 +114,23 @@ func evaluateTopLevel(in Intent, expr *RCLExpr, snapshot SnapshotContext, scenar
 	if scenarioName == "" {
 		scenarioName = "normal"
 	}
+	group := in.Group
+	// For ForallExpr at the intent level, populate Group from the failing iteration
+	if expr.Forall != nil && actual.Reason != "" && strings.Contains(actual.Reason, "=") {
+		parts := strings.SplitN(actual.Reason, "=", 2)
+		if len(parts) == 2 {
+			if group == nil {
+				group = map[string]any{}
+			}
+			group[parts[0]] = parts[1]
+		}
+	}
 	return Result{
 		Name:     in.Name,
 		Status:   status,
 		Scenario: scenarioName,
 		Snapshot: scenario.Snapshot,
-		Group:    in.Group,
+		Group:    group,
 		Actual:   actual,
 	}
 }
@@ -189,7 +200,11 @@ func evalForall(f *ForallExpr, snapshot SnapshotContext, rowFilter map[string]an
 		values = f.In
 	} else {
 		// No explicit list: collect all distinct values of the variable from the snapshot
-		values = collectDistinctValues(snapshot, f.Var)
+		var err error
+		values, err = collectDistinctValues(snapshot, f.Var)
+		if err != nil {
+			return "fail", Actual{Reason: fmt.Sprintf("forall: %v", err)}
+		}
 	}
 
 	if len(values) == 0 {
@@ -199,6 +214,7 @@ func evalForall(f *ForallExpr, snapshot SnapshotContext, rowFilter map[string]an
 
 	overall := "pass"
 	var actuals []Actual
+	var failingGroup string // tracks first failing iteration's group info for Result.Group
 	for _, v := range values {
 		// Create a forall-binding filter: the forall variable is bound to this value.
 		// This is used as a rowFilter so that inner RIBEval/RIBEq expressions only see
@@ -208,23 +224,33 @@ func evalForall(f *ForallExpr, snapshot SnapshotContext, rowFilter map[string]an
 		status, a := evalRCLExpr(&f.Intent, snapshot, combined, scenario, ctx)
 		if status == "fail" {
 			overall = "fail"
+			if failingGroup == "" {
+				failingGroup = fmt.Sprintf("%s=%s", f.Var, v)
+			}
 		}
 		a.Reason = fmt.Sprintf("%s=%s: %s", f.Var, v, a.Reason)
 		actuals = append(actuals, a)
 	}
 
-	// Return combined actual info
 	actual := Actual{}
 	if len(actuals) > 0 {
 		actual.Count = len(actuals)
 	}
+	if failingGroup != "" {
+		actual.Reason = failingGroup
+	}
 	return overall, actual
+}
+
+// validForallFields contains recognized field names for ForallExpr value collection.
+var validForallFields = map[string]bool{
+	"device": true, "node": true, "vrf": true, "protocol": true,
 }
 
 // collectDistinctValues extracts all distinct values for a given field from
 // the snapshot's RIB routes. The field can be "device" (node name), "vrf",
-// "protocol", or a route attribute field.
-func collectDistinctValues(snapshot SnapshotContext, field string) []string {
+// or "protocol". Returns an error if the field name is not recognized.
+func collectDistinctValues(snapshot SnapshotContext, field string) ([]string, error) {
 	seen := map[string]bool{}
 	var values []string
 
@@ -258,19 +284,10 @@ func collectDistinctValues(snapshot SnapshotContext, field string) []string {
 			}
 		}
 	default:
-		// Generic: try to extract as a route attribute
-		for _, rib := range RIBs(snapshot.Network) {
-			for _, route := range rib.Routes {
-				v := fmt.Sprintf("%v", routeFieldValue(route, field))
-				if v != "" && !seen[v] {
-					seen[v] = true
-					values = append(values, v)
-				}
-			}
-		}
+		return nil, fmt.Errorf("unrecognized forall field %q (valid: device, node, vrf, protocol)", field)
 	}
 
-	return values
+	return values, nil
 }
 
 // ---------------------------------------------------------------------------
