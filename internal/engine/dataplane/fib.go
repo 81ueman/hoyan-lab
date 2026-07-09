@@ -153,7 +153,7 @@ func (e *Engine) DeriveFIB() {
 
 func fibAdminDistance(route domainroute.RIBEntry) int {
 	route = route.Normalize()
-	if route.RouteSource.AdminDistance != 0 || route.SourceKind == model.RouteSourceConnected {
+	if route.RouteSource.AdminDistance != model.AdminDistanceConnected || route.SourceKind == model.RouteSourceConnected {
 		return route.RouteSource.AdminDistance
 	}
 	switch route.SourceKind {

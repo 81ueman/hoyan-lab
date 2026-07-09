@@ -222,7 +222,7 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 		if route.AFI == "" {
 			route.AFI = model.AFIIPv4
 		}
-		if route.AdminDistance == 0 {
+		if route.AdminDistance == model.AdminDistanceConnected {
 			route.AdminDistance = model.AdminDistanceAggregate
 		}
 		cond, contributors, ok := e.aggregateContributorCondVRF(node.Name, route.NetworkInstance, route.Prefix)
