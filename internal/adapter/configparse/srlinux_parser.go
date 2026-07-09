@@ -69,7 +69,7 @@ func (p *srlinuxParser) parse() (ParseResult, error) {
 			if !p.collectWarnings {
 				return ParseResult{}, fmt.Errorf("%s: %w", line, err)
 			}
-			p.warnings = append(p.warnings, unsupportedStatement("srlinux", p.path, lineNo, raw, err.Error()))
+			p.warnings = append(p.warnings, unsupportedStatement("srlinux", p.path, lineNo, line, err.Error()))
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -85,9 +85,9 @@ func (p *srlinuxParser) dispatch(fields []string, line, raw string, lineNo int) 
 		return p.handleACLBinding(fields, raw, lineNo)
 	case containsSeq(fields, "acl", "acl-filter"):
 		return p.handleACL(fields, raw, lineNo)
-	case p.srLinuxRoutingPolicyKind(fields) == "prefix-set":
+	case srLinuxRoutingPolicyKind(fields) == "prefix-set":
 		return p.handlePrefixSet(fields)
-	case p.srLinuxRoutingPolicyKind(fields) == "policy":
+	case srLinuxRoutingPolicyKind(fields) == "policy":
 		return p.handleRoutePolicy(fields)
 	case containsSeq(fields, "system", "name", "host-name"):
 		return p.handleHostname(fields)
@@ -158,9 +158,6 @@ func (p *srlinuxParser) finalize() ParseResult {
 // Handler methods
 // ---------------------------------------------------------------------------
 
-func (p *srlinuxParser) srLinuxRoutingPolicyKind(fields []string) string {
-	return srLinuxRoutingPolicyKind(fields)
-}
 
 func (p *srlinuxParser) handleHostname(fields []string) error {
 	if len(fields) > 0 {

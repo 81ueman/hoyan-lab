@@ -126,13 +126,13 @@ func (p *frrLikeParser) dispatch(fields []string, line, raw string, lineNo int) 
 			// A new route-map entry always starts a new rule, even inside another route-map.
 			// Fall through to the top-level dispatch.
 		default:
-			return p.handleRouteMapCatchAll(line, raw, lineNo)
+			return p.handleRouteMapCatchAll(line, lineNo)
 		}
 	}
 
 	// 3. Route-map catch-all — any unrecognized line inside a route-map (no current rule)
 	if p.currentRoutePolicy != nil && fields[0] != "route-map" {
-		return p.handleRouteMapCatchAll(line, raw, lineNo)
+		return p.handleRouteMapCatchAll(line, lineNo)
 	}
 
 	// 4. Top-level dispatch by first field token
@@ -167,14 +167,14 @@ func (p *frrLikeParser) dispatch(fields []string, line, raw string, lineNo int) 
 		return p.handleBGPNeighbor(fields, raw, lineNo)
 	case "network":
 		if p.inOSPF {
-			return p.handleOSPFNetwork(fields, raw, lineNo)
+			return p.handleOSPFNetwork(fields, line, raw, lineNo)
 		}
-		return p.handleBGPNetwork(fields, raw, lineNo)
+		return p.handleBGPNetwork(fields, line, raw, lineNo)
 	case "aggregate-address":
 		return p.handleBGPAggregateAddress(fields, raw, lineNo)
 	case "redistribute":
 		if p.inOSPF {
-			return p.handleOSPFRedistribute(fields, raw, lineNo)
+			return p.handleOSPFRedistribute(fields, line, raw, lineNo)
 		}
 		if p.inBGP && p.inAF {
 			return p.handleBGPRedistribute(fields, raw, lineNo)
@@ -183,11 +183,16 @@ func (p *frrLikeParser) dispatch(fields []string, line, raw string, lineNo int) 
 	case "ospf":
 		return p.handleOSPFRouterIDOrStatement(fields, line, raw, lineNo)
 	case "passive-interface":
-		return p.handleOSPFPassiveInterface(fields, raw, lineNo)
+		return p.handleOSPFPassiveInterface(fields, line, raw, lineNo)
 	case "area":
 		return p.handleOSPFArea(fields, line, raw, lineNo)
 	case "vrf":
 		return p.handleInterfaceVRF(fields)
+	}
+
+	// Catch-all for unrecognized statements inside an active OSPF context
+	if p.inOSPF && p.dialect.SupportsOSPFConfig() {
+		return fmt.Errorf("unsupported %s OSPF statement %q", p.dialect.VendorName(), line)
 	}
 	return nil
 }
@@ -298,7 +303,7 @@ func (p *frrLikeParser) handleIP(fields []string, line, raw string, lineNo int) 
 	case "address":
 		return p.handleInterfaceAddress(fields)
 	case "access-group":
-		return p.handleInterfaceACLBinding(fields, raw, lineNo)
+		return p.handleInterfaceACLBinding(fields, line, raw, lineNo)
 	case "route":
 		return p.handleStaticRoute(fields, raw, lineNo)
 	case "ospf":
@@ -571,7 +576,7 @@ func (p *frrLikeParser) handleRouteMapMisc(fields []string, line, raw string, li
 }
 
 // handleRouteMapCatchAll handles any unrecognized line inside a route-map block.
-func (p *frrLikeParser) handleRouteMapCatchAll(line, raw string, lineNo int) error {
+func (p *frrLikeParser) handleRouteMapCatchAll(line string, lineNo int) error {
 	if p.collectWarnings {
 		p.warnings = append(p.warnings, unsupportedStatement(
 			string(p.dialect.Kind()), p.path, lineNo, line,
@@ -606,7 +611,7 @@ func (p *frrLikeParser) handleInterfaceVRF(fields []string) error {
 }
 
 // handleInterfaceACLBinding handles "ip access-group NAME (in|out)" under an interface.
-func (p *frrLikeParser) handleInterfaceACLBinding(fields []string, raw string, lineNo int) error {
+func (p *frrLikeParser) handleInterfaceACLBinding(fields []string, line, raw string, lineNo int) error {
 	if p.currentInterface == "" || len(fields) < 4 {
 		return nil
 	}
@@ -618,7 +623,7 @@ func (p *frrLikeParser) handleInterfaceACLBinding(fields []string, raw string, l
 		Name:      fields[2],
 		Interface: p.currentInterface,
 		Stage:     stage,
-		Source:    model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: raw},
+		Source:    model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: line},
 	})
 	return nil
 }
@@ -637,7 +642,7 @@ func (p *frrLikeParser) handleInterfaceOSPF(fields []string, line, raw string, l
 		ospf := ospfProcess(&p.cfg, vrf)
 		oi := ospfInterface(ospf, p.currentInterface)
 		oi.Area = normalizeOSPFAreaID(fields[3])
-		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: raw}
+		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: line}
 		ospf.Interfaces[p.currentInterface] = *oi
 		ospf.Enabled = true
 		return nil
@@ -651,7 +656,7 @@ func (p *frrLikeParser) handleInterfaceOSPF(fields []string, line, raw string, l
 		ospf := ospfProcess(&p.cfg, vrf)
 		oi := ospfInterface(ospf, p.currentInterface)
 		oi.Cost = cost
-		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: raw}
+		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: line}
 		ospf.Interfaces[p.currentInterface] = *oi
 		ospf.Enabled = true
 		return nil
@@ -661,7 +666,7 @@ func (p *frrLikeParser) handleInterfaceOSPF(fields []string, line, raw string, l
 		ospf := ospfProcess(&p.cfg, vrf)
 		oi := ospfInterface(ospf, p.currentInterface)
 		oi.NetworkType = normalizeOSPFNetworkType(fields[3])
-		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: raw}
+		oi.Source = model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: line}
 		ospf.Interfaces[p.currentInterface] = *oi
 		ospf.Enabled = true
 		return nil
@@ -756,7 +761,7 @@ func (p *frrLikeParser) handleBGPNeighbor(fields []string, raw string, lineNo in
 }
 
 // handleBGPNetwork handles "network PREFIX" within BGP address-family.
-func (p *frrLikeParser) handleBGPNetwork(fields []string, raw string, lineNo int) error {
+func (p *frrLikeParser) handleBGPNetwork(fields []string, line, raw string, lineNo int) error {
 	if !p.inBGP || !p.inAF || len(fields) < 2 {
 		return nil
 	}
@@ -775,7 +780,7 @@ func (p *frrLikeParser) handleBGPNetwork(fields []string, raw string, lineNo int
 		Prefix:          prefix,
 		Kind:            model.RouteSourceBGP,
 		AdminDistance:   200,
-		Source:          model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: raw},
+		Source:          model.ConfigSource{Vendor: string(kind), File: p.path, Line: lineNo, Raw: line},
 	})
 	return nil
 }
@@ -832,7 +837,7 @@ func (p *frrLikeParser) handleOSPFRouterIDOrStatement(fields []string, line, raw
 }
 
 // handleOSPFPassiveInterface handles "passive-interface NAME" inside OSPF.
-func (p *frrLikeParser) handleOSPFPassiveInterface(fields []string, raw string, lineNo int) error {
+func (p *frrLikeParser) handleOSPFPassiveInterface(fields []string, line, raw string, lineNo int) error {
 	if !p.inOSPF || len(fields) < 2 {
 		return nil
 	}
@@ -840,7 +845,7 @@ func (p *frrLikeParser) handleOSPFPassiveInterface(fields []string, raw string, 
 	ospf.PassiveInterfaces = appendUnique(ospf.PassiveInterfaces, fields[1])
 	oi := ospfInterface(ospf, fields[1])
 	oi.Passive = true
-	oi.Source = model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: raw}
+	oi.Source = model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: line}
 	ospf.Interfaces[fields[1]] = *oi
 	return nil
 }
@@ -860,7 +865,7 @@ func (p *frrLikeParser) handleOSPFArea(fields []string, line, raw string, lineNo
 }
 
 // handleOSPFRedistribute handles "redistribute ..." inside OSPF context.
-func (p *frrLikeParser) handleOSPFRedistribute(fields []string, raw string, lineNo int) error {
+func (p *frrLikeParser) handleOSPFRedistribute(fields []string, line, raw string, lineNo int) error {
 	if len(fields) < 2 {
 		return nil
 	}
@@ -874,7 +879,7 @@ func (p *frrLikeParser) handleOSPFRedistribute(fields []string, raw string, line
 }
 
 // handleOSPFNetwork handles "network PREFIX area AREA" inside OSPF context.
-func (p *frrLikeParser) handleOSPFNetwork(fields []string, raw string, lineNo int) error {
+func (p *frrLikeParser) handleOSPFNetwork(fields []string, line, raw string, lineNo int) error {
 	if !p.dialect.SupportsOSPFConfig() || !p.inOSPF || len(fields) < 4 || fields[2] != "area" {
 		return nil
 	}
@@ -886,7 +891,7 @@ func (p *frrLikeParser) handleOSPFNetwork(fields []string, raw string, lineNo in
 	ospf.Networks = append(ospf.Networks, model.OSPFNetwork{
 		Prefix: prefix,
 		Area:   normalizeOSPFAreaID(fields[3]),
-		Source: model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: raw},
+		Source: model.ConfigSource{Vendor: string(p.dialect.Kind()), File: p.path, Line: lineNo, Raw: line},
 	})
 	return nil
 }
