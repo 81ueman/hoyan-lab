@@ -203,8 +203,8 @@ func TestValidateAndOr(t *testing.T) {
 			wantErr: "test.and: must have at least 2 elements",
 		},
 		{
-			name:    "and_valid",
-			expr:    &RCLExpr{And: []RCLExpr{{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}}, {RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{2}}}}},
+			name: "and_valid",
+			expr: &RCLExpr{And: []RCLExpr{{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}}, {RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{2}}}}},
 		},
 		{
 			name:    "or_single",
@@ -212,8 +212,8 @@ func TestValidateAndOr(t *testing.T) {
 			wantErr: "test.or: must have at least 2 elements",
 		},
 		{
-			name:    "or_valid",
-			expr:    &RCLExpr{Or: []RCLExpr{{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}}, {RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{2}}}}},
+			name: "or_valid",
+			expr: &RCLExpr{Or: []RCLExpr{{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}}, {RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{2}}}}},
 		},
 	}
 	for _, tt := range tests {

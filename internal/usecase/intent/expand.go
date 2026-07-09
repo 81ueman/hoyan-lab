@@ -122,7 +122,7 @@ func expandRCLExpr(expr *RCLExpr, vars map[string]any, group map[string]string) 
 		}
 		out.Forall = &ForallExpr{
 			Var:    substituteString(expr.Forall.Var, vars, group),
-			In:     substituteStringSlice(expr.Forall.In, vars, group),
+			In:     substituteForallStringSlice(expr.Forall.In, vars, group),
 			Intent: *subIntent,
 		}
 	case len(expr.And) > 0:
@@ -228,6 +228,28 @@ func substituteStringSlice(in []string, vars map[string]any, group map[string]st
 		out[i] = substituteString(s, vars, group)
 	}
 	return out
+}
+
+// substituteForallStringSlice resolves RCL-level forall value lists.
+// A single bare variable reference to a document-level list, e.g. for edge in $edges,
+// expands to the referenced list. Other entries use normal string substitution.
+func substituteForallStringSlice(in []string, vars map[string]any, group map[string]string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	if len(in) == 1 {
+		if ref, ok := singleVarRef(in[0]); ok {
+			if group != nil {
+				if value, ok := group[ref]; ok {
+					return []string{value}
+				}
+			}
+			if values, ok := toStringSlice(vars[ref]); ok {
+				return values
+			}
+		}
+	}
+	return substituteStringSlice(in, vars, group)
 }
 
 // substituteAnySlice applies substituteAny to each element of in.

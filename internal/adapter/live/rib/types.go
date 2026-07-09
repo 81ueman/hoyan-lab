@@ -16,4 +16,5 @@ type CompareOptions = observation.CompareOptions
 func DefaultCompareOptions() observation.CompareOptions {
 	return observation.DefaultCompareOptions()
 }
+
 var SortRoutes = observation.SortRoutes

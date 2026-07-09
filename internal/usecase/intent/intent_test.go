@@ -243,6 +243,35 @@ func TestVerifyRIBFibBasic(t *testing.T) {
 	}
 }
 
+func TestVerifyRCLForallVarRef(t *testing.T) {
+	doc := loadTestDoc(t, "testdata/intentdsl/rcl-forall-var.hoyan")
+	expanded, err := Expand(doc)
+	if err != nil {
+		t.Fatalf("Expand() error: %v", err)
+	}
+	got := expanded.Intents[0].RCL.Forall.In
+	want := []string{"bj-edge1", "sh-edge1", "gz-edge1"}
+	if len(got) != len(want) {
+		t.Fatalf("RCL forall values = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("RCL forall values = %#v, want %#v", got, want)
+		}
+	}
+
+	report, err := Verify(doc)
+	if err != nil {
+		t.Fatalf("Verify() error: %v", err)
+	}
+	if report.Summary.Total != 1 {
+		t.Fatalf("Summary.Total = %d, want 1", report.Summary.Total)
+	}
+	if report.Summary.Passed != 1 {
+		t.Fatalf("Summary.Passed = %d, want 1", report.Summary.Passed)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Verify tests — negative cases (expect failures)
 // ---------------------------------------------------------------------------
@@ -343,7 +372,7 @@ func TestAllIntentDSLFiles(t *testing.T) {
 		t.Fatalf("glob: %v", err)
 	}
 	if len(files) == 0 {
-		t.Fatalf("no intent YAML files found")
+		t.Fatalf("no intent DSL files found")
 	}
 
 	for _, file := range files {

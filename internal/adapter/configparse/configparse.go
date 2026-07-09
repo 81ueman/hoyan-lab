@@ -261,6 +261,3 @@ func (ceosDialect) OSPFInterfaceVRF(ifaces []model.Interface, name string) model
 func (ceosDialect) DefaultACLAction(fallback model.ACLDefaultAction) model.ACLDefaultAction {
 	return model.ProfileFor(model.KindCEOS).ACLProfile().DefaultACLAction(fallback)
 }
-
-
-
