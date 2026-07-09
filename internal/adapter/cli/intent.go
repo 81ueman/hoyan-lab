@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
+	"github.com/81ueman/hoyan-lab/internal/adapter/intentdsl"
 	"github.com/81ueman/hoyan-lab/internal/adapter/solver"
 	domainintent "github.com/81ueman/hoyan-lab/internal/domain/intent"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
@@ -134,14 +134,14 @@ func NewIntentVerifyCommand() *cobra.Command {
 
 func addIntentInputFlags(cmd *cobra.Command, opts *intentOptions) {
 	cmd.Flags().StringVar(&opts.file, "file", "", "intent YAML file")
-	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.yml")
+	cmd.Flags().StringVar(&opts.lab, "lab", "", "scenario lab directory; reads intent/hoyan.hoyan")
 }
 
 func loadIntentFile(path string) (*domainintent.Document, error) {
 	if path == "" {
 		return nil, fmt.Errorf("--file is required")
 	}
-	return intentfile.Load(path)
+	return intentdsl.Load(path)
 }
 
 func resolveIntentInput(cmd *cobra.Command, opts intentOptions) (string, error) {

@@ -1,0 +1,57 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+snapshot "pre" {
+  lab = "labs/intent-change-before"
+}
+
+snapshot "post" {
+  lab = "labs/intent-change-after"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+scenario "post" {
+  snapshot = "post"
+}
+
+intent "both-conditions-hold" {
+  scenario = "normal"
+
+  and {
+    rib where device = "bj-edge1", prefix = "10.4.0.0/16" {
+      count() >= 1
+    }
+    rib where device = "sh-edge1", prefix = "10.4.0.0/16" {
+      count() >= 1
+    }
+  }
+}
+
+intent "either-condition-holds" {
+  scenario = "normal"
+
+  or {
+    rib {
+      count() >= 999999
+    }
+    rib where device = "bj-edge1" {
+      count() >= 1
+    }
+  }
+}
+
+intent "no-matching-route" {
+  scenario = "normal"
+
+  not {
+    rib where device = "bj-edge1", prefix = "203.0.113.0/24" {
+      count() >= 1
+    }
+  }
+}

@@ -1,0 +1,45 @@
+version = "hoyan/v1"
+
+let service_ip = "10.4.1.10"
+let service_prefix = "10.4.0.0/16"
+let customers = ["cust-bj", "cust-sh", "cust-gz"]
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+scenario "one-core-link-failure" {
+  snapshot = "current"
+  failures {
+    max = 1
+    include_link_roles = ["core"]
+  }
+}
+
+intent "service-prefix-visible-on-edges" {
+  scenario = "normal"
+  forall edge in $edges
+
+  rib where device = $edge, prefix = $service_prefix {
+    count() >= 1
+  }
+}
+
+intent "customers-http-denied" {
+  scenario = "normal"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/80 expect false
+}
+
+intent "customers-https-allowed" {
+  scenario = "normal"
+  forall src in $customers
+
+  packet from $src to $service_ip tcp/443 expect true
+}

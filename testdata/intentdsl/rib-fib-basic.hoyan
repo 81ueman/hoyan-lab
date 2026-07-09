@@ -1,0 +1,30 @@
+version = "hoyan/v1"
+
+let service_prefix = "10.4.0.0/16"
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "service-prefix-visible-on-edges" {
+  scenario = "normal"
+  forall edge in $edges
+
+  rib where device = $edge, prefix = $service_prefix {
+    count() >= 1
+  }
+}
+
+intent "service-prefix-installed-on-edges" {
+  scenario = "normal"
+  forall edge in $edges
+
+  rib where device = $edge, prefix = $service_prefix {
+    count() >= 1
+  }
+}

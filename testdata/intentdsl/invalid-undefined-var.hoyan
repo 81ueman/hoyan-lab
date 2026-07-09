@@ -1,0 +1,17 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "undefined-var" {
+  scenario = "normal"
+
+  rib where device = $missing_device {
+    count() >= 1
+  }
+}

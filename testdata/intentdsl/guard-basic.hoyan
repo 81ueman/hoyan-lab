@@ -1,0 +1,33 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/base-wan"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "guard-premise-true-inner-passes" {
+  scenario = "normal"
+
+  when device = "bj-edge1", prefix = "10.4.0.0/16" {
+    count() >= 1
+  }
+}
+
+intent "guard-premise-false-vacuous-pass" {
+  scenario = "normal"
+
+  when device = "non-existent-router" {
+    count() >= 999
+  }
+}
+
+intent "guard-premise-true-inner-fails" {
+  scenario = "normal"
+
+  when device = "bj-edge1", prefix = "10.4.0.0/16" {
+    count() >= 999
+  }
+}

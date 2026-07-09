@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
+	"github.com/81ueman/hoyan-lab/internal/adapter/intentdsl"
 	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 // loadTestDoc loads a Document from a path relative to the module root.
 func loadTestDoc(t *testing.T, path string) *Document {
 	t.Helper()
-	doc, err := intentfile.Load(path)
+	doc, err := intentdsl.Load(path)
 	if err != nil {
 		t.Fatalf("Load(%q): %v", path, err)
 	}
@@ -55,7 +55,7 @@ func TestDefaultSnapshotProviderUsesRegisteredDefaultGraphOptions(t *testing.T) 
 // ---------------------------------------------------------------------------
 
 func TestVerifyRIBEval(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/minimal.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/minimal.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -75,7 +75,7 @@ func TestVerifyRIBEval(t *testing.T) {
 }
 
 func TestVerifyPacketReachable(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/packet-basic.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/packet-basic.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -98,7 +98,7 @@ func TestVerifyPacketReachable(t *testing.T) {
 }
 
 func TestVerifyForall(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/forall.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/forall.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -121,7 +121,7 @@ func TestVerifyForall(t *testing.T) {
 }
 
 func TestVerifyRIBEq(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/rcl-rib-positive.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/rcl-rib-positive.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -140,7 +140,7 @@ func TestVerifyRIBEq(t *testing.T) {
 }
 
 func TestVerifyAndOrNot(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/selector-logic.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/selector-logic.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -163,7 +163,7 @@ func TestVerifyAndOrNot(t *testing.T) {
 }
 
 func TestVerifyGuard(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/guard-basic.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/guard-basic.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -208,7 +208,7 @@ func TestVerifyPacketFailureScenario(t *testing.T) {
 	defer func() { defaultGraphOptions = orig }()
 	SetDefaultGraphOptions(sim.WithSolverBackend(enumerate.Backend{}))
 
-	doc := loadTestDoc(t, "testdata/intent/packet-failure-scenario.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/packet-failure-scenario.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -229,7 +229,7 @@ func TestVerifyPacketFailureScenario(t *testing.T) {
 }
 
 func TestVerifyRIBFibBasic(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/rib-fib-basic.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/rib-fib-basic.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -248,7 +248,7 @@ func TestVerifyRIBFibBasic(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestVerifyRIBNegative(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/rib-negative.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/rib-negative.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -266,7 +266,7 @@ func TestVerifyRIBNegative(t *testing.T) {
 }
 
 func TestVerifyPacketNegative(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/packet-negative.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/packet-negative.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -284,7 +284,7 @@ func TestVerifyPacketNegative(t *testing.T) {
 }
 
 func TestVerifyRIBNegativeCompare(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/rcl-rib-negative-compare.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/rcl-rib-negative-compare.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -299,7 +299,7 @@ func TestVerifyRIBNegativeCompare(t *testing.T) {
 }
 
 func TestVerifyRIBNegativeDistinct(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/rcl-rib-negative-distinct.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/rcl-rib-negative-distinct.hoyan")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
@@ -318,7 +318,7 @@ func TestVerifyRIBNegativeDistinct(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestVerifyMissingVersionFails(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/invalid-missing-version.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/invalid-missing-version.hoyan")
 	_, err := Verify(doc)
 	if err == nil {
 		t.Fatal("Verify() expected error for missing version, got nil")
@@ -326,7 +326,7 @@ func TestVerifyMissingVersionFails(t *testing.T) {
 }
 
 func TestVerifyUndefinedVarFails(t *testing.T) {
-	doc := loadTestDoc(t, "testdata/intent/invalid-undefined-var.yml")
+	doc := loadTestDoc(t, "testdata/intentdsl/invalid-undefined-var.hoyan")
 	_, err := Verify(doc)
 	if err == nil {
 		t.Fatal("Verify() expected error for undefined var, got nil")
@@ -337,8 +337,8 @@ func TestVerifyUndefinedVarFails(t *testing.T) {
 // Auto-discovery smoke test
 // ---------------------------------------------------------------------------
 
-func TestAllIntentYAMLFiles(t *testing.T) {
-	files, err := filepath.Glob("testdata/intent/*.yml")
+func TestAllIntentDSLFiles(t *testing.T) {
+	files, err := filepath.Glob("testdata/intentdsl/*.hoyan")
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}

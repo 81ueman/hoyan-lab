@@ -1,0 +1,47 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/ospf-basic"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+// All OSPF routes are intra_area (single area 0)
+intent "all-ospf-routes-are-intra-area" {
+  scenario = "normal"
+
+  when protocol = "ospf" {
+    distVals(route_type) == [["intra_area"]]
+  }
+}
+
+// r1's loopback (10.255.1.1/32) is reachable from all other routers (r2, r3, r4)
+intent "r1-loopback-reachable-from-all-routers" {
+  scenario = "normal"
+
+  rib where protocol = "ospf", prefix = "10.255.1.1/32" {
+    count() >= 3
+  }
+}
+
+// r4's loopback (10.255.4.4/32) cost from r1
+intent "r4-loopback-cost-from-r1" {
+  scenario = "normal"
+
+  when device = "r1", protocol = "ospf", prefix = "10.255.4.4/32" {
+    distVals(cost) != [[0]]
+  }
+}
+
+// Each router has at least one OSPF route with a nexthop
+intent "each-router-has-ospf-nexthops" {
+  scenario = "normal"
+
+  for device in ["r1", "r2", "r3", "r4"] {
+    rib where protocol = "ospf" {
+      distCnt(nexthop) >= 1
+    }
+  }
+}

@@ -1,0 +1,20 @@
+version = "hoyan/v1"
+
+let changed_prefix = "10.4.0.0/16"
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+
+snapshot "post" {
+  lab = "labs/intent-change-after"
+}
+
+scenario "post" {
+  snapshot = "post"
+}
+
+intent "changed-prefix-single-nexthop-fails" {
+  scenario = "post"
+
+  rib where prefix = $changed_prefix, device_in = $edges, selected = true {
+    distCnt(nexthop) >= 999
+  }
+}

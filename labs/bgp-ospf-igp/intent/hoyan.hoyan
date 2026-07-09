@@ -1,0 +1,77 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/bgp-ospf-igp"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+// OSPF routes exist on all routers (IGP backbone)
+intent "ospf-routes-on-all-routers" {
+  scenario = "normal"
+
+  when protocol = "ospf", prefix = "10.255.1.1/32" {
+    count() >= 4
+  }
+}
+
+// BGP routes exist on all routers (propagated via BGP)
+intent "bgp-routes-on-all-routers" {
+  scenario = "normal"
+
+  when protocol = "bgp", prefix = "10.255.4.4/32" {
+    count() >= 4
+  }
+}
+
+// edge1 has BGP route to edge2's loopback (cross-protocol verification)
+intent "edge1-sees-edge2-loopback-via-bgp" {
+  scenario = "normal"
+
+  when device = "edge1", protocol = "bgp", prefix = "10.255.4.4/32" {
+    count() >= 1
+  }
+}
+
+// edge2 has BGP route to edge1's loopback (cross-protocol verification)
+intent "edge2-sees-edge1-loopback-via-bgp" {
+  scenario = "normal"
+
+  when device = "edge2", protocol = "bgp", prefix = "10.255.1.1/32" {
+    count() >= 1
+  }
+}
+
+// Core routers have OSPF routes to edge loopbacks (providing BGP next-hop resolution)
+intent "core-routers-have-ospf-to-loopbacks" {
+  scenario = "normal"
+
+  for device in ["core1", "core2"] {
+    and {
+      when protocol = "ospf", prefix = "10.255.1.1/32" {
+        count() >= 1
+      }
+      when protocol = "ospf", prefix = "10.255.4.4/32" {
+        count() >= 1
+      }
+    }
+  }
+}
+
+// Same prefix has both OSPF and BGP routes (cross-protocol on each router)
+intent "cross-protocol-routes-for-edge1-loopback" {
+  scenario = "normal"
+
+  for device in ["edge1", "core1", "core2", "edge2"] {
+    and {
+      when protocol = "ospf", prefix = "10.255.1.1/32" {
+        count() >= 1
+      }
+      when protocol = "bgp", prefix = "10.255.1.1/32" {
+        count() >= 1
+      }
+    }
+  }
+}
