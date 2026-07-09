@@ -274,10 +274,7 @@ func routeFieldValue(route observation.RIBRoute, field string) any {
 		}
 		return ""
 	case "as_path_len", "aspath_len":
-		if route.BGP != nil && len(route.BGP.Paths) > 0 {
-			return len(route.BGP.Paths[0].ASPath)
-		}
-		return 0
+		return routeASPathLen(route)
 	case "metric":
 		return route.Common.Metric
 	case "preference":

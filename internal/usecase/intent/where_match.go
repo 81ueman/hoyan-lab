@@ -240,11 +240,7 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 
 		case "as_path_len", "aspath_len":
 			want := toInt(raw)
-			actual := 0
-			if route.BGP != nil && len(route.BGP.Paths) > 0 {
-				actual = len(route.BGP.Paths[0].ASPath)
-			}
-			if actual != want {
+			if routeASPathLen(route) != want {
 				return false, nil
 			}
 
@@ -389,6 +385,14 @@ func routeASPath(route observation.RIBRoute) string {
 		return fmt.Sprintf("%v", route.BGP.Paths[0].ASPath)
 	}
 	return ""
+}
+
+// routeASPathLen returns the length of the AS_PATH for a route.
+func routeASPathLen(route observation.RIBRoute) int {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return len(route.BGP.Paths[0].ASPath)
+	}
+	return 0
 }
 
 // routeWeight returns the BGP weight for a route.
