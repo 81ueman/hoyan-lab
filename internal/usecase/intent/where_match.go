@@ -66,6 +66,7 @@ var validWhereKeys = map[string]bool{
 	"contains": true, "matches": true, "imply": true, "prefix_within": true,
 	"route_type": true, "area": true, "cost": true,
 	"origin": true, "med": true, "large_communities": true,
+	"peer": true, "peer_as": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -278,6 +279,16 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				return false, nil
 			}
 
+		case "peer":
+			if !valuesEqual(routePeer(route), raw) {
+				return false, nil
+			}
+
+		case "peer_as":
+			if !valuesEqual(routePeerAS(route), raw) {
+				return false, nil
+			}
+
 		default:
 			if opMap, ok := raw.(map[string]any); ok {
 				if cv, ok := opMap["contains"]; ok {
@@ -373,6 +384,22 @@ func routeASPath(route observation.RIBRoute) string {
 func routeWeight(route observation.RIBRoute) int {
 	if route.BGP != nil && len(route.BGP.Paths) > 0 {
 		return route.BGP.Paths[0].Weight
+	}
+	return 0
+}
+
+// routePeer returns the BGP peer address for a route.
+func routePeer(route observation.RIBRoute) string {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return route.BGP.Paths[0].Peer
+	}
+	return ""
+}
+
+// routePeerAS returns the BGP peer AS number for a route.
+func routePeerAS(route observation.RIBRoute) int {
+	if route.BGP != nil && len(route.BGP.Paths) > 0 {
+		return int(route.BGP.Paths[0].PeerAS)
 	}
 	return 0
 }
