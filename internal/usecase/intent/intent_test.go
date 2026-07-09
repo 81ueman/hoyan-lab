@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
+	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
@@ -203,18 +204,27 @@ func TestVerifyGuard(t *testing.T) {
 }
 
 func TestVerifyPacketFailureScenario(t *testing.T) {
+	orig := defaultGraphOptions
+	defer func() { defaultGraphOptions = orig }()
+	SetDefaultGraphOptions(sim.WithSolverBackend(enumerate.Backend{}))
+
 	doc := loadTestDoc(t, "testdata/intent/packet-failure-scenario.yml")
 	report, err := Verify(doc)
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
 	// 1 forall intent × 3 customers = 3 expanded intents
-	// expect: false + max: 1 → HTTPS is NOT reachable under some single link failure
+	// expect: false + max: 1 → HTTPS is NOT reachable under some single link failure → pass
 	if report.Summary.Total != 3 {
 		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
 	}
-	if report.Summary.Failed != 3 {
-		t.Fatalf("Summary.Failed = %d, want 3 (some single link failure breaks HTTPS)", report.Summary.Failed)
+	if report.Summary.Passed != 3 {
+		for _, r := range report.Results {
+			if r.Status != "pass" {
+				t.Logf("Result %q Status = %q, Reason = %q", r.Name, r.Status, r.Actual.Reason)
+			}
+		}
+		t.Fatalf("Summary.Passed = %d, want 3 (expect: false + max: 1 should pass when failure breaks reachability)", report.Summary.Passed)
 	}
 }
 
