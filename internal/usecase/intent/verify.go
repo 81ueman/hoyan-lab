@@ -718,6 +718,7 @@ func matchAllWhere(route observation.RIBRoute, rib observation.RIB, filters ...m
 var validWhereKeys = map[string]bool{
 	"prefix": true, "device": true, "node": true, "vrf": true,
 	"protocol": true, "not": true, "and": true, "or": true,
+	"device_in": true, "selected": true,
 }
 
 // matchWhere checks if a RIB route matches a simple where predicate map.
@@ -751,6 +752,31 @@ func matchWhere(route observation.RIBRoute, rib observation.RIB, where map[strin
 				continue
 			}
 			if string(rib.Node) != val {
+				return false, nil
+			}
+
+		case "device_in":
+			devices, ok := raw.([]any)
+			if !ok {
+				continue
+			}
+			found := false
+			for _, d := range devices {
+				if s, ok := d.(string); ok && s == string(rib.Node) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false, nil
+			}
+
+		case "selected":
+			want, ok := raw.(bool)
+			if !ok {
+				continue
+			}
+			if route.Common.Best != want {
 				return false, nil
 			}
 

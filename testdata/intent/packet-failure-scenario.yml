@@ -17,15 +17,13 @@ scenarios:
 
 intents:
   - name: customers-https-survives-one-core-link-failure
+    scenario: one-core-link-failure
     forall:
       src: ${customers}
-    check:
-      table: packet
-      scenario: one-core-link-failure
-      packet:
+    rcl:
+      packet_reachable:
         from: ${src}
         to: ${service_ip}
         protocol: tcp
         dst_port: 443
-      assert:
-        reachable: true
+        expect: true

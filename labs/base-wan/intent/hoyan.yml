@@ -22,41 +22,37 @@ scenarios:
 
 intents:
   - name: service-prefix-visible-on-edges
+    scenario: normal
     forall:
       edge: ${edges}
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: ${edge}
-        prefix: ${service_prefix}
-      assert:
-        exists: true
+    rcl:
+      rib_eval:
+        where:
+          device: ${edge}
+          prefix: ${service_prefix}
+        aggregate: count()
+        gte: 1
 
   - name: customers-http-denied
+    scenario: normal
     forall:
       src: ${customers}
-    check:
-      table: packet
-      scenario: normal
-      packet:
+    rcl:
+      packet_reachable:
         from: ${src}
         to: ${service_ip}
         protocol: tcp
         dst_port: 80
-      assert:
-        reachable: false
+        expect: false
 
   - name: customers-https-allowed
+    scenario: normal
     forall:
       src: ${customers}
-    check:
-      table: packet
-      scenario: normal
-      packet:
+    rcl:
+      packet_reachable:
         from: ${src}
         to: ${service_ip}
         protocol: tcp
         dst_port: 443
-      assert:
-        reachable: true
+        expect: true

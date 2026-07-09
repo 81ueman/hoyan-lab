@@ -10,13 +10,11 @@ scenarios:
 
 intents:
   - name: bj-http-incorrectly-expected-reachable
-    check:
-      table: packet
-      scenario: normal
-      packet:
+    scenario: normal
+    rcl:
+      packet_reachable:
         from: cust-bj
         to: 10.4.1.10
         protocol: tcp
         dst_port: 80
-      assert:
-        reachable: true
+        expect: true

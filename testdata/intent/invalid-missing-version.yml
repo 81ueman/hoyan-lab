@@ -8,10 +8,10 @@ scenarios:
 
 intents:
   - name: missing-version
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: bj-edge1
-    assert:
-      exists: true
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        gte: 1

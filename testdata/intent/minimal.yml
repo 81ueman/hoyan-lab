@@ -10,11 +10,11 @@ scenarios:
 
 intents:
   - name: bj-edge1-has-service-prefix
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: bj-edge1
-        prefix: 10.4.0.0/16
-    assert:
-      exists: true
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+          prefix: 10.4.0.0/16
+        aggregate: count()
+        gte: 1

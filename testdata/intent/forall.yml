@@ -14,13 +14,13 @@ scenarios:
 
 intents:
   - name: customer-http-denied
+    scenario: normal
     forall:
       src: ${sources}
-    check:
-      table: rib
-      scenario: normal
-      where:
-        device: ${src}
-        prefix: ${service_prefix}
-    assert:
-      exists: true
+    rcl:
+      rib_eval:
+        where:
+          device: ${src}
+          prefix: ${service_prefix}
+        aggregate: count()
+        gte: 1

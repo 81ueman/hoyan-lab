@@ -11,62 +11,52 @@ snapshots:
     lab: labs/intent-change-after
 
 scenarios:
+  normal:
+    snapshot: pre
   post:
     snapshot: post
 
 intents:
   - name: unrelated-routes-unchanged
-    check:
-      compare:
-        table: rib
-        left:
-          snapshot: pre
-          where:
-            not:
-              prefix: ${changed_prefix}
-        right:
-          snapshot: post
-          where:
-            not:
-              prefix: ${changed_prefix}
-        relation: equal
+    rcl:
+      rib_eq:
+        left: pre
+        right: post
+        where:
+          not:
+            prefix: ${changed_prefix}
 
   - name: changed-prefix-has-routes-on-each-edge
+    scenario: post
     forall:
       edge: ${edges}
-    check:
-      table: rib
-      scenario: post
-      where:
-        device: ${edge}
-        prefix: ${changed_prefix}
-        selected: true
-      assert:
-        exists: true
+    rcl:
+      rib_eval:
+        where:
+          device: ${edge}
+          prefix: ${changed_prefix}
+          selected: true
+        aggregate: count()
+        gte: 1
 
   - name: changed-prefix-nexthop-diversity
-    check:
-      table: rib
-      scenario: post
-      where:
-        prefix: ${changed_prefix}
-        device_in: ${edges}
-        selected: true
-      group_by: [device]
-      assert:
-        distinct_count:
-          field: nexthop
-          gte: 1
+    scenario: post
+    rcl:
+      rib_eval:
+        where:
+          prefix: ${changed_prefix}
+          device_in: ${edges}
+          selected: true
+        aggregate: distCnt(nexthop)
+        gte: 1
 
   - name: changed-prefix-local-pref-default
-    check:
-      table: rib
-      scenario: post
-      where:
-        prefix: ${changed_prefix}
-        device_in: ${edges}
-        selected: true
-      assert:
-        distinct_values:
-          field: local_pref
-          equals: [0]
+    scenario: post
+    rcl:
+      rib_eval:
+        where:
+          prefix: ${changed_prefix}
+          device_in: ${edges}
+          selected: true
+        aggregate: distVals(local_pref)
+        eq: [[0]]

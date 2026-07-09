@@ -14,15 +14,12 @@ scenarios:
 
 intents:
   - name: changed-prefix-single-nexthop-fails
-    check:
-      table: rib
-      scenario: post
-      where:
-        prefix: ${changed_prefix}
-        device_in: ${edges}
-        selected: true
-      group_by: [device]
-      assert:
-        distinct_count:
-          field: nexthop
-          gte: 2
+    scenario: post
+    rcl:
+      rib_eval:
+        where:
+          prefix: ${changed_prefix}
+          device_in: ${edges}
+          selected: true
+        aggregate: distCnt(nexthop)
+        gte: 999
