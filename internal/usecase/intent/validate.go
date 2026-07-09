@@ -2,12 +2,9 @@ package intent
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
-
-var varRefRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // AggregateFunc represents a parsed aggregate function.
 type AggregateFunc struct {
@@ -276,19 +273,6 @@ func validatePacketReachableExpr(e *PacketReachableExpr, path string) error {
 
 // --- Variable reference checking ---
 
-// singleVarRef checks if raw is a string consisting entirely of a single ${var} reference.
-func singleVarRef(raw any) (string, bool) {
-	s, ok := raw.(string)
-	if !ok {
-		return "", false
-	}
-	m := varRefRE.FindStringSubmatch(s)
-	if len(m) != 2 || m[0] != s {
-		return "", false
-	}
-	return m[1], true
-}
-
 func validateRefsRCL(path string, expr *RCLExpr, vars map[string]any, localVars map[string]bool) error {
 	refs := collectRefsInRCLExpr(expr)
 	for _, ref := range refs {
@@ -349,23 +333,6 @@ func refsInString(s string) []string {
 	var refs []string
 	for _, m := range varRefRE.FindAllStringSubmatch(s, -1) {
 		refs = append(refs, m[1])
-	}
-	return refs
-}
-
-func refsInAny(v any) []string {
-	var refs []string
-	switch x := v.(type) {
-	case string:
-		refs = append(refs, refsInString(x)...)
-	case map[string]any:
-		for _, value := range x {
-			refs = append(refs, refsInAny(value)...)
-		}
-	case []any:
-		for _, value := range x {
-			refs = append(refs, refsInAny(value)...)
-		}
 	}
 	return refs
 }
