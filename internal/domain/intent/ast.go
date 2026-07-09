@@ -30,66 +30,63 @@ type FailureConstraints struct {
 }
 
 type Intent struct {
-	Name   string         `yaml:"name" json:"name"`
-	Forall map[string]any `yaml:"forall,omitempty" json:"forall,omitempty"`
-	Check  Check          `yaml:"check" json:"check"`
-	Assert Assertion      `yaml:"assert" json:"assert"`
-	Group  map[string]any `yaml:"-" json:"group,omitempty"`
+	Name     string         `yaml:"name" json:"name"`
+	Scenario string         `yaml:"scenario,omitempty" json:"scenario,omitempty"`
+	Forall   map[string]any `yaml:"forall,omitempty" json:"forall,omitempty"`
+	RCL      *RCLExpr       `yaml:"rcl" json:"rcl"`
+	Group    map[string]any `yaml:"-" json:"group,omitempty"`
 }
 
-type Check struct {
-	Table    string         `yaml:"table" json:"table"`
-	Scenario string         `yaml:"scenario" json:"scenario"`
-	Where    map[string]any `yaml:"where,omitempty" json:"where,omitempty"`
-	Packet   PacketCheck    `yaml:"packet,omitempty" json:"packet,omitempty"`
-	GroupBy  []string       `yaml:"group_by,omitempty" json:"group_by,omitempty"`
-	Assert   Assertion      `yaml:"assert,omitempty" json:"assert,omitempty"`
-	Compare  *CompareCheck  `yaml:"compare,omitempty" json:"compare,omitempty"`
+// RCLExpr is a recursive expression node for RCL intents.
+// Exactly one field should be set (tagged union).
+type RCLExpr struct {
+	Guard           *GuardExpr           `yaml:"guard,omitempty" json:"guard,omitempty"`
+	Forall          *ForallExpr          `yaml:"forall,omitempty" json:"forall,omitempty"`
+	And             []RCLExpr            `yaml:"and,omitempty" json:"and,omitempty"`
+	Or              []RCLExpr            `yaml:"or,omitempty" json:"or,omitempty"`
+	Not             *RCLExpr             `yaml:"not,omitempty" json:"not,omitempty"`
+	Imply           [2]*RCLExpr          `yaml:"imply,omitempty" json:"imply,omitempty"`
+	RIBEq           *RIBEqExpr           `yaml:"rib_eq,omitempty" json:"rib_eq,omitempty"`
+	RIBEval         *RIBEvalExpr         `yaml:"rib_eval,omitempty" json:"rib_eval,omitempty"`
+	PacketReachable *PacketReachableExpr `yaml:"packet_reachable,omitempty" json:"packet_reachable,omitempty"`
 }
 
-type PacketCheck struct {
+type GuardExpr struct {
+	Where  map[string]any `yaml:"where" json:"where"`   // route predicate（既存のwhere形式）
+	Intent RCLExpr        `yaml:"intent" json:"intent"` // 入れ子のintent
+}
+
+type ForallExpr struct {
+	Var    string   `yaml:"var" json:"var"`
+	In     []string `yaml:"in,omitempty" json:"in,omitempty"` // 省略時は全値
+	Intent RCLExpr  `yaml:"intent" json:"intent"`
+}
+
+type RIBEqExpr struct {
+	Left  string         `yaml:"left" json:"left"`   // "PRE" or "POST" → スナップショット名に
+	Right string         `yaml:"right" json:"right"` // "PRE" or "POST"
+	Where map[string]any `yaml:"where,omitempty" json:"where,omitempty"`
+}
+
+type RIBEvalExpr struct {
+	Snapshot  string         `yaml:"snapshot,omitempty" json:"snapshot,omitempty"` // デフォルトscenario.snapshot
+	Where     map[string]any `yaml:"where,omitempty" json:"where,omitempty"`
+	Aggregate string         `yaml:"aggregate" json:"aggregate"` // e.g. "count()", "distCnt(nexthop)", "distVals(localPref)"
+	Eq        []any          `yaml:"eq,omitempty" json:"eq,omitempty"`
+	Ne        []any          `yaml:"ne,omitempty" json:"ne,omitempty"`
+	Gt        *int           `yaml:"gt,omitempty" json:"gt,omitempty"`
+	Gte       *int           `yaml:"gte,omitempty" json:"gte,omitempty"`
+	Lt        *int           `yaml:"lt,omitempty" json:"lt,omitempty"`
+	Lte       *int           `yaml:"lte,omitempty" json:"lte,omitempty"`
+}
+
+type PacketReachableExpr struct {
 	From     string `yaml:"from" json:"from"`
 	VRF      string `yaml:"vrf,omitempty" json:"vrf,omitempty"`
 	To       string `yaml:"to" json:"to"`
 	Protocol string `yaml:"protocol" json:"protocol"`
 	DstPort  int    `yaml:"dst_port,omitempty" json:"dst_port,omitempty"`
-}
-
-type Assertion struct {
-	Exists         *bool                `yaml:"exists,omitempty" json:"exists,omitempty"`
-	Reachable      *bool                `yaml:"reachable,omitempty" json:"reachable,omitempty"`
-	Count          *CountCheck          `yaml:"count,omitempty" json:"count,omitempty"`
-	DistinctCount  *DistinctCountCheck  `yaml:"distinct_count,omitempty" json:"distinct_count,omitempty"`
-	DistinctValues *DistinctValuesCheck `yaml:"distinct_values,omitempty" json:"distinct_values,omitempty"`
-	Relation       string               `yaml:"relation,omitempty" json:"relation,omitempty"`
-}
-
-type CountCheck struct {
-	GTE    *int `yaml:"gte,omitempty" json:"gte,omitempty"`
-	Equals *int `yaml:"equals,omitempty" json:"equals,omitempty"`
-}
-
-type DistinctCountCheck struct {
-	Field  string `yaml:"field" json:"field"`
-	GTE    *int   `yaml:"gte,omitempty" json:"gte,omitempty"`
-	Equals *int   `yaml:"equals,omitempty" json:"equals,omitempty"`
-}
-
-type DistinctValuesCheck struct {
-	Field  string `yaml:"field" json:"field"`
-	Equals []any  `yaml:"equals" json:"equals"`
-}
-
-type CompareCheck struct {
-	Table    string      `yaml:"table" json:"table"`
-	Left     CompareSide `yaml:"left" json:"left"`
-	Right    CompareSide `yaml:"right" json:"right"`
-	Relation string      `yaml:"relation" json:"relation"`
-}
-
-type CompareSide struct {
-	Snapshot string         `yaml:"snapshot" json:"snapshot"`
-	Where    map[string]any `yaml:"where,omitempty" json:"where,omitempty"`
+	Expect   bool   `yaml:"expect" json:"expect"`
 }
 
 type ExpandedDocument struct {
