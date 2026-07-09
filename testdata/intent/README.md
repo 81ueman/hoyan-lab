@@ -48,3 +48,4 @@ RCL DSL (`rcl` field) の全機能をカバーするサンプルファイル。
 
 - pass/fail 両方のパターンが含まれています
 - 実際の評価結果は `go test ./internal/usecase/intent/...` で確認できます
+- 構文の詳細は [docs/rcl-syntax.md](../../docs/rcl-syntax.md) を参照してください
