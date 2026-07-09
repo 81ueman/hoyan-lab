@@ -508,6 +508,21 @@ func matchWhere(where map[string]any, fieldValue func(string) (any, bool)) bool 
 			if !ok || matchWhere(m, fieldValue) {
 				return false
 			}
+		case "imply":
+			clauses, ok := value.([]any)
+			if !ok || len(clauses) != 2 {
+				return false
+			}
+			antecedent, aOK := clauses[0].(map[string]any)
+			consequent, cOK := clauses[1].(map[string]any)
+			if !aOK || !cOK {
+				return false
+			}
+			// p1 imply p2 = not(p1) or p2
+			if !matchWhere(antecedent, fieldValue) {
+				return true // antecedent is false, implication holds
+			}
+			return matchWhere(consequent, fieldValue)
 		case "prefix_within":
 			raw, ok := fieldValue("prefix")
 			if !ok || !prefixWithin(scalar(raw), scalar(value)) {

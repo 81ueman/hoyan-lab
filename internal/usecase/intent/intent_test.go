@@ -173,4 +173,134 @@ func (p *fakeSnapshotProvider) LoadSnapshot(name string, def Snapshot) (Snapshot
 	return p.snapshots[name], nil
 }
 
+func TestMatchWhereImply(t *testing.T) {
+	tests := []struct {
+		name   string
+		where  map[string]any
+		fields map[string]any
+		want   bool
+	}{
+		{
+			name: "antecedent_true_consequent_false",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+					map[string]any{"prefix": "10.0.0.0/24"},
+				},
+			},
+			fields: map[string]any{"device": "leaf1", "prefix": "10.0.0.0/25"},
+			// antecedent: device=leaf1 matches → true
+			// consequent: prefix=10.0.0.0/24 != 10.0.0.0/25 → false
+			// imply = !true || false = false
+			want: false,
+		},
+		{
+			name: "antecedent_false_implication_holds",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+					map[string]any{"prefix": "10.0.0.0/24"},
+				},
+			},
+			fields: map[string]any{"device": "spine1", "prefix": "10.0.0.0/25"},
+			// antecedent: device=spine1 != leaf1 → false
+			// imply = !false || anything = true
+			want: true,
+		},
+		{
+			name: "antecedent_true_consequent_true",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+					map[string]any{"prefix": "10.0.0.0/24"},
+				},
+			},
+			fields: map[string]any{"device": "leaf1", "prefix": "10.0.0.0/24"},
+			// antecedent: device=leaf1 matches → true
+			// consequent: prefix=10.0.0.0/24 matches → true
+			// imply = !true || true = true
+			want: true,
+		},
+		{
+			name: "invalid_not_array",
+			where: map[string]any{
+				"imply": "not-an-array",
+			},
+			fields: map[string]any{"device": "leaf1"},
+			want:   false,
+		},
+		{
+			name: "invalid_wrong_length",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+				},
+			},
+			fields: map[string]any{"device": "leaf1"},
+			want:   false,
+		},
+		{
+			name: "invalid_not_map_elements",
+			where: map[string]any{
+				"imply": []any{
+					"not-a-map",
+					map[string]any{"device": "leaf1"},
+				},
+			},
+			fields: map[string]any{"device": "leaf1"},
+			want:   false,
+		},
+		{
+			name: "nested_imply_with_and_consequent",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+					map[string]any{
+						"and": []any{
+							map[string]any{"prefix": "10.0.0.0/24"},
+							map[string]any{"local_pref": 300},
+						},
+					},
+				},
+			},
+			fields: map[string]any{"device": "leaf1", "prefix": "10.0.0.0/24", "local_pref": 300},
+			// antecedent: device=leaf1 matches → true
+			// consequent: and(prefix=10.0.0.0/24, local_pref=300) → true
+			// imply = !true || true = true
+			want: true,
+		},
+		{
+			name: "nested_imply_with_and_fails_consequent",
+			where: map[string]any{
+				"imply": []any{
+					map[string]any{"device": "leaf1"},
+					map[string]any{
+						"and": []any{
+							map[string]any{"prefix": "10.0.0.0/24"},
+							map[string]any{"local_pref": 300},
+						},
+					},
+				},
+			},
+			fields: map[string]any{"device": "leaf1", "prefix": "10.0.0.0/24", "local_pref": 200},
+			// antecedent: device=leaf1 matches → true
+			// consequent: and(prefix=10.0.0.0/24, local_pref=300) → false (local_pref=200 != 300)
+			// imply = !true || false = false
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fieldValue := func(field string) (any, bool) {
+				v, ok := tt.fields[field]
+				return v, ok
+			}
+			got := matchWhere(tt.where, fieldValue)
+			if got != tt.want {
+				t.Errorf("matchWhere() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func ptrBool(v bool) *bool { return &v }
