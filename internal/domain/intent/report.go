@@ -19,7 +19,7 @@ type Result struct {
 	Scenario        string         `json:"scenario"`
 	Snapshot        string         `json:"snapshot"`
 	Group           map[string]any `json:"group"`
-	Assertion       Assertion      `json:"assertion"`
+	RCL             *RCLExpr       `json:"rcl,omitempty"`
 	Actual          Actual         `json:"actual"`
 	Counterexamples []any          `json:"counterexamples"`
 }
