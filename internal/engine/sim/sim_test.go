@@ -16,7 +16,11 @@ func loadGraph(t *testing.T) *Graph {
 	if err != nil {
 		t.Fatalf("LoadLabTopology() error = %v", err)
 	}
-	return NewGraph(topo, WithSolverBackend(enumerate.Backend{}))
+	g, err := NewGraph(topo, WithSolverBackend(enumerate.Backend{}))
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
+	return g
 }
 
 func TestRouteReachable(t *testing.T) {
@@ -107,7 +111,10 @@ func TestConnectedAndStaticRoutesInstallInFIB(t *testing.T) {
 		},
 		Links: []model.Link{{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/30"}},
 	}
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 	var connected, static bool
 	for _, entry := range g.FIB("r1") {
 		switch {
@@ -125,7 +132,10 @@ func TestConnectedAndStaticRoutesInstallInFIB(t *testing.T) {
 func TestRedistributeStaticPropagatesBGPRoute(t *testing.T) {
 	prefix := model.MustPrefix("203.0.113.0/24")
 	topo := twoNodeRedistributeTopology(prefix, nil)
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 	var learned bool
 	for _, route := range g.RIB("r2", prefix) {
 		route = route.Normalize()
@@ -157,7 +167,10 @@ func TestRedistributeConnectedUsesRouteMapFilter(t *testing.T) {
 			{Seq: 20, Action: "permit"},
 		},
 	}}
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 	for _, route := range g.RIB("r2", blocked) {
 		route = route.Normalize()
 		if route.SourceKind == model.RouteSourceBGP && route.Provenance.FromNode == "r1" {
@@ -203,7 +216,10 @@ func TestBGPVRFPropagationIsScoped(t *testing.T) {
 			{Name: "r1-r3", A: "r1", B: "r3", AIntf: "eth2", BIntf: "eth1", Cost: 1, Subnet: "198.51.100.0/30"},
 		},
 	}
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 	if got := len(g.RIBVRF("r1", "tenant-a", prefix)); got != 1 {
 		t.Fatalf("tenant-a RIB entries = %d, want 1: %#v", got, g.RIBVRF("r1", "tenant-a", prefix))
 	}
@@ -219,7 +235,10 @@ func TestAggregateAddressOriginatesOnlyWithContributor(t *testing.T) {
 	aggregate := model.MustPrefix("10.0.0.0/16")
 	contributor := model.MustPrefix("10.0.1.0/24")
 	topo := threeNodeAggregateTopology(aggregate, contributor, false)
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 
 	var aggregateRoute RIBEntry
 	for _, route := range g.RIB("r1", aggregate) {
@@ -260,7 +279,10 @@ func TestAggregateAddressOriginatesOnlyWithContributor(t *testing.T) {
 func TestAggregateAddressWithoutContributorDoesNotOriginate(t *testing.T) {
 	aggregate := model.MustPrefix("10.0.0.0/16")
 	topo := threeNodeAggregateTopology(aggregate, model.Prefix{}, false)
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 	for _, route := range g.RIB("r1", aggregate) {
 		route = route.Normalize()
 		if route.SourceKind == model.RouteSourceAggregate && route.Condition.Eval(FailureContext{}) {
@@ -273,7 +295,10 @@ func TestAggregateSummaryOnlySuppressesMoreSpecificAdvertisement(t *testing.T) {
 	aggregate := model.MustPrefix("10.0.0.0/16")
 	contributor := model.MustPrefix("10.0.1.0/24")
 	topo := threeNodeAggregateTopology(aggregate, contributor, true)
-	g := NewGraph(topo)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
 
 	for _, route := range g.RIB("r3", contributor) {
 		route = route.Normalize()

@@ -102,7 +102,11 @@ func loadGraph(topologyPath string, strictConfig bool) (*model.Topology, *sim.Gr
 	if err != nil {
 		return nil, nil, err
 	}
-	return topo, sim.NewGraph(topo), nil
+	g, err := sim.NewGraph(topo)
+	if err != nil {
+		return nil, nil, err
+	}
+	return topo, g, nil
 }
 
 func inspectNodes(topo *model.Topology, node string) ([]string, error) {
