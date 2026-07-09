@@ -1,0 +1,71 @@
+version: hoyan/v1
+
+snapshots:
+  current:
+    lab: labs/base-wan
+
+scenarios:
+  normal:
+    snapshot: current
+
+intents:
+  # eq: 一致（BGP経路数が正確に9）
+  - name: exact-bgp-count-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+          protocol: bgp
+        aggregate: count()
+        eq: [9]
+
+  # ne: 不一致（カウントが0でないことを確認）
+  - name: non-zero-route-count-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        ne: [0]
+
+  # gt: より大きい
+  - name: more-than-10-routes-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        gt: 10
+
+  # gte: 以上
+  - name: at-least-21-routes-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        gte: 21
+
+  # lt: 未満
+  - name: less-than-22-routes-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        lt: 22
+
+  # lte: 以下
+  - name: at-most-21-routes-on-bj-edge1
+    scenario: normal
+    rcl:
+      rib_eval:
+        where:
+          device: bj-edge1
+        aggregate: count()
+        lte: 21
