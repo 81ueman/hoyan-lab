@@ -2,6 +2,8 @@ package model
 
 import "strings"
 
+const DefaultLocalPreference = 100
+
 type RouteSourceKind string
 
 const (

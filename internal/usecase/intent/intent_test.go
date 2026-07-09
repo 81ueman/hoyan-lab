@@ -9,16 +9,10 @@ import (
 	"testing"
 
 	"github.com/81ueman/hoyan-lab/internal/adapter/intentfile"
-	"github.com/81ueman/hoyan-lab/internal/adapter/solver/enumerate"
 	"github.com/81ueman/hoyan-lab/internal/engine/sim"
 )
 
 func TestMain(m *testing.M) {
-	// Configure a default solver backend so failure-scenario tests work
-	// without importing solveradapter. Production code uses the Z3+enumerate
-	// fallback via solveradapter.DefaultBackend().
-	SetDefaultGraphOptions(sim.WithSolverBackend(enumerate.Backend{}))
-
 	// Change to module root so relative lab paths in testdata YAML files resolve correctly.
 	// When go test runs, CWD is the package directory (<module>/internal/usecase/intent/).
 	// We derive the module root from the test file location.
@@ -215,13 +209,12 @@ func TestVerifyPacketFailureScenario(t *testing.T) {
 		t.Fatalf("Verify() error: %v", err)
 	}
 	// 1 forall intent × 3 customers = 3 expanded intents
+	// expect: false + max: 1 → HTTPS is NOT reachable under some single link failure
 	if report.Summary.Total != 3 {
 		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
 	}
-	// The base-wan topology does not have redundant paths for all core links,
-	// so single core link failures break reachability. All 3 should fail.
 	if report.Summary.Failed != 3 {
-		t.Fatalf("Summary.Failed = %d, want 3 (single core link failure breaks reachability)", report.Summary.Failed)
+		t.Fatalf("Summary.Failed = %d, want 3 (some single link failure breaks HTTPS)", report.Summary.Failed)
 	}
 }
 
