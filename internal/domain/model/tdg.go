@@ -99,6 +99,65 @@ func (tdg *TDG) OutEdges(name string) []*TDGEdge {
 	return tdg.outEdges[name]
 }
 
+// RemoveEdge removes an edge between two named nodes from the TDG.
+// Returns true if the edge was found and removed, false otherwise.
+func (tdg *TDG) RemoveEdge(fromName, toName string) bool {
+	// Remove from Edges slice
+	for i, edge := range tdg.Edges {
+		if edge.From.Node == fromName && edge.To.Node == toName {
+			tdg.Edges = append(tdg.Edges[:i], tdg.Edges[i+1:]...)
+			// Rebuild outEdges from remaining edges
+			tdg.rebuildOutEdges()
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveAllEdgesFrom removes all outgoing edges from a named node.
+func (tdg *TDG) RemoveAllEdgesFrom(fromName string) {
+	var remaining []*TDGEdge
+	for _, edge := range tdg.Edges {
+		if edge.From.Node != fromName {
+			remaining = append(remaining, edge)
+		}
+	}
+	tdg.Edges = remaining
+	tdg.rebuildOutEdges()
+}
+
+// RemoveEdgesTo removes all edges that go to a named node.
+func (tdg *TDG) RemoveEdgesTo(toName string) {
+	var remaining []*TDGEdge
+	for _, edge := range tdg.Edges {
+		if edge.To.Node != toName {
+			remaining = append(remaining, edge)
+		}
+	}
+	tdg.Edges = remaining
+	tdg.rebuildOutEdges()
+}
+
+// rebuildOutEdges reconstructs the outEdges map from the Edges slice.
+func (tdg *TDG) rebuildOutEdges() {
+	tdg.outEdges = map[string][]*TDGEdge{}
+	for _, edge := range tdg.Edges {
+		tdg.outEdges[edge.From.Node] = append(tdg.outEdges[edge.From.Node], edge)
+	}
+}
+
+// SetEdgeWeight updates the weight of an edge between two named nodes.
+// Returns true if the edge was found and updated, false otherwise.
+func (tdg *TDG) SetEdgeWeight(fromName, toName string, weight float64) bool {
+	for _, edge := range tdg.Edges {
+		if edge.From.Node == fromName && edge.To.Node == toName {
+			edge.Weight = weight
+			return true
+		}
+	}
+	return false
+}
+
 // TopologicalOrder returns nodes in topological order (BFS from root).
 func (tdg *TDG) TopologicalOrder() []*TDGNode {
 	if tdg.Root == nil {
