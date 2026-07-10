@@ -35,12 +35,15 @@ func NewTrafficSimulateCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return fmt.Errorf("unexpected arguments: %s", args)
+				return ExitError{Code: 2, Err: fmt.Errorf("unexpected arguments: %s", args)}
 			}
 			if err := opts.validate(); err != nil {
-				return err
+				return ExitError{Code: 2, Err: err}
 			}
-			return runTrafficSimulate(opts, cmd.OutOrStdout())
+			if err := runTrafficSimulate(opts, cmd.OutOrStdout()); err != nil {
+				return ExitError{Code: 2, Err: err}
+			}
+			return nil
 		},
 	}
 	addLabFlag(cmd, &opts.labPath)

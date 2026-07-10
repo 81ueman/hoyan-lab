@@ -159,22 +159,20 @@ func TestTrafficSimulatorECMP(t *testing.T) {
 	eng := dataplane.NewEngine(idx, rib, fib)
 	eng.DeriveFIB()
 
-	// Verify ECMP is detected
+	// Verify ECMP is detected — the test MUST exercise ECMP behavior
 	entries := eng.SymbolicLookupFIB("node-a", "10.4.1.10")
 	if len(entries) == 0 {
 		t.Fatal("expected at least one FIB entry")
 	}
-	var hasECMP bool
+	var ecmpNHS []dataplane.NextHopEntry
 	for _, c := range entries {
 		if len(c.Entry.NextHops) > 1 {
-			hasECMP = true
+			ecmpNHS = c.Entry.NextHops
 			break
 		}
 	}
-	if !hasECMP {
-		t.Log("no ECMP NextHops detected (may need generic device kind with equivalent routes)")
-		// This is expected for FRR-like behavior where routes collapse
-		// The test verifies the simulation won't crash with single path
+	if len(ecmpNHS) < 2 {
+		t.Fatalf("expected ECMP with 2+ next-hops, got %d: %+v", len(ecmpNHS), ecmpNHS)
 	}
 
 	sim := traffic.NewSimulator(eng, idx)
@@ -199,11 +197,31 @@ func TestTrafficSimulatorECMP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The simulation should produce link loads
-	if len(result.LinkLoads) == 0 {
-		t.Error("expected at least one link load")
+	// Each ECMP path carries ~1000 bytes (2000 * 0.5).
+	// Path 1: node-a -> mid-1 -> node-b  (links: link-a-mid1, link-mid1-b)
+	// Path 2: node-a -> mid-2 -> node-b  (links: link-a-mid2, link-mid2-b)
+	// All 4 links should get ~1000 bytes each.
+	expectedWeight := 1000 // 2000 * 0.5
+	for _, name := range []string{"link-a-mid1", "link-mid1-b", "link-a-mid2", "link-mid2-b"} {
+		ll, ok := result.LinkLoads[name]
+		if !ok {
+			t.Errorf("missing link load for %q", name)
+			continue
+		}
+		if ll.Bytes != uint64(expectedWeight) {
+			t.Errorf("%s bytes = %d, want %d", name, ll.Bytes, expectedWeight)
+		}
 	}
-	t.Logf("Link loads: %+v", result.LinkLoads)
+
+	// Sum of all link loads should equal total bytes * hop count
+	// Each of 4 links gets 1000 = 4000 total (2000 total * 2 hops per path)
+	var sum uint64
+	for _, ll := range result.LinkLoads {
+		sum += ll.Bytes
+	}
+	if sum != 4000 {
+		t.Errorf("sum of all link loads = %d, want 4000", sum)
+	}
 }
 
 func TestTrafficSimulatorEmptyInput(t *testing.T) {

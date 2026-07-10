@@ -61,14 +61,26 @@ func (ts *TrafficSimulator) simulateEC(linkBytes map[string]uint64, ec model.Flo
 	}
 
 	if len(ecmpNhs) > 1 {
-		// ECMP: distribute bytes across first-hop links by weight
+		// ECMP: distribute bytes across ALL links in each ECMP path
 		for _, nh := range ecmpNhs {
-			// Find the link from ingress node to this next-hop node
-			link, ok := ts.idx.LinkBetween(ec.IngressNode, nh.Node)
+			// Find the ingress→next-hop link
+			firstLink, ok := ts.idx.LinkBetween(ec.IngressNode, nh.Node)
 			if !ok {
 				continue
 			}
-			linkBytes[link.Name] += uint64(float64(ec.TotalBytes) * nh.Weight)
+			// Resolve full path from the next-hop node to the destination
+			path, ok, _ := ts.eng.PacketReachableSpec(nh.Node, dstIP, spec, failure.Set{})
+			if !ok {
+				// Fall back to just the first-hop link
+				linkBytes[firstLink.Name] += uint64(float64(ec.TotalBytes) * nh.Weight)
+				continue
+			}
+			// Prepend the first-hop link and distribute weighted bytes
+			weightedBytes := uint64(float64(ec.TotalBytes) * nh.Weight)
+			linkBytes[firstLink.Name] += weightedBytes
+			for _, link := range path.Links {
+				linkBytes[link] += weightedBytes
+			}
 		}
 	} else {
 		// Single path: resolve full path and add bytes to all links
