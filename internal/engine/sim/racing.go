@@ -49,6 +49,20 @@ func copyRIB(original domainroute.RIBTable) domainroute.RIBTable {
 	return cpy
 }
 
+// routerSelectedCond returns the SelectedCond that evaluates to true for the given
+// router under the given failure context, or nil if none does.
+func routerSelectedCond(conds []failure.Cond, ctx failure.Context) failure.Cond {
+	for _, cond := range conds {
+		if cond == nil || cond.Key() == failure.False().Key() {
+			continue
+		}
+		if cond.Eval(ctx) {
+			return cond
+		}
+	}
+	return nil
+}
+
 // DetectRacing runs the route-update racing detection algorithm
 // (SIGCOMM 2020 Appendix B) for the given prefix.
 //

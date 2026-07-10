@@ -5,7 +5,14 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
+
+// isBGPOrAggregate returns true if the route's SourceKind is BGP or Aggregate.
+func isBGPOrAggregate(entry domainroute.RIBEntry) bool {
+	entry = entry.Normalize()
+	return entry.SourceKind == model.RouteSourceBGP || entry.SourceKind == model.RouteSourceAggregate
+}
 
 // RacingPropagate re-propagates all BGP RIB entries with RacingPropagation=true
 // so that routes normally filtered by EligibleForAdvertisement are also propagated.
@@ -25,8 +32,7 @@ func (e *Engine) RacingPropagate() {
 		for vrf, byPrefix := range byVRF {
 			for prefix, routes := range byPrefix {
 				for i, entry := range routes {
-					entry = entry.Normalize()
-					if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate {
+					if !isBGPOrAggregate(entry) {
 						continue
 					}
 					if len(entry.Provenance.PathNodes) < 1 {
@@ -85,8 +91,7 @@ func (e *Engine) CollectRacingCandidates(prefix model.Prefix) map[string][]failu
 			}
 			var nodeConds []failure.Cond
 			for _, r := range routes {
-				r = r.Normalize()
-				if r.SourceKind != model.RouteSourceBGP && r.SourceKind != model.RouteSourceAggregate {
+				if !isBGPOrAggregate(r) {
 					continue
 				}
 				if r.SelectedCond == nil {
@@ -111,8 +116,7 @@ func (e *Engine) PrefixWithMultipleOrigins() []model.Prefix {
 		for _, byPrefix := range byVRF {
 			for prefix, routes := range byPrefix {
 				for _, entry := range routes {
-					entry = entry.Normalize()
-					if entry.SourceKind != model.RouteSourceBGP && entry.SourceKind != model.RouteSourceAggregate {
+					if !isBGPOrAggregate(entry) {
 						continue
 					}
 					if entry.Provenance.OriginNode == "" {
