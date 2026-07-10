@@ -25,6 +25,7 @@ type RIBEntry struct {
 	BaseCond              failure.Cond
 	Condition             failure.Cond
 	SelectedCond          failure.Cond
+	RacingPropagation     bool
 }
 
 type NLRI struct {

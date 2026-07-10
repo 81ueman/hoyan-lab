@@ -105,6 +105,7 @@ func WalkRoute(ctx PropagationContext, route route.RIBEntry) {
 		nextCond := failure.And(imported.Route.Condition, failure.LinkVar(adj.Link.Name), failure.NodeVar(next))
 
 		entry := imported.Route
+		entry.RacingPropagation = route.RacingPropagation
 		entry.Provenance.FromNode = current
 		entry.Provenance.PathNodes = append([]string(nil), nextNodes...)
 		entry.Provenance.PathLinks = append([]string(nil), nextLinks...)
@@ -115,7 +116,8 @@ func WalkRoute(ctx PropagationContext, route route.RIBEntry) {
 
 		ctx.AddRIB(next, entry.NLRI.Prefix, entry)
 
-		if !ctx.EligibleForAdvertisement(nextNode, entry) {
+		skipPropagation := !entry.RacingPropagation && !ctx.EligibleForAdvertisement(nextNode, entry)
+		if skipPropagation {
 			continue
 		}
 

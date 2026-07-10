@@ -1,0 +1,41 @@
+name: hoyan-bgp-racing
+mgmt:
+    network: hoyan-bgp-racing
+    ipv4-subnet: 172.86.93.0/24
+topology:
+    kinds:
+        linux:
+            image: hoyan-frr-nftables:10.6.1
+    nodes:
+        a:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.11
+            binds:
+                - configs/frr/a/daemons:/etc/frr/daemons:ro
+                - configs/frr/a/frr.conf:/etc/frr/frr.conf:ro
+        b:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.12
+            binds:
+                - configs/frr/b/daemons:/etc/frr/daemons:ro
+                - configs/frr/b/frr.conf:/etc/frr/frr.conf:ro
+        c:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.13
+            binds:
+                - configs/frr/c/daemons:/etc/frr/daemons:ro
+                - configs/frr/c/frr.conf:/etc/frr/frr.conf:ro
+        d:
+            kind: linux
+            group: router
+            mgmt-ipv4: 172.86.93.14
+            binds:
+                - configs/frr/d/daemons:/etc/frr/daemons:ro
+                - configs/frr/d/frr.conf:/etc/frr/frr.conf:ro
+    links:
+        - endpoints: ["a:eth1", "c:eth1"]
+        - endpoints: ["b:eth1", "d:eth1"]
+        - endpoints: ["a:eth2", "b:eth2"]
