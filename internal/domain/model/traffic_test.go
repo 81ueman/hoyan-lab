@@ -60,7 +60,6 @@ func TestLinkLoadCreation(t *testing.T) {
 	ll := LinkLoad{
 		LinkName: "cust-bj--core-bj-1",
 		Bytes:    5000000,
-		Capacity: 10000000000, // 10 Gbps
 	}
 	if ll.LinkName != "cust-bj--core-bj-1" {
 		t.Errorf("unexpected link name: %s", ll.LinkName)
@@ -68,15 +67,12 @@ func TestLinkLoadCreation(t *testing.T) {
 	if ll.Bytes != 5000000 {
 		t.Errorf("unexpected bytes: %d", ll.Bytes)
 	}
-	if ll.Capacity != 10000000000 {
-		t.Errorf("unexpected capacity: %d", ll.Capacity)
-	}
 }
 
 func TestTrafficResultCreation(t *testing.T) {
 	tr := TrafficResult{
 		LinkLoads: map[string]LinkLoad{
-			"link-1": {LinkName: "link-1", Bytes: 100, Capacity: 1000},
+			"link-1": {LinkName: "link-1", Bytes: 100},
 		},
 	}
 	if len(tr.LinkLoads) != 1 {

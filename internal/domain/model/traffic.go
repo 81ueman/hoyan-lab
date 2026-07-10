@@ -23,7 +23,6 @@ type LocatedFlow struct {
 type LinkLoad struct {
 	LinkName string
 	Bytes    uint64
-	Capacity uint64 // bps, 0 = unknown
 }
 
 // TrafficResult holds the traffic simulation result for one snapshot.

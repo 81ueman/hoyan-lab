@@ -316,14 +316,15 @@ func buildECList(classes []model.PacketClass, baseBytes uint64) []trafficengine.
 // ---------------------------------------------------------------------------
 
 type whatIfOptions struct {
-	topologyPath string
-	flowsPath    string
-	failLinks    []string
-	failNodes    []string
-	format       string
-	ecmpMode     string
-	sampleRate   float64
-	workers      int
+	topologyPath  string
+	flowsPath     string
+	failLinks     []string
+	failNodes     []string
+	format        string
+	ecmpMode      string
+	sampleRate    float64
+	workers       int
+	bandwidthPath string
 }
 
 func NewWhatIfCommand() *cobra.Command {
@@ -351,6 +352,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
 	cmd.Flags().IntVar(&opts.workers, "workers", runtime.GOMAXPROCS(0), "parallelism for simulation")
+	cmd.Flags().StringVar(&opts.bandwidthPath, "bandwidth", "", "path to bandwidth override JSON file")
 	return cmd
 }
 
@@ -368,6 +370,15 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 	}
 	if len(topo.Nodes) == 0 {
 		return fmt.Errorf("topology has no nodes")
+	}
+
+	// Apply bandwidth overrides if specified
+	if opts.bandwidthPath != "" {
+		overrides, err := loadBandwidthOverrides(opts.bandwidthPath)
+		if err != nil {
+			return ExitError{Code: 2, Err: fmt.Errorf("loading bandwidth overrides: %w", err)}
+		}
+		trafficengine.ApplyBandwidthOverrides(topo, overrides)
 	}
 
 	// Build FIB table from topology
@@ -543,13 +554,14 @@ func formatStatus(diff trafficengine.LinkLoadChange) string {
 // ---------------------------------------------------------------------------
 
 type kFailOptions struct {
-	topologyPath string
-	flowsPath    string
-	threshold    float64
-	maxK         int
-	format       string
-	ecmpMode     string
-	sampleRate   float64
+	topologyPath  string
+	flowsPath     string
+	threshold     float64
+	maxK          int
+	format        string
+	ecmpMode      string
+	sampleRate    float64
+	bandwidthPath string
 }
 
 func NewKFailCommand() *cobra.Command {
@@ -576,6 +588,7 @@ Examples:
 	cmd.Flags().StringVar(&opts.format, "format", "text", "output format: text or json")
 	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
+	cmd.Flags().StringVar(&opts.bandwidthPath, "bandwidth", "", "path to bandwidth override JSON file")
 	return cmd
 }
 
@@ -593,6 +606,15 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 	}
 	if len(topo.Nodes) == 0 {
 		return fmt.Errorf("topology has no nodes")
+	}
+
+	// Apply bandwidth overrides if specified
+	if opts.bandwidthPath != "" {
+		overrides, err := loadBandwidthOverrides(opts.bandwidthPath)
+		if err != nil {
+			return ExitError{Code: 2, Err: fmt.Errorf("loading bandwidth overrides: %w", err)}
+		}
+		trafficengine.ApplyBandwidthOverrides(topo, overrides)
 	}
 
 	// Build FIB table from topology
