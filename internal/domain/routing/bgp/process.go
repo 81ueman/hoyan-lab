@@ -1,6 +1,7 @@
 package bgp
 
 import (
+	"net"
 	"sort"
 	"strings"
 
@@ -75,17 +76,51 @@ func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEn
 	if shouldCompareMED(a, b, d.OptionsValue) && a.Attrs.MED != b.Attrs.MED {
 		return false
 	}
-	if a.IGPCost != b.IGPCost {
+	if nextHopIGPCost(a) != nextHopIGPCost(b) {
 		return false
 	}
 	return a.Attrs.LearnedIBGP == b.Attrs.LearnedIBGP
 }
 
 // nextHopIGPCost returns the IGP cost to reach the next-hop of a route.
-// Currently returns the stored IGPCost value; in a full implementation this
-// would look up the next-hop in the IGP routing table (OSPF/IS-IS).
+// Currently returns the stored IGPCost value stored on the route entry;
+// in a full implementation this would look up the next-hop in the IGP
+// routing table (OSPF/IS-IS).
 func nextHopIGPCost(r route.RIBEntry) int {
 	return r.IGPCost
+}
+
+// ipLess compares two IP address strings and reports whether a < b numerically.
+// If either string is not a valid IP address, it falls back to string comparison.
+func ipLess(a, b string) bool {
+	ipA := net.ParseIP(a)
+	ipB := net.ParseIP(b)
+	if ipA != nil && ipB != nil {
+		return ipLessIP(ipA, ipB)
+	}
+	return a < b
+}
+
+func ipLessIP(a, b net.IP) bool {
+	// Compare byte by byte (network byte order).
+	// To4() converts IPv4-mapped-IPv6 to 4-byte for shorter comparison.
+	a4 := a.To4()
+	b4 := b.To4()
+	if a4 != nil && b4 != nil {
+		for i := 0; i < 4; i++ {
+			if a4[i] != b4[i] {
+				return a4[i] < b4[i]
+			}
+		}
+		return false
+	}
+	// Fall back to full 16-byte IPv6 comparison
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return len(a) < len(b)
 }
 
 func shouldCompareMED(a, b route.RIBEntry, opts DecisionOptions) bool {
@@ -250,21 +285,28 @@ func less(receiver model.Node, a, b route.RIBEntry, opts DecisionOptions, revers
 		return aExternal
 	}
 	// IGP cost to next-hop: lower wins
-	if a.IGPCost != b.IGPCost {
-		return a.IGPCost < b.IGPCost
+	if nextHopIGPCost(a) != nextHopIGPCost(b) {
+		return nextHopIGPCost(a) < nextHopIGPCost(b)
 	}
 	// Cluster-List: shorter list preferred
 	if len(a.Attrs.ClusterList) != len(b.Attrs.ClusterList) {
 		return len(a.Attrs.ClusterList) < len(b.Attrs.ClusterList)
 	}
-	// Originator-ID: lower value preferred when both are set
+	// Originator-ID: IP-address-aware comparison; lower value preferred when both are set.
+	// Originator-ID and Router-ID are 32-bit values typically represented as IPv4 addresses.
 	if a.Attrs.OriginatorID != "" && b.Attrs.OriginatorID != "" && a.Attrs.OriginatorID != b.Attrs.OriginatorID {
 		if opts.PreferLowerRouterID {
-			return a.Attrs.OriginatorID < b.Attrs.OriginatorID
+			return ipLess(a.Attrs.OriginatorID, b.Attrs.OriginatorID)
 		}
-		return a.Attrs.OriginatorID > b.Attrs.OriginatorID
+		return ipLess(b.Attrs.OriginatorID, a.Attrs.OriginatorID)
 	}
-	// Router-ID: compare by FromNode name when CompareRouterID is enabled
+	// Router-ID: when CompareRouterID is enabled, compare by the FromNode name.
+	// FromNode is the peer that advertised the route; it serves as a proxy for
+	// Router-ID since the full Router-ID value is not stored per-route.
+	// The Node.RouterID field exists on the topology model for node-level configuration.
+	// Note: FromNode names are compared as strings, which may not match real Router-ID
+	// numeric ordering (e.g., "r10" < "r2" lexicographically). If precise Router-ID
+	// ordering is needed, populate OriginatorID on routes instead.
 	if opts.CompareRouterID && a.Provenance.FromNode != b.Provenance.FromNode {
 		if opts.PreferLowerRouterID {
 			return a.Provenance.FromNode < b.Provenance.FromNode

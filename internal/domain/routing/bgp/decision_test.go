@@ -128,6 +128,22 @@ func TestLessOriginatorID(t *testing.T) {
 			t.Errorf("expected b with lower local-pref to NOT be preferred when originator-id comparison skipped")
 		}
 	})
+
+	t.Run("originator-id compared as IP addresses, not strings", func(t *testing.T) {
+		// Lexicographically "10.0.0.1" < "9.0.0.1", but IP-address-aware
+		// comparison correctly treats 10.0.0.1 (167772161) > 9.0.0.1 (150994945).
+		opts := DecisionOptions{PreferLowerRouterID: true}
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, OriginatorID: "9.0.0.1"})
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, OriginatorID: "10.0.0.1"})
+		// Numerically 9.0.0.1 < 10.0.0.1 so a should be preferred.
+		// String comparison would incorrectly pick 10.0.0.1 ("10" < "9").
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a (OriginatorID=9.0.0.1) to be preferred over b (OriginatorID=10.0.0.1) with IP-aware comparison")
+		}
+		if less(node, b, a, opts, false) {
+			t.Errorf("expected b (OriginatorID=10.0.0.1) to NOT be preferred over a (OriginatorID=9.0.0.1) with IP-aware comparison")
+		}
+	})
 }
 
 func TestLessIGPCost(t *testing.T) {
