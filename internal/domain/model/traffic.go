@@ -13,10 +13,10 @@ type Flow struct {
 
 // LocatedFlow is a flow with network ingress point and traffic volume.
 type LocatedFlow struct {
-	Flow         Flow
-	IngressNode  string
-	IngressIntf  string
-	Bytes        uint64
+	Flow        Flow
+	IngressNode string
+	IngressIntf string
+	Bytes       uint64
 }
 
 // FlowEquivalenceClass groups flows with identical forwarding behavior.

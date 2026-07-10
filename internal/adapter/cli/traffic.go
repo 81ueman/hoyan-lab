@@ -54,9 +54,9 @@ func NewTrafficSimulateCommand() *cobra.Command {
 }
 
 type trafficSimulateOptions struct {
-	labPath    string
-	flowsPath  string
-	format     string
+	labPath   string
+	flowsPath string
+	format    string
 }
 
 func (o trafficSimulateOptions) validate() error {
@@ -165,5 +165,3 @@ func writeTrafficTable(out io.Writer, result model.TrafficResult) error {
 	}
 	return nil
 }
-
-

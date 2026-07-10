@@ -44,10 +44,10 @@ func TestTrafficSimulatorSimplePath(t *testing.T) {
 		"node-b": {
 			model.NetworkInstanceDefault: {prefix: {
 				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					SourceKind:        model.RouteSourceConnected,
-					SelectedCond:      failure.True(),
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
+					NLRI:         domainroute.NLRI{Prefix: prefix},
+					SourceKind:   model.RouteSourceConnected,
+					SelectedCond: failure.True(),
+					RouteSource:  model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
 				},
 			}},
 		},
@@ -90,7 +90,8 @@ func TestTrafficSimulatorSimplePath(t *testing.T) {
 
 // TestTrafficSimulatorECMP tests simulation with ECMP via two intermediate routers.
 // Topology: node-a -- link-a-mid1 -- mid-1 -- link-mid1-b -- node-b
-//           node-a -- link-a-mid2 -- mid-2 -- link-mid2-b -- node-b
+//
+//	node-a -- link-a-mid2 -- mid-2 -- link-mid2-b -- node-b
 func TestTrafficSimulatorECMP(t *testing.T) {
 	topo := &model.Topology{
 		Nodes: []model.Node{
