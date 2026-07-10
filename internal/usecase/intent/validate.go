@@ -132,7 +132,7 @@ func validateRCLExpr(expr *RCLExpr, path string, doc *Document) error {
 		return nil
 
 	case expr.RIBEq != nil:
-		return validateRIBEqExpr(expr.RIBEq, path+".rib_eq", doc)
+		return validateRIBEqExpr(expr.RIBEq, path+".diff", doc)
 
 	case expr.RIBEval != nil:
 		return validateRIBEvalExpr(expr.RIBEval, path+".rib_eval", doc)
@@ -312,7 +312,7 @@ func validateRefsRCL(path string, expr *RCLExpr, vars map[string]any, localVars 
 		refs := collectRefsInExpr(expr.RIBEq.Where)
 		for _, ref := range refs {
 			if err := checkVarRef(ref, vars, localVars); err != nil {
-				return fmt.Errorf("%s.rib_eq.where: %w", path, err)
+				return fmt.Errorf("%s.diff.where: %w", path, err)
 			}
 		}
 	case expr.RIBEval != nil:

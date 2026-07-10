@@ -84,9 +84,7 @@ const (
 	tokKeywordContains
 	tokKeywordMatches
 	tokKeywordWithin
-	tokKeywordRibEq
-	tokKeywordLeft
-	tokKeywordRight
+	tokKeywordDiff
 	tokKeywordVrf
 	tokKeywordCount
 	tokKeywordDistCnt
@@ -131,9 +129,7 @@ var keywords = map[string]tokenKind{
 	"contains":           tokKeywordContains,
 	"matches":            tokKeywordMatches,
 	"within":             tokKeywordWithin,
-	"rib_eq":             tokKeywordRibEq,
-	"left":               tokKeywordLeft,
-	"right":              tokKeywordRight,
+	"diff":               tokKeywordDiff,
 	"vrf":                tokKeywordVrf,
 	"count":              tokKeywordCount,
 	"distCnt":            tokKeywordDistCnt,
@@ -346,9 +342,7 @@ func (k tokenKind) String() string {
 		tokKeywordContains:         "contains",
 		tokKeywordMatches:          "matches",
 		tokKeywordWithin:           "within",
-		tokKeywordRibEq:            "rib_eq",
-		tokKeywordLeft:             "left",
-		tokKeywordRight:            "right",
+		tokKeywordDiff:             "diff",
 		tokKeywordVrf:              "vrf",
 		tokKeywordCount:            "count()",
 		tokKeywordDistCnt:          "distCnt()",

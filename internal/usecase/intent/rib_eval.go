@@ -26,11 +26,11 @@ func evalRIBEq(e *RIBEqExpr, snapshot SnapshotContext, rowFilter map[string]any,
 	// Get matching rows from both snapshots
 	leftRows, err := matchingRows(leftSnap, e.Where, rowFilter)
 	if err != nil {
-		return "fail", Actual{Reason: fmt.Sprintf("rib_eq left where: %v", err)}
+		return "fail", Actual{Reason: fmt.Sprintf("diff left where: %v", err)}
 	}
 	rightRows, err := matchingRows(rightSnap, e.Where, rowFilter)
 	if err != nil {
-		return "fail", Actual{Reason: fmt.Sprintf("rib_eq right where: %v", err)}
+		return "fail", Actual{Reason: fmt.Sprintf("diff right where: %v", err)}
 	}
 
 	// Build prefix→entry maps for comparison

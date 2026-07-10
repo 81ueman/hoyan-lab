@@ -152,7 +152,7 @@ ProtocolPort = "icmp"
              | "udp" "/" int
 
 (* ------- RIB Equality ------- *)
-RibEqExpr   = "rib_eq" "left" "=" string "right" "=" string WhereClause?
+RibEqExpr   = "diff" string string WhereClause?
 
 (* ------- Logical Combinators ------- *)
 AndExpr     = "and" "{" Expr+ "}"
@@ -269,7 +269,7 @@ where句で使用できるフィールド名のうち、一部は評価エンジ
 
 | YAML | DSL |
 |---|---|
-| `rib_eq: { left: pre, right: post, where: ... }` | `rib_eq left = "pre" right = "post" where ...` |
+| `rib_eq: { left: pre, right: post, where: ... }` | `diff "pre" "post" where ...` |
 
 ---
 
@@ -428,7 +428,7 @@ intent "service-prefix-survives-single-core-failure" {
 **DSL:**
 ```
 intent "unrelated-routes-unchanged" {
-  rib_eq left = "pre" right = "post" where not { prefix = $changed_prefix }
+  diff "pre" "post" where not { prefix = $changed_prefix }
 }
 ```
 

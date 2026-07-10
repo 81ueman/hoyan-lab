@@ -143,7 +143,7 @@ go run ./cmd/hoyan intent verify --lab labs/base-wan --format json
 The DSL supports `let` variables, `forall` iterations, RIB queries with
 `rib where ... { count() >= N }`, logical combinators (`and`, `or`, `not`,
 `if ... then ...`), conditional guards with `when`, RIB snapshot comparison via
-`rib_eq`, and packet reachability checks with `packet from ... to ... tcp/PORT
+`diff`, and packet reachability checks with `packet from ... to ... tcp/PORT
 expect BOOL`:
 
 ```hoyan

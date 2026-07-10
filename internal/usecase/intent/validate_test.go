@@ -286,8 +286,8 @@ func TestValidateRIBEqExpr(t *testing.T) {
 		err := validateRCLExpr(&RCLExpr{
 			RIBEq: &RIBEqExpr{Right: "post"},
 		}, "test", doc)
-		if err == nil || err.Error() != "test.rib_eq.left: required" {
-			t.Fatalf("validateRCLExpr() error = %v, want 'test.rib_eq.left: required'", err)
+		if err == nil || err.Error() != "test.diff.left: required" {
+			t.Fatalf("validateRCLExpr() error = %v, want 'test.diff.left: required'", err)
 		}
 	})
 
@@ -295,8 +295,8 @@ func TestValidateRIBEqExpr(t *testing.T) {
 		err := validateRCLExpr(&RCLExpr{
 			RIBEq: &RIBEqExpr{Left: "pre"},
 		}, "test", doc)
-		if err == nil || err.Error() != "test.rib_eq.right: required" {
-			t.Fatalf("validateRCLExpr() error = %v, want 'test.rib_eq.right: required'", err)
+		if err == nil || err.Error() != "test.diff.right: required" {
+			t.Fatalf("validateRCLExpr() error = %v, want 'test.diff.right: required'", err)
 		}
 	})
 
@@ -304,8 +304,8 @@ func TestValidateRIBEqExpr(t *testing.T) {
 		err := validateRCLExpr(&RCLExpr{
 			RIBEq: &RIBEqExpr{Left: "unknown", Right: "post"},
 		}, "test", doc)
-		if err == nil || err.Error() != `test.rib_eq.left: unknown snapshot "unknown"` {
-			t.Fatalf("validateRCLExpr() error = %v, want 'test.rib_eq.left: unknown snapshot \"unknown\"'", err)
+		if err == nil || err.Error() != `test.diff.left: unknown snapshot "unknown"` {
+			t.Fatalf("validateRCLExpr() error = %v, want 'test.diff.left: unknown snapshot \"unknown\"'", err)
 		}
 	})
 
@@ -313,8 +313,8 @@ func TestValidateRIBEqExpr(t *testing.T) {
 		err := validateRCLExpr(&RCLExpr{
 			RIBEq: &RIBEqExpr{Left: "pre", Right: "unknown"},
 		}, "test", doc)
-		if err == nil || err.Error() != `test.rib_eq.right: unknown snapshot "unknown"` {
-			t.Fatalf("validateRCLExpr() error = %v, want 'test.rib_eq.right: unknown snapshot \"unknown\"'", err)
+		if err == nil || err.Error() != `test.diff.right: unknown snapshot "unknown"` {
+			t.Fatalf("validateRCLExpr() error = %v, want 'test.diff.right: unknown snapshot \"unknown\"'", err)
 		}
 	})
 
