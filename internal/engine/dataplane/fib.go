@@ -12,6 +12,12 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
 )
 
+type NextHopEntry struct {
+	Node    string
+	Address string
+	Weight  float64 // distribution ratio (0.0-1.0)
+}
+
 type Path struct {
 	Nodes []string
 	Links []string
@@ -45,6 +51,7 @@ type FIBEntry struct {
 	Rank             int
 	GroupID          string
 	Equivalent       bool
+	NextHops         []NextHopEntry // ECMP next-hops with weights
 }
 
 type Engine struct {
@@ -146,9 +153,56 @@ func (e *Engine) DeriveFIB() {
 				}
 				return entries[i].Prefix.Bits() > entries[j].Prefix.Bits()
 			})
+			// Populate NextHops for ECMP groups
+			entries = populateECMPNextHops(entries)
+
 			e.fib[node][vrf] = entries
 		}
 	}
+}
+
+func populateECMPNextHops(entries []FIBEntry) []FIBEntry {
+	// Group entries by GroupID
+	groups := map[string][]int{}
+	for i, entry := range entries {
+		if entry.GroupID == "" {
+			continue
+		}
+		groups[entry.GroupID] = append(groups[entry.GroupID], i)
+	}
+	// For groups with multiple entries, populate NextHops with equal weights
+	for _, indices := range groups {
+		if len(indices) < 2 {
+			continue
+		}
+		// Collect all distinct next-hops in the group
+		seen := map[string]bool{}
+		var nhs []NextHopEntry
+		for _, idx := range indices {
+			key := entries[idx].NextHop + "@" + entries[idx].NextHopAddress
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			nhs = append(nhs, NextHopEntry{
+				Node:    entries[idx].NextHop,
+				Address: entries[idx].NextHopAddress,
+				Weight:  0,
+			})
+		}
+		if len(nhs) == 0 {
+			continue
+		}
+		weight := 1.0 / float64(len(nhs))
+		for i := range nhs {
+			nhs[i].Weight = weight
+		}
+		// Assign the same NextHops slice to all entries in the group
+		for _, idx := range indices {
+			entries[idx].NextHops = nhs
+		}
+	}
+	return entries
 }
 
 func fibAdminDistance(route domainroute.RIBEntry) int {
