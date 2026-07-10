@@ -171,6 +171,92 @@ func TestLessIGPCost(t *testing.T) {
 	})
 }
 
+func TestDeterministicMED(t *testing.T) {
+	// DeterministicMED ensures MED is only compared within the same neighboring AS,
+	// even when AlwaysCompareMED is enabled.
+	// When all higher-priority criteria are equal, MED becomes the tie-breaker.
+	// DeterministicMED prevents MED from being used across different neighbor ASes.
+	node := model.Node{Name: "r1"}
+
+	// routeEqualExceptMED creates two routes that are identical on all criteria
+	// before MED in the decision process, differing only in MED and ASPath.
+	routesEqualBeforeMED := func(asPathA, asPathB []uint32, medA, medB int) (route.RIBEntry, route.RIBEntry) {
+		a := bgpRoute(route.BGPAttributes{
+			ASPath:    asPathA,
+			MED:       medA,
+			LocalPref: 100,
+		})
+		b := bgpRoute(route.BGPAttributes{
+			ASPath:    asPathB,
+			MED:       medB,
+			LocalPref: 100,
+		})
+		return a, b
+	}
+
+	t.Run("DeterministicMED prevents cross-AS MED comparison with AlwaysCompareMED", func(t *testing.T) {
+		// Both routes have same local-pref, weight, as-path length, origin, etc.
+		// Different neighboring AS (65100 vs 65200).
+		// With DeterministicMED + AlwaysCompareMED, MED should NOT be compared
+		// across different ASes, so lower MED does not determine the winner.
+		opts := DecisionOptions{DeterministicMED: true, AlwaysCompareMED: true}
+		a, b := routesEqualBeforeMED([]uint32{65100}, []uint32{65200}, 10, 50)
+		// Different AS → MED skipped → falls through to eBGP/iBGP (both eBGP)
+		// → IGP cost (both 0) → Cluster-List (both empty) → OriginatorID (both empty)
+		// → CompareRouterID (false) → path tie-break (both same PathNodes)
+		// With no path nodes set, both will compare as equal strings → tie
+		// The sort will consider them equal (less returns false both ways)
+		aLessB := less(node, a, b, opts, false)
+		bLessA := less(node, b, a, opts, false)
+		if aLessB || bLessA {
+			t.Errorf("expected MED not to be compared across AS with DeterministicMED, got aLessB=%v bLessA=%v", aLessB, bLessA)
+		}
+	})
+
+	t.Run("DeterministicMED allows MED comparison within same AS", func(t *testing.T) {
+		// Both routes have same AS. MED should be compared.
+		opts := DecisionOptions{DeterministicMED: true, AlwaysCompareMED: true}
+		a, b := routesEqualBeforeMED([]uint32{65100}, []uint32{65100}, 10, 50)
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a with lower MED (10) to be preferred within same AS")
+		}
+		if less(node, b, a, opts, false) {
+			t.Errorf("expected b with higher MED (50) to NOT be preferred within same AS")
+		}
+	})
+
+	t.Run("DeterministicMED without AlwaysCompareMED still works", func(t *testing.T) {
+		opts := DecisionOptions{DeterministicMED: true, AlwaysCompareMED: false}
+		a, b := routesEqualBeforeMED([]uint32{65100}, []uint32{65200}, 10, 50)
+		// Different AS, MED should be skipped
+		aLessB := less(node, a, b, opts, false)
+		bLessA := less(node, b, a, opts, false)
+		if aLessB || bLessA {
+			t.Errorf("expected MED not to be compared across AS, got aLessB=%v bLessA=%v", aLessB, bLessA)
+		}
+	})
+
+	t.Run("Without DeterministicMED, AlwaysCompareMED allows cross-AS MED", func(t *testing.T) {
+		opts := DecisionOptions{DeterministicMED: false, AlwaysCompareMED: true}
+		a, b := routesEqualBeforeMED([]uint32{65100}, []uint32{65200}, 10, 50)
+		// Different AS but AlwaysCompareMED is true, MED should be compared
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a with lower MED (10) to win with AlwaysCompareMED even across AS")
+		}
+	})
+
+	t.Run("Without DeterministicMED, default behavior skips cross-AS MED", func(t *testing.T) {
+		opts := DecisionOptions{DeterministicMED: false, AlwaysCompareMED: false}
+		a, b := routesEqualBeforeMED([]uint32{65100}, []uint32{65200}, 10, 50)
+		// Default: no AlwaysCompareMED, different AS → MED skipped
+		aLessB := less(node, a, b, opts, false)
+		bLessA := less(node, b, a, opts, false)
+		if aLessB || bLessA {
+			t.Errorf("expected MED not to be compared across AS by default, got aLessB=%v bLessA=%v", aLessB, bLessA)
+		}
+	})
+}
+
 func TestLessRouterID(t *testing.T) {
 	// Router-ID: compared by FromNode name when CompareRouterID is enabled.
 	optsOn := DecisionOptions{CompareRouterID: true, PreferLowerRouterID: true}

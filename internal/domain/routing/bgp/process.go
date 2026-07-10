@@ -89,6 +89,12 @@ func nextHopIGPCost(r route.RIBEntry) int {
 }
 
 func shouldCompareMED(a, b route.RIBEntry, opts DecisionOptions) bool {
+	if opts.DeterministicMED {
+		// DeterministicMED groups routes by neighboring AS for MED comparison.
+		// MED is only compared within the same neighboring AS, regardless of
+		// AlwaysCompareMED.
+		return NeighboringAS(a.Attrs.ASPath) == NeighboringAS(b.Attrs.ASPath)
+	}
 	if opts.AlwaysCompareMED {
 		return true
 	}
