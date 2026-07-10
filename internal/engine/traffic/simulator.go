@@ -85,15 +85,15 @@ func (ts *TrafficSimulator) SimulateMultiSnapshot(
 	result := model.MultiSnapshotResult{}
 
 	for _, snap := range snapshots {
-		var linkLoads map[string]uint64
+		var linkBytes map[string]uint64
 		if ts.config.ECMPMode == ECMPModeHash && len(flows) > 0 {
-			linkLoads = ts.SimulateClassWithFlows(rootNode, packetClass, snap.FIBs, flows)
+			linkBytes = ts.SimulateClassWithFlows(rootNode, packetClass, snap.FIBs, flows)
 		} else {
-			linkLoads = ts.SimulateClass(rootNode, packetClass, snap.FIBs, snap.TotalBytes)
+			linkBytes = ts.SimulateClass(rootNode, packetClass, snap.FIBs, snap.TotalBytes)
 		}
 		result.Snapshots = append(result.Snapshots, model.TrafficResult{
 			Label:     snap.Label,
-			LinkLoads: linkLoads,
+			LinkLoads: toLinkLoads(linkBytes),
 		})
 	}
 
@@ -101,6 +101,15 @@ func (ts *TrafficSimulator) SimulateMultiSnapshot(
 	result.Diffs = ComputeDiffs(result.Snapshots)
 
 	return result
+}
+
+// toLinkLoads converts a raw map[string]uint64 to map[string]model.LinkLoad.
+func toLinkLoads(raw map[string]uint64) map[string]model.LinkLoad {
+	out := make(map[string]model.LinkLoad, len(raw))
+	for link, bytes := range raw {
+		out[link] = model.LinkLoad{LinkName: link, Bytes: bytes}
+	}
+	return out
 }
 
 // ComputeDiffs computes link load differences between consecutive snapshots.
@@ -127,8 +136,8 @@ func ComputeDiffs(snapshots []model.TrafficResult) []model.LinkLoadDiff {
 		}
 
 		for link := range allLinks {
-			before := int64(prev.LinkLoads[link])
-			after := int64(curr.LinkLoads[link])
+			before := int64(prev.LinkLoads[link].Bytes)
+			after := int64(curr.LinkLoads[link].Bytes)
 
 			if before == after {
 				continue

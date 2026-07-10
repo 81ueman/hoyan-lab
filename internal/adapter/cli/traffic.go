@@ -31,16 +31,19 @@ func NewTrafficCommand() *cobra.Command {
 	cmd.Flags().IntVar(&opts.workers, "workers", runtime.GOMAXPROCS(0), "parallelism for simulation")
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
 	cmd.Flags().StringVar(&opts.outputPath, "output", "", "output file path (default: stdout)")
+	cmd.Flags().StringVar(&opts.bandwidthPath, "bandwidth", "", "path to bandwidth override JSON file")
 	return cmd
 }
 
 type trafficOptions struct {
-	topologyPath  string
-	ecmpMode      string
-	snapshotsPath string
-	workers       int
-	sampleRate    float64
-	outputPath    string
+	topologyPath   string
+	ecmpMode       string
+	snapshotsPath  string
+	workers        int
+	sampleRate     float64
+	outputPath     string
+	bandwidthPath  string
+	bandwidthData  trafficengine.BandwidthOverride
 }
 
 func runTraffic(cmd *cobra.Command, opts trafficOptions, out io.Writer) error {
@@ -55,6 +58,16 @@ func runTraffic(cmd *cobra.Command, opts trafficOptions, out io.Writer) error {
 
 	simConfig := trafficengine.SimulatorConfig{ECMPMode: ecmpMode}
 	sim := trafficengine.NewTrafficSimulator(simConfig)
+
+	// Load bandwidth overrides if specified
+	if opts.bandwidthPath != "" {
+		overrides, err := loadBandwidthOverrides(opts.bandwidthPath)
+		if err != nil {
+			return ExitError{Code: 2, Err: fmt.Errorf("loading bandwidth overrides: %w", err)}
+		}
+		// Store overrides in traffic options for later use
+		opts.bandwidthData = overrides
+	}
 
 	if opts.snapshotsPath != "" {
 		return runMultiSnapshot(sim, opts, out)
@@ -90,6 +103,11 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
 		return fmt.Errorf("loading topology: %w", err)
+	}
+
+	// Apply bandwidth overrides if loaded
+	if opts.bandwidthData != nil {
+		trafficengine.ApplyBandwidthOverrides(topo, opts.bandwidthData)
 	}
 
 	if len(topo.Nodes) == 0 {
@@ -147,6 +165,11 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
 		return fmt.Errorf("loading topology: %w", err)
+	}
+
+	// Apply bandwidth overrides if loaded
+	if opts.bandwidthData != nil {
+		trafficengine.ApplyBandwidthOverrides(topo, opts.bandwidthData)
 	}
 
 	if len(topo.Nodes) == 0 {
@@ -239,6 +262,19 @@ func buildFIBFromTopo(topo *model.Topology) trafficengine.FIBTable {
 		}
 	}
 	return fibs
+}
+
+// loadBandwidthOverrides loads bandwidth overrides from a JSON file.
+func loadBandwidthOverrides(path string) (trafficengine.BandwidthOverride, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var overrides trafficengine.BandwidthOverride
+	if err := json.Unmarshal(data, &overrides); err != nil {
+		return nil, fmt.Errorf("decoding bandwidth overrides: %w", err)
+	}
+	return overrides, nil
 }
 
 // derivePacketClasses creates packet classes from topology node prefixes.

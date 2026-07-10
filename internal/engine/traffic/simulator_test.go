@@ -207,7 +207,7 @@ func TestComputeDiffsNoSnapshots(t *testing.T) {
 
 func TestComputeDiffsSingleSnapshot(t *testing.T) {
 	diffs := ComputeDiffs([]model.TrafficResult{
-		{Label: "single", LinkLoads: map[string]uint64{"link1": 100}},
+		{Label: "single", LinkLoads: map[string]model.LinkLoad{"link1": {LinkName: "link1", Bytes: 100}}},
 	})
 	if len(diffs) != 0 {
 		t.Errorf("expected 0 diffs for single snapshot, got %d", len(diffs))
