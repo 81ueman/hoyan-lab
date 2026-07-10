@@ -195,6 +195,171 @@ func normalizeCond(c Cond) Cond {
 	}
 }
 
+// NegatedLinkCount counts the number of directly negated link variables
+// in a condition. A directly negated link variable is a notCond whose
+// child is a varCond with kind condVarLink. This is used for the
+// more-than-k-failure pruning optimization.
+func NegatedLinkCount(c Cond) int {
+	c = normalizeCond(c)
+	switch x := c.(type) {
+	case notCond:
+		if v, ok := x.c.(varCond); ok && v.kind == condVarLink {
+			return 1
+		}
+		return 0
+	case andCond:
+		total := 0
+		for _, child := range x {
+			total += NegatedLinkCount(child)
+		}
+		return total
+	case orCond:
+		total := 0
+		for _, child := range x {
+			total += NegatedLinkCount(child)
+		}
+		return total
+	default:
+		return 0
+	}
+}
+
+// SimplifyCond applies additional simplification rules beyond normalizeCond
+// to reduce the variable count in a condition. Specifically:
+//   - And(x, Not(x), ...) → False (contradiction)
+//   - Or(x, Not(x), ...) → True (tautology)
+//   - And(Or(a, b), Not(a), Not(b)) → False (De Morgan)
+//   - Or(And(a, b), Not(a), Not(b)) → True (De Morgan)
+// It recursively simplifies children and then applies these deeper checks.
+func SimplifyCond(c Cond) Cond {
+	c = normalizeCond(c)
+	switch x := c.(type) {
+	case andCond:
+		// Recursively simplify children first
+		children := make(andCond, len(x))
+		for i, child := range x {
+			children[i] = SimplifyCond(child)
+		}
+		norm := normalizeCond(children)
+		if _, ok := norm.(falseCond); ok {
+			return norm
+		}
+		if ac, ok := norm.(andCond); ok {
+			return simplifyAnd(ac)
+		}
+		return norm
+	case orCond:
+		children := make(orCond, len(x))
+		for i, child := range x {
+			children[i] = SimplifyCond(child)
+		}
+		norm := normalizeCond(children)
+		if _, ok := norm.(trueCond); ok {
+			return norm
+		}
+		if oc, ok := norm.(orCond); ok {
+			return simplifyOr(oc)
+		}
+		return norm
+	default:
+		return c
+	}
+}
+
+func simplifyAnd(c andCond) Cond {
+	// Direct contradiction: x and Not(x)
+	for i, ci := range c {
+		ciNorm := normalizeCond(ci)
+		for j := i + 1; j < len(c); j++ {
+			cjNorm := normalizeCond(c[j])
+			if isNegation(ciNorm, cjNorm) {
+				return falseCond{}
+			}
+		}
+	}
+	// Contradiction via or-child: And(Or(a, b), Not(a), Not(b)) → False
+	for _, ci := range c {
+		if or, ok := ci.(orCond); ok {
+			allNegated := true
+			for _, orChild := range or {
+				found := false
+				for _, cj := range c {
+					if isNegation(orChild, cj) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					allNegated = false
+					break
+				}
+			}
+			if allNegated {
+				return falseCond{}
+			}
+		}
+	}
+	return c
+}
+
+func simplifyOr(c orCond) Cond {
+	// Direct tautology: x or Not(x)
+	for i, ci := range c {
+		ciNorm := normalizeCond(ci)
+		for j := i + 1; j < len(c); j++ {
+			cjNorm := normalizeCond(c[j])
+			if isNegation(ciNorm, cjNorm) {
+				return trueCond{}
+			}
+		}
+	}
+	// Tautology via and-child: Or(And(a, b), Not(a), Not(b)) → True
+	for _, ci := range c {
+		if and, ok := ci.(andCond); ok {
+			allNegated := true
+			for _, andChild := range and {
+				found := false
+				for _, cj := range c {
+					if isNegation(andChild, cj) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					allNegated = false
+					break
+				}
+			}
+			if allNegated {
+				return trueCond{}
+			}
+		}
+	}
+	return c
+}
+
+func isNegation(a, b Cond) bool {
+	a = normalizeCond(a)
+	b = normalizeCond(b)
+	// Check if a is Not(b)
+	if n, ok := a.(notCond); ok {
+		if equalCond(n.c, b) {
+			return true
+		}
+	}
+	// Check if b is Not(a)
+	if n, ok := b.(notCond); ok {
+		if equalCond(n.c, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func equalCond(a, b Cond) bool {
+	return a.Key() == b.Key()
+}
+
 func BoolExpr(c Cond) symbolic.Expr {
 	c = normalizeCond(c)
 	switch x := c.(type) {
