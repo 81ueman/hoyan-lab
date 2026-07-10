@@ -11,10 +11,10 @@ import (
 
 // RacingReport contains the results of racing detection for all prefixes.
 type RacingReport struct {
-	LabPath            string            `json:"lab_path"`
+	LabPath            string             `json:"lab_path"`
 	Prefixes           []sim.RacingResult `json:"prefixes"`
-	Racing             bool              `json:"racing"`
-	PrefixesWithRacing int               `json:"prefixes_with_racing"`
+	Racing             bool               `json:"racing"`
+	PrefixesWithRacing int                `json:"prefixes_with_racing"`
 }
 
 // DetectRacing loads a lab topology from the given directory, runs the simulation

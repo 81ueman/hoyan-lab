@@ -6,9 +6,9 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 	"github.com/81ueman/hoyan-lab/internal/domain/solver"
 	"github.com/81ueman/hoyan-lab/internal/domain/symbolic"
-	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 	"github.com/81ueman/hoyan-lab/internal/engine/controlplane"
 )
 
@@ -49,18 +49,12 @@ func copyRIB(original domainroute.RIBTable) domainroute.RIBTable {
 	return cpy
 }
 
-// routerSelectedCond returns the SelectedCond that evaluates to true for the given
-// router under the given failure context, or nil if none does.
-func routerSelectedCond(conds []failure.Cond, ctx failure.Context) failure.Cond {
-	for _, cond := range conds {
-		if cond == nil || cond.Key() == failure.False().Key() {
-			continue
-		}
-		if cond.Eval(ctx) {
-			return cond
-		}
+// raceCtx builds a failure.Context from solver answer failures and the topology links.
+func (g *Graph) raceCtx(answer solver.Answer) failure.Context {
+	return failure.Context{
+		Failures:    failure.SetFromElements(answer.Failures),
+		LinksByName: g.topoIndex.LinksByName,
 	}
-	return nil
 }
 
 // DetectRacing runs the route-update racing detection algorithm
@@ -137,10 +131,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 	}
 
 	// Phase 5: Determine which route is selected at each router in model A.
-	ctx := failure.Context{
-		Failures:    failure.SetFromElements(answer1.Failures),
-		LinksByName: g.topoIndex.LinksByName,
-	}
+	ctx := g.raceCtx(answer1)
 
 	selectedInModel := map[string]failure.Cond{}
 	for node, conds := range candidates {
@@ -198,10 +189,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 			if cond == nil || cond.Key() == failure.False().Key() {
 				continue
 			}
-			evalCtx := failure.Context{
-				Failures:    failure.SetFromElements(answer1.Failures),
-				LinksByName: g.topoIndex.LinksByName,
-			}
+			evalCtx := g.raceCtx(answer1)
 			if cond.Eval(evalCtx) {
 				satisfiableCount++
 				if result.FirstModel == nil {
@@ -212,10 +200,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 		// For the second model, re-evaluate under answer2 if racing found.
 		if racing {
 			satisfiableCount2 := 0
-			evalCtx2 := failure.Context{
-				Failures:    failure.SetFromElements(answer2.Failures),
-				LinksByName: g.topoIndex.LinksByName,
-			}
+			evalCtx2 := g.raceCtx(answer2)
 			for _, cond := range conds {
 				if cond == nil || cond.Key() == failure.False().Key() {
 					continue
@@ -236,10 +221,10 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 					if cond == nil || cond.Key() == failure.False().Key() {
 						continue
 					}
-					if cond.Eval(failure.Context{Failures: failure.SetFromElements(answer1.Failures), LinksByName: g.topoIndex.LinksByName}) {
+					if cond.Eval(g.raceCtx(answer1)) {
 						selectedInA = cond.Key()
 					}
-					if cond.Eval(failure.Context{Failures: failure.SetFromElements(answer2.Failures), LinksByName: g.topoIndex.LinksByName}) {
+					if cond.Eval(g.raceCtx(answer2)) {
 						selectedInB = cond.Key()
 					}
 				}
