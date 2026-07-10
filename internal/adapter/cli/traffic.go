@@ -97,8 +97,8 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	}
 	rootNode := topo.Nodes[0].Name
 
-	// Build FIB table from topology destinations
-	fibs := buildFIBFromTopoNodes(topo.Nodes)
+	// Build FIB table from topology
+	fibs := buildFIBFromTopo(topo)
 
 	// Derive packet classes from topology
 	packetClasses := derivePacketClasses(topo.Nodes)
@@ -193,25 +193,49 @@ func loadSnapshotDefs(path string) ([]trafficengine.SnapshotDef, error) {
 	return defs, nil
 }
 
-// buildFIBFromTopoNodes creates a traffic FIB table from topology nodes.
-// Each directly connected prefix becomes a FIB entry pointing to the
-// adjacent node.
-func buildFIBFromTopoNodes(nodes []model.Node) trafficengine.FIBTable {
+// buildFIBFromTopo creates a traffic FIB table from topology nodes and links.
+// Each prefix is matched against link neighbors: if an adjacent node also
+// owns the prefix, a next-hop edge is created to that neighbor.
+func buildFIBFromTopo(topo *model.Topology) trafficengine.FIBTable {
 	fibs := trafficengine.FIBTable{}
-	for _, node := range nodes {
-		if _, ok := fibs[node.Name]; !ok {
-			fibs[node.Name] = nil
-		}
+
+	// Build prefix → owning nodes index
+	prefixNodes := map[string][]string{}
+	for _, node := range topo.Nodes {
 		for _, prefix := range node.Prefixes {
-			entry := trafficengine.TrafficFIBEntry{
-				Prefix: prefix.NetIP(),
+			key := prefix.String()
+			prefixNodes[key] = append(prefixNodes[key], node.Name)
+		}
+	}
+
+	// Build adjacency from links
+	adj := map[string][]string{}
+	for _, link := range topo.Links {
+		adj[link.A] = append(adj[link.A], link.B)
+		adj[link.B] = append(adj[link.B], link.A)
+	}
+
+	for _, node := range topo.Nodes {
+		for _, prefix := range node.Prefixes {
+			key := prefix.String()
+			var nextHops []trafficengine.TrafficNextHop
+			for _, peer := range adj[node.Name] {
+				for _, pn := range prefixNodes[key] {
+					if pn == peer {
+						nextHops = append(nextHops, trafficengine.TrafficNextHop{
+							Node:   peer,
+							Weight: 1.0,
+						})
+					}
+				}
 			}
-			// If there's an adjacent node that owns this prefix,
-			// create a next-hop to it
-			entry.NextHops = []trafficengine.TrafficNextHop{
-				{Node: node.Name, Weight: 1.0},
+			if len(nextHops) == 0 {
+				continue // sink — no adjacent node to forward to
 			}
-			fibs[node.Name] = append(fibs[node.Name], entry)
+			fibs[node.Name] = append(fibs[node.Name], trafficengine.TrafficFIBEntry{
+				Prefix:   prefix.NetIP(),
+				NextHops: nextHops,
+			})
 		}
 	}
 	return fibs

@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"net/netip"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
@@ -39,7 +40,9 @@ func BuildTDG(rootNode string, packetClass model.PacketClass, fibs FIBTable) *mo
 
 	// Create root node (ingress)
 	tdg.AddNode(rootNode, "default", "ingress_acl", PrefixClassIDFromPacketClass(packetClass))
-	_ = tdg.SetRoot(rootNode) // node added immediately above, cannot fail
+	if err := tdg.SetRoot(rootNode); err != nil {
+		panic(fmt.Sprintf("BuildTDG: SetRoot(%s): %v", rootNode, err))
+	}
 
 	if !dstAddr.IsValid() {
 		// No destination, just return with root node
@@ -81,7 +84,9 @@ func BuildTDG(rootNode string, packetClass model.PacketClass, fibs FIBTable) *mo
 			tdg.AddNode(nh.Node, "default", "fib_lookup", PrefixClassIDFromPacketClass(packetClass))
 
 			// Add edge: current -> nh.Node with weight
-			_, _ = tdg.AddEdge(current, nh.Node, weight)
+			if _, err := tdg.AddEdge(current, nh.Node, weight); err != nil {
+				panic(fmt.Sprintf("BuildTDG: AddEdge(%s, %s): %v", current, nh.Node, err))
+			}
 
 			if !visited[nh.Node] {
 				queue = append(queue, nh.Node)
