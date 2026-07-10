@@ -317,7 +317,6 @@ func buildECList(classes []model.PacketClass, baseBytes uint64) []trafficengine.
 
 type whatIfOptions struct {
 	topologyPath  string
-	flowsPath     string
 	failLinks     []string
 	failNodes     []string
 	format        string
@@ -335,8 +334,8 @@ func NewWhatIfCommand() *cobra.Command {
 		Long: `Simulate traffic under link/node failures and compare with the base case.
 
 Examples:
-  hoyan traffic what-if labs/base-wan --flows flows.json --fail-link l2-core-bj
-  hoyan traffic what-if labs/base-wan --flows flows.json --fail-link l2-core-bj --fail-node core-hz --format table
+  hoyan traffic what-if labs/base-wan --fail-link l2-core-bj
+  hoyan traffic what-if labs/base-wan --fail-link l2-core-bj --fail-node core-hz --format table
 `,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
@@ -345,7 +344,6 @@ Examples:
 			return runWhatIf(cmd, opts, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().StringVar(&opts.flowsPath, "flows", "", "path to flows JSON file")
 	cmd.Flags().StringArrayVar(&opts.failLinks, "fail-link", nil, "link name to fail (can be repeated)")
 	cmd.Flags().StringArrayVar(&opts.failNodes, "fail-node", nil, "node name to fail (can be repeated)")
 	cmd.Flags().StringVar(&opts.format, "format", "table", "output format: table or json")
@@ -555,7 +553,6 @@ func formatStatus(diff trafficengine.LinkLoadChange) string {
 
 type kFailOptions struct {
 	topologyPath  string
-	flowsPath     string
 	threshold     float64
 	maxK          int
 	format        string
@@ -573,7 +570,7 @@ func NewKFailCommand() *cobra.Command {
 cause overload on any link.
 
 Examples:
-  hoyan traffic kfail labs/base-wan --flows flows.json --threshold 80 --max-k 2
+  hoyan traffic kfail labs/base-wan --threshold 80 --max-k 2
 `,
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
@@ -582,7 +579,6 @@ Examples:
 			return runKFail(cmd, opts, cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().StringVar(&opts.flowsPath, "flows", "", "path to flows JSON file")
 	cmd.Flags().Float64Var(&opts.threshold, "threshold", 80, "utilization threshold percentage")
 	cmd.Flags().IntVar(&opts.maxK, "max-k", 2, "maximum number of simultaneous failures")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "output format: text or json")

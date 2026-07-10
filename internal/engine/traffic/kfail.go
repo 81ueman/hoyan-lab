@@ -3,6 +3,7 @@ package traffic
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
@@ -163,12 +164,30 @@ func (ka *KFailAnalyzer) Analyze(
 }
 
 // linkBandwidthForName looks up a link's bandwidth in the topology.
+// It first tries a direct match on link.Name. If no match is found,
+// it parses the from->to format (used by TDG traversal) and matches
+// by endpoint node names using link.A and link.B.
 func linkBandwidthForName(topo *model.Topology, linkName string) uint64 {
+	// Direct match on link.Name (used when topology link names match the
+	// from->to convention, e.g. test topologies)
 	for _, link := range topo.Links {
 		if link.Name == linkName {
 			return linkBandwidth(link)
 		}
 	}
+
+	// Parse the from->to format used by TDG traversal and match by
+	// endpoint nodes. This handles real topology link names like
+	// "r1-eth1__r2-eth1" which don't match the "from->to" naming.
+	if parts := strings.SplitN(linkName, "->", 2); len(parts) == 2 {
+		from, to := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		for _, link := range topo.Links {
+			if (link.A == from && link.B == to) || (link.A == to && link.B == from) {
+				return linkBandwidth(link)
+			}
+		}
+	}
+
 	return 0
 }
 
