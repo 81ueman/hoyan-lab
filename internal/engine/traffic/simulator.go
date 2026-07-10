@@ -1,6 +1,9 @@
 package traffic
 
 import (
+	"math"
+	"sort"
+
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
@@ -64,6 +67,92 @@ func (ts *TrafficSimulator) SimulateClassWithFlows(
 		}
 	}
 	return linkBytes
+}
+
+// SimulateMultiSnapshot simulates multiple traffic snapshots and computes diffs.
+// Each snapshot is a pair of label and FIB table representing a network state.
+//
+// If flows are provided and hash mode is configured, per-flow simulation is used.
+// Otherwise, uniform-weight bulk simulation is used.
+func (ts *TrafficSimulator) SimulateMultiSnapshot(
+	rootNode string,
+	packetClass model.PacketClass,
+	snapshots []SnapshotDef,
+	flows []Flow,
+) model.MultiSnapshotResult {
+	result := model.MultiSnapshotResult{}
+
+	for _, snap := range snapshots {
+		var linkLoads map[string]uint64
+		if ts.config.ECMPMode == ECMPModeHash && len(flows) > 0 {
+			linkLoads = ts.SimulateClassWithFlows(rootNode, packetClass, snap.FIBs, flows)
+		} else {
+			linkLoads = ts.SimulateClass(rootNode, packetClass, snap.FIBs, snap.TotalBytes)
+		}
+		result.Snapshots = append(result.Snapshots, model.TrafficResult{
+			Label:     snap.Label,
+			LinkLoads: linkLoads,
+		})
+	}
+
+	// Compute diffs between consecutive snapshots
+	result.Diffs = ComputeDiffs(result.Snapshots)
+
+	return result
+}
+
+// ComputeDiffs computes link load differences between consecutive snapshots.
+func ComputeDiffs(snapshots []model.TrafficResult) []model.LinkLoadDiff {
+	if len(snapshots) < 2 {
+		return nil
+	}
+
+	// Collect all link names across all snapshots
+	allLinks := map[string]bool{}
+	for _, snap := range snapshots {
+		for link := range snap.LinkLoads {
+			allLinks[link] = true
+		}
+	}
+
+	var diffs []model.LinkLoadDiff
+	for link := range allLinks {
+		before := int64(snapshots[0].LinkLoads[link])
+		after := int64(snapshots[len(snapshots)-1].LinkLoads[link])
+
+		if before == after {
+			continue
+		}
+
+		var changePct float64
+		if before > 0 {
+			changePct = float64(after-before) / float64(before) * 100.0
+			changePct = math.Round(changePct*100) / 100 // Round to 2 decimal places
+		} else {
+			// before == 0, new traffic appeared
+			changePct = math.Inf(1)
+		}
+
+		diffs = append(diffs, model.LinkLoadDiff{
+			LinkName:  link,
+			Before:    uint64(before),
+			After:     uint64(after),
+			ChangePct: changePct,
+		})
+	}
+
+	sort.Slice(diffs, func(i, j int) bool {
+		return diffs[i].LinkName < diffs[j].LinkName
+	})
+
+	return diffs
+}
+
+// SnapshotDef defines a single snapshot for multi-snapshot simulation.
+type SnapshotDef struct {
+	Label      string
+	FIBs       FIBTable
+	TotalBytes uint64
 }
 
 // simulateFlow simulates a single flow through the network using hash-based ECMP.
