@@ -69,21 +69,8 @@ func Validate(doc *Document) error {
 			}
 		}
 
-		// Validate Forall variables: each must be a single ${var} reference to doc.Vars
-		forallVarNames := make(map[string]bool, len(in.Forall))
-		for key, raw := range in.Forall {
-			ref, ok := singleVarRef(raw)
-			if !ok {
-				return fmt.Errorf("%s.forall.%s: value must be a variable reference", path, key)
-			}
-			if _, ok := doc.Vars[ref]; !ok {
-				return fmt.Errorf("%s.forall.%s: undefined var %q", path, key, ref)
-			}
-			forallVarNames[key] = true
-		}
-
 		// Validate variable references in RCL expression
-		if err := validateRefsRCL(path+".rcl", in.RCL, doc.Vars, forallVarNames); err != nil {
+		if err := validateRefsRCL(path+".rcl", in.RCL, doc.Vars, nil); err != nil {
 			return err
 		}
 	}

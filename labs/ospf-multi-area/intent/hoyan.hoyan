@@ -35,7 +35,7 @@ intent "inter-area-routes-exist" {
 intent "abrs-have-both-areas" {
   scenario = "normal"
 
-  for device in ["r2", "r3"] {
+  forall device in ["r2", "r3"] {
     and {
       when protocol = "ospf", route_type = "intra_area" {
         count() >= 1

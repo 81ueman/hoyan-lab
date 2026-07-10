@@ -553,55 +553,7 @@ func TestValidateScenarioReferencesUnknownSnapshot(t *testing.T) {
 	}
 }
 
-func TestValidateForallVariableRefs(t *testing.T) {
-	t.Run("undefined_var_in_forall", func(t *testing.T) {
-		doc := &Document{
-			Version: "hoyan/v1",
-			Vars:    map[string]any{},
-			Intents: []Intent{{
-				Name:   "test",
-				Forall: map[string]any{"device": "${undefined}"},
-				RCL:    &RCLExpr{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}},
-			}},
-		}
-		err := Validate(doc)
-		if err == nil || !contains(err.Error(), "undefined var") {
-			t.Fatalf("Validate() error = %v, want containing 'undefined var'", err)
-		}
-	})
 
-	t.Run("forall_value_not_var_ref", func(t *testing.T) {
-		doc := &Document{
-			Version: "hoyan/v1",
-			Vars:    map[string]any{"devices": []any{"leaf1"}},
-			Intents: []Intent{{
-				Name:   "test",
-				Forall: map[string]any{"device": "leaf1"},
-				RCL:    &RCLExpr{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}},
-			}},
-		}
-		err := Validate(doc)
-		if err == nil || !contains(err.Error(), "must be a variable reference") {
-			t.Fatalf("Validate() error = %v, want containing 'must be a variable reference'", err)
-		}
-	})
-
-	t.Run("valid_forall", func(t *testing.T) {
-		doc := &Document{
-			Version: "hoyan/v1",
-			Vars:    map[string]any{"devices": []any{"leaf1", "leaf2"}},
-			Intents: []Intent{{
-				Name:   "test",
-				Forall: map[string]any{"device": "${devices}"},
-				RCL:    &RCLExpr{RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}}},
-			}},
-		}
-		err := Validate(doc)
-		if err != nil {
-			t.Fatalf("Validate() unexpected error: %v", err)
-		}
-	})
-}
 
 func TestValidateVarRefsInRCLExpr(t *testing.T) {
 	t.Run("undefined_var_in_where", func(t *testing.T) {
@@ -623,29 +575,6 @@ func TestValidateVarRefsInRCLExpr(t *testing.T) {
 		err := Validate(doc)
 		if err == nil || !contains(err.Error(), "undefined var") {
 			t.Fatalf("Validate() error = %v, want containing 'undefined var'", err)
-		}
-	})
-
-	t.Run("forall_var_is_local", func(t *testing.T) {
-		doc := &Document{
-			Version: "hoyan/v1",
-			Vars:    map[string]any{"devices": []any{"leaf1", "leaf2"}},
-			Intents: []Intent{{
-				Name:   "test",
-				Forall: map[string]any{"device": "${devices}"},
-				RCL: &RCLExpr{
-					Guard: &GuardExpr{
-						Where: map[string]any{"device": "${device}"},
-						Intent: RCLExpr{
-							RIBEval: &RIBEvalExpr{Aggregate: "count()", Eq: []any{1}},
-						},
-					},
-				},
-			}},
-		}
-		err := Validate(doc)
-		if err != nil {
-			t.Fatalf("Validate() unexpected error: %v", err)
 		}
 	})
 
@@ -692,22 +621,6 @@ func TestValidateValidDocument(t *testing.T) {
 			"normal": {Snapshot: "pre"},
 		},
 		Intents: []Intent{
-			{
-				Name:   "test-forall",
-				Forall: map[string]any{"device": "${devices}"},
-				RCL: &RCLExpr{
-					Guard: &GuardExpr{
-						Where: map[string]any{"device": "${device}"},
-						Intent: RCLExpr{
-							RIBEval: &RIBEvalExpr{
-								Snapshot:  "post",
-								Aggregate: "count()",
-								Gte:       intPtr(1),
-							},
-						},
-					},
-				},
-			},
 			{
 				Name:     "test-compare",
 				Scenario: "normal",

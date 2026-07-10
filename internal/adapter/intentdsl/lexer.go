@@ -69,7 +69,6 @@ const (
 	tokKeywordIncludeNodes
 	tokKeywordExcludeNodes
 	tokKeywordWhen
-	tokKeywordFor
 	tokKeywordIn
 	tokKeywordRib
 	tokKeywordPacket
@@ -117,7 +116,6 @@ var keywords = map[string]tokenKind{
 	"include_nodes":      tokKeywordIncludeNodes,
 	"exclude_nodes":      tokKeywordExcludeNodes,
 	"when":               tokKeywordWhen,
-	"for":                tokKeywordFor,
 	"in":                 tokKeywordIn,
 	"rib":                tokKeywordRib,
 	"packet":             tokKeywordPacket,
@@ -333,7 +331,6 @@ func (k tokenKind) String() string {
 		tokKeywordIncludeNodes:     "include_nodes",
 		tokKeywordExcludeNodes:     "exclude_nodes",
 		tokKeywordWhen:             "when",
-		tokKeywordFor:              "for",
 		tokKeywordIn:               "in",
 		tokKeywordRib:              "rib",
 		tokKeywordPacket:           "packet",

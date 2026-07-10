@@ -87,11 +87,19 @@ func TestLoadForall(t *testing.T) {
 		t.Fatalf("len(Intents) = %d, want 1", len(doc.Intents))
 	}
 	in := doc.Intents[0]
-	if in.Forall == nil {
-		t.Fatal("expected forall")
+	// Forall with variable reference expands to And expression at parse time
+	if in.RCL == nil || len(in.RCL.And) != 3 {
+		t.Fatalf("expected And with 3 entries (3 sources), got %#v", in.RCL)
 	}
-	if in.RCL == nil || in.RCL.RIBEval == nil {
-		t.Fatal("expected RIBEval")
+	for _, expr := range in.RCL.And {
+		if expr.RIBEval == nil {
+			t.Fatal("expected RIBEval in each expanded expression")
+		}
+		// Each should have device substituted
+		device, ok := expr.RIBEval.Where["device"]
+		if !ok || device == "${src}" {
+			t.Fatalf("device should be substituted, got %v", device)
+		}
 	}
 }
 
@@ -104,8 +112,14 @@ func TestLoadPacketBasic(t *testing.T) {
 		t.Fatalf("len(Intents) = %d, want 2", len(doc.Intents))
 	}
 	for _, in := range doc.Intents {
-		if in.RCL == nil || in.RCL.PacketReachable == nil {
-			t.Fatalf("intent %q: expected PacketReachable", in.Name)
+		// Forall with variable reference expands to And expression at parse time
+		if in.RCL == nil || len(in.RCL.And) != 3 {
+			t.Fatalf("intent %q: expected And with 3 entries, got %#v", in.Name, in.RCL)
+		}
+		for _, expr := range in.RCL.And {
+			if expr.PacketReachable == nil {
+				t.Fatalf("intent %q: expected PacketReachable in each expanded expression", in.Name)
+			}
 		}
 	}
 }
@@ -154,9 +168,9 @@ func TestLoadRCLRibPositive(t *testing.T) {
 	if doc.Intents[0].RCL.RIBEq == nil {
 		t.Fatal("expected RIBEq")
 	}
-	// Second intent: forall with RIBEval
-	if doc.Intents[1].Forall == nil {
-		t.Fatal("expected forall")
+	// Second intent: forall with RIBEval (expands to And since $edge is referenced)
+	if doc.Intents[1].RCL == nil || len(doc.Intents[1].RCL.And) != 3 {
+		t.Fatalf("expected And with 3 entries (3 edges), got %#v", doc.Intents[1].RCL)
 	}
 }
 
@@ -436,7 +450,7 @@ intent "where-vrf" {
 	}
 }
 
-func TestDocumentForallAllowsMultipleBindings(t *testing.T) {
+func TestForallAllowsCartesianProduct(t *testing.T) {
 	doc, err := parseStringForTest(`version = "hoyan/v1"
 
 let customers = ["cust-bj", "cust-sh"]
@@ -445,19 +459,30 @@ snapshot "current" { lab = "labs/base-wan" }
 scenario "normal" { snapshot = "current" }
 intent "cartesian" {
   scenario = "normal"
-  forall src in $customers, dst in $services
-  packet from $src to $dst tcp/443 expect true
+  forall src in $customers, dst in $services {
+    packet from $src to $dst tcp/443 expect true
+  }
 }
 `)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	forall := doc.Intents[0].Forall
-	if len(forall) != 2 {
-		t.Fatalf("forall bindings = %#v, want 2 bindings", forall)
+	// Cartesion product expands to And expression
+	in := doc.Intents[0]
+	if in.RCL == nil || len(in.RCL.And) != 4 {
+		t.Fatalf("expected And with 4 entries (2x2 cartesian product), got %#v", in.RCL)
 	}
-	if forall["src"] != "${customers}" || forall["dst"] != "${services}" {
-		t.Fatalf("forall bindings = %#v, want src/dst var refs", forall)
+	// Verify the expanded packet expressions
+	seen := map[string]bool{}
+	for _, expr := range in.RCL.And {
+		if expr.PacketReachable != nil {
+			key := expr.PacketReachable.From + "->" + expr.PacketReachable.To
+			seen[key] = true
+		}
+	}
+	if !seen["cust-bj->10.4.1.10"] || !seen["cust-bj->10.4.1.11"] ||
+		!seen["cust-sh->10.4.1.10"] || !seen["cust-sh->10.4.1.11"] {
+		t.Fatalf("cartesian product missing combinations: got %#v", seen)
 	}
 }
 

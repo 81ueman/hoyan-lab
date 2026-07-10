@@ -6,10 +6,8 @@
 package intent
 
 import (
-	"fmt"
 	"regexp"
 	"sort"
-	"strings"
 )
 
 var varRefRE = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
@@ -34,54 +32,14 @@ func Expand(doc *Document) (*ExpandedDocument, error) {
 	}, nil
 }
 
-// expandIntent handles forall expansion at the Intent level.
-// If the intent has no forall, it performs variable substitution and returns a single intent.
-// If forall exists, it computes the cartesian product of all forall values and creates
-// one expanded intent per combination, with variable substitution applied.
+// expandIntent performs variable substitution on an intent and returns the result.
+// Doc-level forall expansion is no longer supported; use RCL-level forall instead.
 func expandIntent(in Intent, vars map[string]any) ([]Intent, error) {
-	if len(in.Forall) == 0 {
-		out, err := substituteIntent(in, vars, nil)
-		if err != nil {
-			return nil, err
-		}
-		out.Forall = nil
-		return []Intent{out}, nil
+	out, err := substituteIntent(in, vars, nil)
+	if err != nil {
+		return nil, err
 	}
-	keys := sortedKeysAny(in.Forall)
-	groups := []map[string]string{{}}
-	for _, key := range keys {
-		ref, _ := singleVarRef(in.Forall[key])
-		values, _ := toStringSlice(vars[ref])
-		var next []map[string]string
-		for _, group := range groups {
-			for _, value := range values {
-				cp := map[string]string{}
-				for k, v := range group {
-					cp[k] = v
-				}
-				cp[key] = value
-				next = append(next, cp)
-			}
-		}
-		groups = next
-	}
-	out := make([]Intent, 0, len(groups))
-	for _, group := range groups {
-		expanded, err := substituteIntent(in, vars, group)
-		if err != nil {
-			return nil, err
-		}
-		expanded.Forall = nil
-		expanded.Group = map[string]any{}
-		parts := make([]string, 0, len(keys))
-		for _, key := range keys {
-			expanded.Group[key] = group[key]
-			parts = append(parts, fmt.Sprintf("%s=%s", key, group[key]))
-		}
-		expanded.Name = expanded.Name + "[" + strings.Join(parts, ",") + "]"
-		out = append(out, expanded)
-	}
-	return out, nil
+	return []Intent{out}, nil
 }
 
 // substituteIntent creates a copy of the intent with all variable references

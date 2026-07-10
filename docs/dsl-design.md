@@ -104,9 +104,7 @@ FailureField = "max" "=" int
              | "exclude_nodes" "=" Array
 
 IntentDecl  = "intent" string "{" IntentBody "}"
-IntentBody  = ("scenario" "=" string)? ("forall" ForallParams)? TopLevelExpr
-
-ForallParams = ident "in" Value  (* cartesian product: comma-separated keys *)
+IntentBody  = ("scenario" "=" string)? TopLevelExpr
 
 TopLevelExpr = Expr
 
@@ -126,8 +124,8 @@ GuardExpr   = "when" WherePredicates Block
 (* Semantics: if no rows match → vacuous pass; otherwise eval block *)
 
 (* ------- Forall (RCL-level) ------- *)
-ForallExpr  = "for" ident "in" Array Block
-(* Semantics: iterate over values; all must pass *)
+ForallExpr  = "forall" ident "in" Array ("," ident "in" Array)* Block
+(* Semantics: iterate over values (cartesian product for multiple vars); all must pass *)
 
 (* ------- RIB Eval ------- *)
 RibEvalExpr = "rib" WhereClause? Block
@@ -200,7 +198,7 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 |---|---|
 | `rcl:` | **削除**（自動推論） |
 | `guard: { where: ..., intent: ... }` | `when ... { ... }` |
-| `forall: { var: ..., in: [...], intent: ... }` | `for var in [...] { ... }` |
+| `forall: { var: ..., in: [...], intent: ... }` | `forall var in [...] { ... }` |
 | `and: [...]` | `and { ... }` |
 | `or: [...]` | `or { ... }` |
 | `not: ...` | `not ...` |
@@ -310,7 +308,7 @@ intent "ospf-routes-on-all-routers" {
 intent "core-routers-have-ospf-to-loopbacks" {
   scenario = "normal"
 
-  for device in ["core1", "core2"] {
+  forall device in ["core1", "core2"] {
     and {
       when protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1
@@ -323,7 +321,7 @@ intent "core-routers-have-ospf-to-loopbacks" {
 }
 ```
 
-### 例3: パケット到達性 + ドキュメントレベルforall
+### 例3: パケット到達性 + forall
 
 **YAML:**
 ```yaml
@@ -344,9 +342,9 @@ intent "core-routers-have-ospf-to-loopbacks" {
 ```
 intent "customers-http-denied" {
   scenario = "normal"
-  forall src in $customers
-
-  packet from $src to $service_ip tcp/80 expect false
+  forall src in $customers {
+    packet from $src to $service_ip tcp/80 expect false
+  }
 }
 ```
 

@@ -39,7 +39,7 @@ intent "r4-loopback-cost-from-r1" {
 intent "each-router-has-ospf-nexthops" {
   scenario = "normal"
 
-  for device in ["r1", "r2", "r3", "r4"] {
+  forall device in ["r1", "r2", "r3", "r4"] {
     rib where protocol = "ospf" {
       distCnt(nexthop) >= 1
     }

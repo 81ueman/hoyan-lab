@@ -16,7 +16,7 @@ scenario "one-link-failure" {
 
 intent "customers-https-not-all-single-link-failures" {
   scenario = "one-link-failure"
-  forall src in $customers
-
-  packet from $src to $service_ip tcp/443 expect false
+  forall src in $customers {
+    packet from $src to $service_ip tcp/443 expect false
+  }
 }
