@@ -142,9 +142,7 @@ ComparisonOp = ">=" int
              | ">"  int
              | "<=" int
              | "<"  int
-             | "==" Array
-             | "!=" Array
-             | "==" Value    (* for single value eq/ne *)
+             | "==" Value    (* scalar for count(), array for distVals *)
              | "!=" Value
 
 (* ------- Packet Reachability ------- *)
@@ -229,7 +227,7 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 |---|---|
 | `rib_eval: { aggregate: count(), gte: 4 }` | `count() >= 4` |
 | `rib_eval: { aggregate: distCnt(nexthop), gte: 2 }` | `distCnt(nexthop) >= 2` |
-| `rib_eval: { aggregate: distVals(route_type), eq: [[intra_area]] }` | `distVals(route_type) == [["intra_area"]]` |
+| `rib_eval: { aggregate: distVals(route_type), eq: [[intra_area]] }` | `distVals(route_type) == ["intra_area"]` |
 
 ### パケット
 

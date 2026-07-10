@@ -13,7 +13,7 @@ intent "all-ospf-routes-are-intra-area" {
   scenario = "normal"
 
   when where protocol = "ospf" {
-    distVals(route_type) == [["intra_area"]]
+    distVals(route_type) == ["intra_area"]
   }
 }
 
@@ -31,7 +31,7 @@ intent "r4-loopback-cost-from-r1" {
   scenario = "normal"
 
   when where device = "r1", protocol = "ospf", prefix = "10.255.4.4/32" {
-    distVals(cost) != [[0]]
+    distVals(cost) != [0]
   }
 }
 
