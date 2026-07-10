@@ -96,12 +96,12 @@ func ipLess(a, b string) bool {
 	ipA := net.ParseIP(a)
 	ipB := net.ParseIP(b)
 	if ipA != nil && ipB != nil {
-		return ipLessIP(ipA, ipB)
+		return ipCompare(ipA, ipB)
 	}
 	return a < b
 }
 
-func ipLessIP(a, b net.IP) bool {
+func ipCompare(a, b net.IP) bool {
 	// Compare byte by byte (network byte order).
 	// To4() converts IPv4-mapped-IPv6 to 4-byte for shorter comparison.
 	a4 := a.To4()

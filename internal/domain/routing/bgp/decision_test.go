@@ -273,6 +273,48 @@ func TestDeterministicMED(t *testing.T) {
 	})
 }
 
+func TestEquivalentNewFields(t *testing.T) {
+	// Equivalent() should consider new fields: Weight and IGPCost.
+	// OriginatorID and ClusterList are intentionally NOT checked in Equivalent()
+	// to match FRR behavior where these don't affect multipath equivalence.
+	receiver := model.Node{Name: "r1"}
+	decision := DefaultProcess()
+
+	t.Run("different weight not equivalent", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, Weight: 100})
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, Weight: 200})
+		if decision.Equivalent(receiver, a, b) {
+			t.Errorf("routes with different Weight should not be equivalent")
+		}
+	})
+
+	t.Run("different igp cost not equivalent", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100})
+		a.IGPCost = 10
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100})
+		b.IGPCost = 20
+		if decision.Equivalent(receiver, a, b) {
+			t.Errorf("routes with different IGPCost should not be equivalent")
+		}
+	})
+
+	t.Run("different originator-id still equivalent", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, OriginatorID: "1.1.1.1"})
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, OriginatorID: "2.2.2.2"})
+		if !decision.Equivalent(receiver, a, b) {
+			t.Errorf("routes with different OriginatorID should be equivalent (FRR behavior)")
+		}
+	})
+
+	t.Run("different cluster-list still equivalent", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, ClusterList: []string{"1.1.1.1"}})
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100, ClusterList: []string{"2.2.2.2", "3.3.3.3"}})
+		if !decision.Equivalent(receiver, a, b) {
+			t.Errorf("routes with different ClusterList should be equivalent (FRR behavior)")
+		}
+	})
+}
+
 func TestLessRouterID(t *testing.T) {
 	// Router-ID: compared by FromNode name when CompareRouterID is enabled.
 	optsOn := DecisionOptions{CompareRouterID: true, PreferLowerRouterID: true}
