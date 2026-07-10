@@ -122,7 +122,7 @@ Expr        = GuardExpr
             | BlockExpr
 
 (* ------- Guard (when) ------- *)
-GuardExpr   = "when" WherePredicates Block
+GuardExpr   = "when" "where" WherePredicates Block
 (* Semantics: if no rows match → vacuous pass; otherwise eval block *)
 
 (* ------- Forall (RCL-level) ------- *)
@@ -269,7 +269,7 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 intent "ospf-routes-on-all-routers" {
   scenario = "normal"
 
-  when protocol = "ospf", prefix = "10.255.1.1/32" {
+  when where protocol = "ospf", prefix = "10.255.1.1/32" {
     count() >= 4
   }
 }
@@ -312,10 +312,10 @@ intent "core-routers-have-ospf-to-loopbacks" {
 
   for device in ["core1", "core2"] {
     and {
-      when protocol = "ospf", prefix = "10.255.1.1/32" {
+      when where protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1
       }
-      when protocol = "ospf", prefix = "10.255.4.4/32" {
+      when where protocol = "ospf", prefix = "10.255.4.4/32" {
         count() >= 1
       }
     }
@@ -553,7 +553,7 @@ lab の intent ファイルパスも `intent/hoyan.hoyan` に統一する。
 
 1. **`forall` の位置による意味の違い**: ドキュメントレベル `forall` と RCLレベル `forall` は実装上は別パスだが、文法上は同じキーワードにする。意図的に。
 
-2. **ブロック内の暗黙的rib_eval検出**: `when ... { count() >= 4 }` のブロックは暗黙的に rib_eval。明示的に `rib` キーワードも書けるが省略可能。
+2. **ブロック内の暗黙的rib_eval検出**: `when where ... { count() >= 4 }` のブロックは暗黙的に rib_eval。明示的に `rib` キーワードも書けるが省略可能。
 
 3. **`=` と `==` の使い分け**: 代入（`lab = "..."`）には `=`、等値比較（where内）には `=` を使う（`==` も許容）。`!=` は否定等値。
 

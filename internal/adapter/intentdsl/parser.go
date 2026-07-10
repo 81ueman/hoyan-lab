@@ -414,11 +414,15 @@ func (p *parser) parseRCLExpr() (*intent.RCLExpr, error) {
 	}
 }
 
-// parseGuard parses: when wherePredicates { expr }
+// parseGuard parses: when where wherePredicates { block }
 func (p *parser) parseGuard() (*intent.RCLExpr, error) {
 	p.next() // consume 'when'
 
-	where, err := p.parseWherePredicates()
+	if p.tok.kind != tokKeywordWhere {
+		return nil, p.errorf("expected 'where' after 'when', got %s (%q)", p.tok.kind, p.tok.text)
+	}
+
+	where, err := p.parseWhereClause()
 	if err != nil {
 		return nil, err
 	}

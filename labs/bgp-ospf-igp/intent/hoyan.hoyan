@@ -12,7 +12,7 @@ scenario "normal" {
 intent "ospf-routes-on-all-routers" {
   scenario = "normal"
 
-  when protocol = "ospf", prefix = "10.255.1.1/32" {
+  when where protocol = "ospf", prefix = "10.255.1.1/32" {
     count() >= 4
   }
 }
@@ -21,7 +21,7 @@ intent "ospf-routes-on-all-routers" {
 intent "bgp-routes-on-all-routers" {
   scenario = "normal"
 
-  when protocol = "bgp", prefix = "10.255.4.4/32" {
+  when where protocol = "bgp", prefix = "10.255.4.4/32" {
     count() >= 4
   }
 }
@@ -30,7 +30,7 @@ intent "bgp-routes-on-all-routers" {
 intent "edge1-sees-edge2-loopback-via-bgp" {
   scenario = "normal"
 
-  when device = "edge1", protocol = "bgp", prefix = "10.255.4.4/32" {
+  when where device = "edge1", protocol = "bgp", prefix = "10.255.4.4/32" {
     count() >= 1
   }
 }
@@ -39,7 +39,7 @@ intent "edge1-sees-edge2-loopback-via-bgp" {
 intent "edge2-sees-edge1-loopback-via-bgp" {
   scenario = "normal"
 
-  when device = "edge2", protocol = "bgp", prefix = "10.255.1.1/32" {
+  when where device = "edge2", protocol = "bgp", prefix = "10.255.1.1/32" {
     count() >= 1
   }
 }
@@ -50,10 +50,10 @@ intent "core-routers-have-ospf-to-loopbacks" {
 
   for device in ["core1", "core2"] {
     and {
-      when protocol = "ospf", prefix = "10.255.1.1/32" {
+      when where protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1
       }
-      when protocol = "ospf", prefix = "10.255.4.4/32" {
+      when where protocol = "ospf", prefix = "10.255.4.4/32" {
         count() >= 1
       }
     }
@@ -66,10 +66,10 @@ intent "cross-protocol-routes-for-edge1-loopback" {
 
   for device in ["edge1", "core1", "core2", "edge2"] {
     and {
-      when protocol = "ospf", prefix = "10.255.1.1/32" {
+      when where protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1
       }
-      when protocol = "bgp", prefix = "10.255.1.1/32" {
+      when where protocol = "bgp", prefix = "10.255.1.1/32" {
         count() >= 1
       }
     }

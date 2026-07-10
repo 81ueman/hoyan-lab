@@ -276,7 +276,7 @@ snapshot "current" { lab = "labs/base-wan" }
 scenario "normal" { snapshot = "current" }
 intent "empty-guard" {
   scenario = "normal"
-  when device = "r1" { }
+  when where device = "r1" { }
 }
 `)
 	if err == nil {
@@ -362,7 +362,7 @@ snapshot "current" { lab = "labs/base-wan" }
 scenario "normal" { snapshot = "current" }
 intent "empty-when" {
   scenario = "normal"
-  when { count() >= 1 }
+  when where { count() >= 1 }
 }
 `)
 	if err == nil {
