@@ -318,6 +318,154 @@ func TestAggregateSummaryOnlySuppressesMoreSpecificAdvertisement(t *testing.T) {
 	}
 }
 
+func TestAggregateTopologyConditionEncoding(t *testing.T) {
+	aggregate := model.MustPrefix("10.0.1.0/31")
+	contributor1 := model.MustPrefix("10.0.1.0/32")
+	contributor2 := model.MustPrefix("10.0.1.1/32")
+	topo := threeNodeTwoContributorTopology(aggregate, contributor1, contributor2, false)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
+
+	// Verify aggregate condition on r1: C_agg = C1 ∧ C2
+	var aggregateRoute RIBEntry
+	for _, route := range g.RIB("r1", aggregate) {
+		route = route.Normalize()
+		if route.SourceKind == model.RouteSourceAggregate && route.Provenance.OriginNode == "r1" {
+			aggregateRoute = route
+			break
+		}
+	}
+	if aggregateRoute.SourceKind == "" {
+		t.Fatalf("aggregate route missing from r1 RIB: %#v", g.RIB("r1", aggregate))
+	}
+
+	// With no failures, both contributors exist, aggregate should be active
+	if !aggregateRoute.Condition.Eval(FailureContext{}) {
+		t.Fatalf("aggregate should be active when both contributors exist: %s", aggregateRoute.Condition)
+	}
+
+	// When r1-r2 link fails (removing contributor from r2), aggregate should be withdrawn
+	if aggregateRoute.Condition.Eval(g.FailureContext(LinkFailures("r1-r2"))) {
+		t.Fatalf("aggregate should be withdrawn when r1-r2 link fails: %s", aggregateRoute.Condition)
+	}
+
+	// When r1-r3 link fails (removing contributor from r3), aggregate should be withdrawn
+	if aggregateRoute.Condition.Eval(g.FailureContext(LinkFailures("r1-r3"))) {
+		t.Fatalf("aggregate should be withdrawn when r1-r3 link fails: %s", aggregateRoute.Condition)
+	}
+
+	// Verify more-specific routes on r1 have exclusive conditions
+	// Under no failures, individuals should be suppressed (only aggregate active)
+	for _, route := range g.RIB("r1", contributor1) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r2" && route.Condition != nil {
+			if route.Condition.Eval(FailureContext{}) {
+				t.Fatalf("contributor1 should be suppressed when both contributors exist: %s", route.Condition)
+			}
+		}
+	}
+	for _, route := range g.RIB("r1", contributor2) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r3" && route.Condition != nil {
+			if route.Condition.Eval(FailureContext{}) {
+				t.Fatalf("contributor2 should be suppressed when both contributors exist: %s", route.Condition)
+			}
+		}
+	}
+
+	// When only r2's link fails: only contributor2 should be active (aggregate down)
+	failR2 := g.FailureContext(LinkFailures("r1-r2"))
+	if aggregateRoute.Condition.Eval(failR2) {
+		t.Fatalf("aggregate should be down when r1-r2 fails")
+	}
+	var c1active, c2active bool
+	for _, route := range g.RIB("r1", contributor1) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r2" && route.Condition != nil && route.Condition.Eval(failR2) {
+			c1active = true
+		}
+	}
+	for _, route := range g.RIB("r1", contributor2) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r3" && route.Condition != nil && route.Condition.Eval(failR2) {
+			c2active = true
+		}
+	}
+	if c1active {
+		t.Fatalf("contributor1 should be inactive when r1-r2 is down")
+	}
+	if !c2active {
+		t.Fatalf("contributor2 should be active when r1-r2 is down (only contributor2 remains)")
+	}
+
+	// When only r3's link fails: only contributor1 should be active (aggregate down)
+	failR3 := g.FailureContext(LinkFailures("r1-r3"))
+	if aggregateRoute.Condition.Eval(failR3) {
+		t.Fatalf("aggregate should be down when r1-r3 fails")
+	}
+	c1active = false
+	c2active = false
+	for _, route := range g.RIB("r1", contributor1) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r2" && route.Condition != nil && route.Condition.Eval(failR3) {
+			c1active = true
+		}
+	}
+	for _, route := range g.RIB("r1", contributor2) {
+		route = route.Normalize()
+		if route.Provenance.OriginNode == "r3" && route.Condition != nil && route.Condition.Eval(failR3) {
+			c2active = true
+		}
+	}
+	if !c1active {
+		t.Fatalf("contributor1 should be active when r1-r3 is down (only contributor1 remains)")
+	}
+	if c2active {
+		t.Fatalf("contributor2 should be inactive when r1-r3 is down")
+	}
+
+	// Verify aggregate contributors list includes both prefixes
+	if got := strings.Join(aggregateRoute.AggregateContributors, ","); got != contributor1.String()+","+contributor2.String() {
+		t.Fatalf("aggregate contributors = %q, want %q,%q", got, contributor1, contributor2)
+	}
+}
+
+func TestAggregateTopologyConditionEncodingWithSummaryOnly(t *testing.T) {
+	aggregate := model.MustPrefix("10.0.1.0/31")
+	contributor1 := model.MustPrefix("10.0.1.0/32")
+	contributor2 := model.MustPrefix("10.0.1.1/32")
+	topo := threeNodeTwoContributorTopology(aggregate, contributor1, contributor2, true)
+	g, err := NewGraph(topo)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
+
+	// Verify aggregate condition on r1: C_agg = C1 ∧ C2
+	var aggregateRoute RIBEntry
+	for _, route := range g.RIB("r1", aggregate) {
+		route = route.Normalize()
+		if route.SourceKind == model.RouteSourceAggregate && route.Provenance.OriginNode == "r1" {
+			aggregateRoute = route
+			break
+		}
+	}
+	if aggregateRoute.SourceKind == "" {
+		t.Fatalf("aggregate route missing from r1 RIB: %#v", g.RIB("r1", aggregate))
+	}
+
+	// With no failures, aggregate active
+	if !aggregateRoute.Condition.Eval(FailureContext{}) {
+		t.Fatalf("aggregate should be active when both contributors exist: %s", aggregateRoute.Condition)
+	}
+
+	// With one failure, aggregate inactive
+	if aggregateRoute.Condition.Eval(g.FailureContext(LinkFailures("r1-r2"))) {
+		t.Fatalf("aggregate should be withdrawn when r1-r2 fails: %s", aggregateRoute.Condition)
+	}
+}
+
 func TestDefaultRouteSourceEntersPrefixUniverse(t *testing.T) {
 	defaultRoute := model.MustPrefix("0.0.0.0/0")
 	topo := &model.Topology{Nodes: []model.Node{{Name: "r1", Routes: []model.ConfiguredRoute{{Prefix: defaultRoute, Kind: model.RouteSourceStatic}}}}}
@@ -384,6 +532,46 @@ func threeNodeAggregateTopology(aggregate, contributor model.Prefix, summaryOnly
 			{
 				Name: "r3", Kind: model.KindFRR, ASN: 65003,
 				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.6/30"}},
+				Neighbors:  []model.BGPNeighbor{{Address: "192.0.2.5", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+		},
+		Links: []model.Link{
+			{Name: "r1-r2", A: "r1", B: "r2", AIntf: "eth1", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.0/30"},
+			{Name: "r1-r3", A: "r1", B: "r3", AIntf: "eth2", BIntf: "eth1", Cost: 1, Subnet: "192.0.2.4/30"},
+		},
+	}
+}
+
+func threeNodeTwoContributorTopology(aggregate, contributor1, contributor2 model.Prefix, summaryOnly bool) *model.Topology {
+	return &model.Topology{
+		Nodes: []model.Node{
+			{
+				Name: "r1", Kind: model.KindFRR, ASN: 65001,
+				Interfaces: []model.Interface{
+					{Name: "eth1", Address: "192.0.2.1/30"},
+					{Name: "eth2", Address: "192.0.2.5/30"},
+				},
+				Routes: []model.ConfiguredRoute{{
+					Prefix:        aggregate,
+					Kind:          model.RouteSourceAggregate,
+					AdminDistance: model.AdminDistanceAggregate,
+					SummaryOnly:   summaryOnly,
+				}},
+				Neighbors: []model.BGPNeighbor{
+					{Address: "192.0.2.2", RemoteAS: 65002, Activated: true, PeerNode: "r2"},
+					{Address: "192.0.2.6", RemoteAS: 65003, Activated: true, PeerNode: "r3"},
+				},
+			},
+			{
+				Name: "r2", Kind: model.KindFRR, ASN: 65002,
+				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.2/30"}},
+				Prefixes:   []model.Prefix{contributor1},
+				Neighbors:  []model.BGPNeighbor{{Address: "192.0.2.1", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
+			},
+			{
+				Name: "r3", Kind: model.KindFRR, ASN: 65003,
+				Interfaces: []model.Interface{{Name: "eth1", Address: "192.0.2.6/30"}},
+				Prefixes:   []model.Prefix{contributor2},
 				Neighbors:  []model.BGPNeighbor{{Address: "192.0.2.5", RemoteAS: 65001, Activated: true, PeerNode: "r1"}},
 			},
 		},
