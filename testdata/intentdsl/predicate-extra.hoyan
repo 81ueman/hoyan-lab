@@ -43,7 +43,7 @@ intent "nexthop-filter-contains" {
 intent "if-device-is-edge-then-has-service-prefix" {
   scenario = "normal"
 
-  rib where imply {
+  rib where if {
     device_in = ["bj-edge1", "sh-edge1", "gz-edge1"]
     then prefix = "10.4.0.0/16"
   } {

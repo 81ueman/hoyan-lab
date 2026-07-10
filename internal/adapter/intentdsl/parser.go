@@ -1235,7 +1235,7 @@ func (p *parser) parseOneWhereEntry() (map[string]any, error) {
 		}
 		return map[string]any{"or": orList}, nil
 
-	case tokKeywordImply, tokKeywordIf:
+	case tokKeywordIf:
 		p.next()
 		if err := p.expect(tokLBrace); err != nil {
 			return nil, err
@@ -1296,7 +1296,7 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 		}
 		first = false
 
-		// Handle compound where predicates: and { ... }, or { ... }, imply { ... }, not
+		// Handle compound where predicates: and { ... }, or { ... }, if { ... }, not
 		switch p.tok.kind {
 		case tokKeywordAnd:
 			p.next()
@@ -1336,10 +1336,8 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 			result["or"] = orList
 			return result, nil
 
-		case tokKeywordImply:
-			fallthrough
 		case tokKeywordIf:
-			// imply { pred1 then pred2 }
+			// if { pred1 then pred2 }
 			p.next()
 			if err := p.expect(tokLBrace); err != nil {
 				return nil, err
@@ -1397,7 +1395,7 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 // isWherePredicateStart checks if the current token can start a where predicate.
 func (p *parser) isWherePredicateStart() bool {
 	switch p.tok.kind {
-	case tokIdent, tokKeywordAnd, tokKeywordOr, tokKeywordNot, tokKeywordImply, tokKeywordIf, tokKeywordVrf:
+	case tokIdent, tokKeywordAnd, tokKeywordOr, tokKeywordNot, tokKeywordIf, tokKeywordVrf:
 		return true
 	default:
 		return false

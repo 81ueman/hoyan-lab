@@ -178,7 +178,7 @@ WherePredicate = ident "=" Value          (* exact match *)
                | "not" "{" WherePredicate+ "}"  (* negation; block required *)
                | "and" "{" WherePredicate+ "}"  (* compound AND *)
                | "or"  "{" WherePredicate+ "}"  (* compound OR *)
-               | "imply" "{" WherePredicate "then" WherePredicate "}"
+               | "if" "{" WherePredicate "then" WherePredicate "}"
 
 (* ------- Common ------- *)
 Block       = "{" Expr* "}"
@@ -217,7 +217,7 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 | `not: { prefix: ... }` | `not { prefix = "..." }` |
 | `and: [{...}, {...}]` | `and { ... ... }` |
 | `or: [{...}, {...}]` | `or { ... ... }` |
-| `imply: [{...}, {...}]` | `imply { ... then ... }` |
+| `imply: [{...}, {...}]` | `if { ... then ... }` |
 | `prefix_within: 10.0.0.0/8` | `prefix within "10.0.0.0/8"` |
 | `nexthop: { contains: "10.0.0.1" }` | `nexthop contains "10.0.0.1"` |
 
