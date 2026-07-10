@@ -29,6 +29,7 @@ type Actual struct {
 	Reachable     *bool    `json:"reachable,omitempty"`
 	DistinctCount int      `json:"distinct_count,omitempty"`
 	Values        []any    `json:"values,omitempty"`
+	Warning       string   `json:"warning,omitempty"`
 	Reason        string   `json:"reason,omitempty"`
 	Path          []string `json:"path,omitempty"`
 	Rows          []string `json:"rows,omitempty"`
