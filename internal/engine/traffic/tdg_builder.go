@@ -39,7 +39,7 @@ func BuildTDG(rootNode string, packetClass model.PacketClass, fibs FIBTable) *mo
 
 	// Create root node (ingress)
 	tdg.AddNode(rootNode, "default", "ingress_acl", PrefixClassIDFromPacketClass(packetClass))
-	tdg.SetRoot(rootNode)
+	_ = tdg.SetRoot(rootNode) // node added immediately above, cannot fail
 
 	if !dstAddr.IsValid() {
 		// No destination, just return with root node
@@ -81,7 +81,7 @@ func BuildTDG(rootNode string, packetClass model.PacketClass, fibs FIBTable) *mo
 			tdg.AddNode(nh.Node, "default", "fib_lookup", PrefixClassIDFromPacketClass(packetClass))
 
 			// Add edge: current -> nh.Node with weight
-			tdg.AddEdge(current, nh.Node, weight)
+			_, _ = tdg.AddEdge(current, nh.Node, weight)
 
 			if !visited[nh.Node] {
 				queue = append(queue, nh.Node)

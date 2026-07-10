@@ -223,7 +223,7 @@ func (c *Classifier) groupByKey(flows []SampledFlow) []FlowEquivalenceClass {
 			keysInOrder = append(keysInOrder, key)
 		}
 		groups[key].Flows = append(groups[key].Flows, f)
-		groups[key].TotalBytes += 1500 // Assume ~1500 bytes per flow
+		groups[key].TotalBytes += DefaultFlowBytes
 	}
 
 	result := make([]FlowEquivalenceClass, 0, len(groups))

@@ -25,6 +25,18 @@ type Flow struct {
 	DstPort  uint16
 }
 
+// padAddrTo16 converts an IP address to a 16-byte slice.
+// IPv4 addresses are zero-padded in the first 12 bytes (IPv4-in-IPv6 mapping).
+func padAddrTo16(addr netip.Addr) []byte {
+	b := addr.AsSlice()
+	if len(b) == 4 {
+		padded := make([]byte, 16)
+		copy(padded[12:], b)
+		return padded
+	}
+	return b
+}
+
 // SelectECMPMember selects an ECMP next-hop index using 5-tuple hashing.
 // Returns the index into the nextHops slice.
 func SelectECMPMember(flow Flow, nextHops []TrafficNextHop) int {
@@ -34,26 +46,8 @@ func SelectECMPMember(flow Flow, nextHops []TrafficNextHop) int {
 	h := fnv.New64a()
 
 	// Hash the 5-tuple: srcIP, dstIP, protocol, srcPort, dstPort
-	srcBytes := flow.SrcIP.AsSlice()
-	if len(srcBytes) == 4 {
-		// Pad IPv4 to 16 bytes for consistent hashing
-		padded := make([]byte, 16)
-		copy(padded[12:], srcBytes)
-		srcBytes = padded
-	} else if len(srcBytes) == 16 {
-		// Already 16 bytes (IPv6)
-	}
-	h.Write(srcBytes)
-
-	dstBytes := flow.DstIP.AsSlice()
-	if len(dstBytes) == 4 {
-		padded := make([]byte, 16)
-		copy(padded[12:], dstBytes)
-		dstBytes = padded
-	} else if len(dstBytes) == 16 {
-		// Already 16 bytes (IPv6)
-	}
-	h.Write(dstBytes)
+	h.Write(padAddrTo16(flow.SrcIP))
+	h.Write(padAddrTo16(flow.DstIP))
 
 	// Write protocol as a 4-byte field
 	protoBytes := make([]byte, 4)

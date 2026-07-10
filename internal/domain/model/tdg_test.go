@@ -149,8 +149,8 @@ func TestTDGOutEdges(t *testing.T) {
 	tdg.AddNode("router2", "default", "next_hop", PrefixClassID(0))
 	tdg.AddNode("router3", "default", "next_hop", PrefixClassID(0))
 
-	tdg.AddEdge("router1", "router2", 0.5)
-	tdg.AddEdge("router1", "router3", 0.5)
+	_, _ = tdg.AddEdge("router1", "router2", 0.5)
+	_, _ = tdg.AddEdge("router1", "router3", 0.5)
 
 	edges := tdg.OutEdges("router1")
 	if len(edges) != 2 {
@@ -175,11 +175,11 @@ func TestTDGTopologicalOrder(t *testing.T) {
 	tdg.AddNode("router3", "default", "fib_lookup", PrefixClassID(0))
 	tdg.AddNode("router4", "default", "next_hop", PrefixClassID(0))
 
-	tdg.SetRoot("router1")
+	_ = tdg.SetRoot("router1")
 	// Linear: router1 -> router2 -> router3 -> router4
-	tdg.AddEdge("router1", "router2", 1.0)
-	tdg.AddEdge("router2", "router3", 1.0)
-	tdg.AddEdge("router3", "router4", 1.0)
+	_, _ = tdg.AddEdge("router1", "router2", 1.0)
+	_, _ = tdg.AddEdge("router2", "router3", 1.0)
+	_, _ = tdg.AddEdge("router3", "router4", 1.0)
 	tdg.AddSink("router4")
 
 	order := tdg.TopologicalOrder()
@@ -203,14 +203,14 @@ func TestTDGTopologicalOrderWithECMP(t *testing.T) {
 	tdg.AddNode("router4", "default", "next_hop", PrefixClassID(0))
 	tdg.AddNode("router5", "default", "next_hop", PrefixClassID(0))
 
-	tdg.SetRoot("router1")
+	_ = tdg.SetRoot("router1")
 	// router1 -> router2 -> router4
 	// router1 -> router3 -> router4
-	tdg.AddEdge("router1", "router2", 0.5)
-	tdg.AddEdge("router1", "router3", 0.5)
-	tdg.AddEdge("router2", "router4", 1.0)
-	tdg.AddEdge("router3", "router4", 1.0)
-	tdg.AddEdge("router4", "router5", 1.0)
+	_, _ = tdg.AddEdge("router1", "router2", 0.5)
+	_, _ = tdg.AddEdge("router1", "router3", 0.5)
+	_, _ = tdg.AddEdge("router2", "router4", 1.0)
+	_, _ = tdg.AddEdge("router3", "router4", 1.0)
+	_, _ = tdg.AddEdge("router4", "router5", 1.0)
 	tdg.AddSink("router5")
 
 	order := tdg.TopologicalOrder()

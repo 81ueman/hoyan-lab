@@ -54,7 +54,7 @@ func (ts *TrafficSimulator) SimulateClassWithFlows(
 ) map[string]uint64 {
 	if ts.config.ECMPMode != ECMPModeHash {
 		// Fall back to uniform weight if hash mode not configured
-		totalBytes := uint64(len(flows)) * 1500 // Assume ~1500 bytes per flow
+		totalBytes := uint64(len(flows)) * DefaultFlowBytes
 		return ts.SimulateClass(rootNode, packetClass, fibs, totalBytes)
 	}
 
@@ -104,46 +104,58 @@ func (ts *TrafficSimulator) SimulateMultiSnapshot(
 }
 
 // ComputeDiffs computes link load differences between consecutive snapshots.
+// Each adjacent pair (snapshots[i-1], snapshots[i]) is compared and the resulting
+// diffs are all returned in a single sorted slice.
 func ComputeDiffs(snapshots []model.TrafficResult) []model.LinkLoadDiff {
 	if len(snapshots) < 2 {
 		return nil
 	}
 
-	// Collect all link names across all snapshots
-	allLinks := map[string]bool{}
-	for _, snap := range snapshots {
-		for link := range snap.LinkLoads {
+	var diffs []model.LinkLoadDiff
+
+	for i := 1; i < len(snapshots); i++ {
+		prev := snapshots[i-1]
+		curr := snapshots[i]
+
+		// Collect all link names across this pair of snapshots
+		allLinks := map[string]bool{}
+		for link := range prev.LinkLoads {
 			allLinks[link] = true
 		}
-	}
-
-	var diffs []model.LinkLoadDiff
-	for link := range allLinks {
-		before := int64(snapshots[0].LinkLoads[link])
-		after := int64(snapshots[len(snapshots)-1].LinkLoads[link])
-
-		if before == after {
-			continue
+		for link := range curr.LinkLoads {
+			allLinks[link] = true
 		}
 
-		var changePct float64
-		if before > 0 {
-			changePct = float64(after-before) / float64(before) * 100.0
-			changePct = math.Round(changePct*100) / 100 // Round to 2 decimal places
-		} else {
-			// before == 0, new traffic appeared
-			changePct = math.Inf(1)
-		}
+		for link := range allLinks {
+			before := int64(prev.LinkLoads[link])
+			after := int64(curr.LinkLoads[link])
 
-		diffs = append(diffs, model.LinkLoadDiff{
-			LinkName:  link,
-			Before:    uint64(before),
-			After:     uint64(after),
-			ChangePct: changePct,
-		})
+			if before == after {
+				continue
+			}
+
+			var changePct float64
+			if before > 0 {
+				changePct = float64(after-before) / float64(before) * 100.0
+				changePct = math.Round(changePct*100) / 100 // Round to 2 decimal places
+			} else {
+				// before == 0, new traffic appeared
+				changePct = math.Inf(1)
+			}
+
+			diffs = append(diffs, model.LinkLoadDiff{
+				LinkName:  link,
+				Before:    uint64(before),
+				After:     uint64(after),
+				ChangePct: changePct,
+			})
+		}
 	}
 
 	sort.Slice(diffs, func(i, j int) bool {
+		if diffs[i].LinkName == diffs[j].LinkName {
+			return diffs[i].Before < diffs[j].Before
+		}
 		return diffs[i].LinkName < diffs[j].LinkName
 	})
 
@@ -192,7 +204,7 @@ func (ts *TrafficSimulator) SimulateParallel(
 					// Use total bytes if available, otherwise fallback
 					bytes := ec.TotalBytes
 					if bytes == 0 {
-						bytes = uint64(len(ec.Flows)) * 1500
+						bytes = uint64(len(ec.Flows)) * DefaultFlowBytes
 					}
 					result := ts.SimulateClass(rootNode, pc, fibs, bytes)
 					ch <- result
@@ -244,7 +256,7 @@ func (ts *TrafficSimulator) simulateFlow(
 
 	// Traverse the network hop by hop
 	visited := map[string]bool{}
-	queue := []nodeLoad{{node: rootNode, bytes: 1500}} // Assume 1500 bytes per flow
+	queue := []nodeLoad{{node: rootNode, bytes: DefaultFlowBytes}}
 
 	for len(queue) > 0 {
 		nl := queue[0]

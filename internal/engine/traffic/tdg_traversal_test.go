@@ -99,7 +99,7 @@ func TestTraverseChainedECMP(t *testing.T) {
 func TestTraverseNoRoutes(t *testing.T) {
 	tdg := model.NewTDG()
 	tdg.AddNode("router1", "default", "ingress_acl", 0)
-	tdg.SetRoot("router1")
+	_ = tdg.SetRoot("router1")
 
 	linkBytes := Traverse(tdg, 1000)
 	if len(linkBytes) != 0 {
@@ -111,8 +111,8 @@ func TestTraverseZeroBytes(t *testing.T) {
 	tdg := model.NewTDG()
 	tdg.AddNode("router1", "default", "ingress_acl", 0)
 	tdg.AddNode("router2", "default", "next_hop", 0)
-	tdg.SetRoot("router1")
-	tdg.AddEdge("router1", "router2", 1.0)
+	_ = tdg.SetRoot("router1")
+	_, _ = tdg.AddEdge("router1", "router2", 1.0)
 	tdg.AddSink("router2")
 
 	linkBytes := Traverse(tdg, 0)
