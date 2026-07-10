@@ -222,7 +222,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 				}
 				if cond.Eval(evalCtx2) {
 					satisfiableCount2++
-					if satisfiableCount > 0 && result.SecondModel == nil {
+					if satisfiableCount2 > 0 && result.SecondModel == nil {
 						result.SecondModel = answer2.FailureStrings()
 					}
 				}
