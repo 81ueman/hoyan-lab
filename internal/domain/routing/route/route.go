@@ -20,6 +20,7 @@ type RIBEntry struct {
 	ForwardingNextHop     NextHop
 	SourceKind            model.RouteSourceKind
 	RouteSource           model.ConfiguredRoute
+	IGPCost               int
 	AggregateContributors []string
 	BaseCond              failure.Cond
 	Condition             failure.Cond

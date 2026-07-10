@@ -130,6 +130,47 @@ func TestLessOriginatorID(t *testing.T) {
 	})
 }
 
+func TestLessIGPCost(t *testing.T) {
+	// IGP cost to next-hop: lower wins. Compared after eBGP/iBGP.
+	node := model.Node{Name: "r1"}
+	opts := DecisionOptions{}
+
+	t.Run("lower igp cost wins", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}})
+		a.IGPCost = 10
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}})
+		b.IGPCost = 20
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a with IGPCost=10 to be preferred over b with IGPCost=20")
+		}
+		if less(node, b, a, opts, false) {
+			t.Errorf("expected b with IGPCost=20 to NOT be preferred over a with IGPCost=10")
+		}
+	})
+
+	t.Run("equal igp cost falls through", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 200})
+		a.IGPCost = 10
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, LocalPref: 100})
+		b.IGPCost = 10
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a with higher LocalPref to win when IGPCost equal")
+		}
+	})
+
+	t.Run("igp cost compared before cluster-list", func(t *testing.T) {
+		a := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, ClusterList: []string{"1.1.1.1"}})
+		a.IGPCost = 5
+		b := bgpRoute(route.BGPAttributes{ASPath: []uint32{65100}, ClusterList: []string{}})
+		b.IGPCost = 10
+		// a has IGP cost 5 and cluster-list 1 element, b has IGP cost 10 and empty cluster-list
+		// IGP cost comparison should happen BEFORE cluster-list
+		if !less(node, a, b, opts, false) {
+			t.Errorf("expected a with lower IGPCost (5) to be preferred over b with higher IGPCost (10), even though b has shorter cluster-list")
+		}
+	})
+}
+
 func TestLessRouterID(t *testing.T) {
 	// Router-ID: compared by FromNode name when CompareRouterID is enabled.
 	optsOn := DecisionOptions{CompareRouterID: true, PreferLowerRouterID: true}

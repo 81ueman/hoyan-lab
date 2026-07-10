@@ -75,7 +75,17 @@ func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEn
 	if shouldCompareMED(a, b, d.OptionsValue) && a.Attrs.MED != b.Attrs.MED {
 		return false
 	}
+	if a.IGPCost != b.IGPCost {
+		return false
+	}
 	return a.Attrs.LearnedIBGP == b.Attrs.LearnedIBGP
+}
+
+// nextHopIGPCost returns the IGP cost to reach the next-hop of a route.
+// Currently returns the stored IGPCost value; in a full implementation this
+// would look up the next-hop in the IGP routing table (OSPF/IS-IS).
+func nextHopIGPCost(r route.RIBEntry) int {
+	return r.IGPCost
 }
 
 func shouldCompareMED(a, b route.RIBEntry, opts DecisionOptions) bool {
@@ -232,6 +242,10 @@ func less(receiver model.Node, a, b route.RIBEntry, opts DecisionOptions, revers
 	bExternal := !b.Attrs.LearnedIBGP
 	if aExternal != bExternal {
 		return aExternal
+	}
+	// IGP cost to next-hop: lower wins
+	if a.IGPCost != b.IGPCost {
+		return a.IGPCost < b.IGPCost
 	}
 	// Cluster-List: shorter list preferred
 	if len(a.Attrs.ClusterList) != len(b.Attrs.ClusterList) {
