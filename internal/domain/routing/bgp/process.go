@@ -57,6 +57,9 @@ func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEn
 	if a.SourceKind == model.RouteSourceOSPF || b.SourceKind == model.RouteSourceOSPF {
 		return a.SourceKind == b.SourceKind && a.RouteSource.OSPFRouteType == b.RouteSource.OSPFRouteType && a.RouteSource.Metric == b.RouteSource.Metric
 	}
+	if a.Attrs.Weight != b.Attrs.Weight {
+		return false
+	}
 	if a.Attrs.LocalPref != b.Attrs.LocalPref {
 		return false
 	}
@@ -206,6 +209,9 @@ func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEnt
 			return len(a.Provenance.PathLinks) < len(b.Provenance.PathLinks)
 		}
 		return pathTie(a, b, reversePathTie)
+	}
+	if a.Attrs.Weight != b.Attrs.Weight {
+		return a.Attrs.Weight > b.Attrs.Weight
 	}
 	if a.Attrs.LocalPref != b.Attrs.LocalPref {
 		return a.Attrs.LocalPref > b.Attrs.LocalPref

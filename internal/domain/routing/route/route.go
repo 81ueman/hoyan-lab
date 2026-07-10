@@ -36,6 +36,7 @@ type BGPAttributes struct {
 	OriginCode  model.BGPOriginCode
 	LocalPref   int
 	MED         int
+	Weight      int
 	LearnedIBGP bool
 	Invalid     bool
 }
