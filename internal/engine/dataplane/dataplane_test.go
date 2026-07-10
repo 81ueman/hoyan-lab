@@ -94,6 +94,65 @@ func TestDeriveFIBUsesVendorInstallEligibility(t *testing.T) {
 	}
 }
 
+func TestDeriveFIBPopulatesECMPNextHops(t *testing.T) {
+	prefix := model.MustPrefix("10.0.0.0/24")
+	equivalentRoutes := []domainroute.RIBEntry{
+		{
+			NLRI:              domainroute.NLRI{Prefix: prefix},
+			Provenance:        domainroute.Provenance{OriginNode: "a", PathNodes: []string{"a", "rx"}},
+			Attrs:             domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65100}},
+			ForwardingNextHop: domainroute.NextHop{Node: "a", Addr: "10.0.0.1"},
+			SelectedCond:      failure.LinkVar("path-a"),
+			RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
+		},
+		{
+			NLRI:              domainroute.NLRI{Prefix: prefix},
+			Provenance:        domainroute.Provenance{OriginNode: "b", PathNodes: []string{"b", "rx"}},
+			Attrs:             domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65200}},
+			ForwardingNextHop: domainroute.NextHop{Node: "b", Addr: "10.0.0.2"},
+			SelectedCond:      failure.LinkVar("path-b"),
+			RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
+		},
+	}
+	idx, err := model.BuildTopologyIndex(&model.Topology{
+		Nodes: []model.Node{{Name: "rx", Kind: model.DeviceKind("generic"), ASN: 65000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rib := domainroute.RIBTable{"rx": {model.NetworkInstanceDefault: {prefix: equivalentRoutes}}}
+	fib := FIBTable{}
+	NewEngine(idx, rib, fib).DeriveFIB()
+	entries := fib["rx"][model.NetworkInstanceDefault]
+	if len(entries) != 2 {
+		t.Fatalf("FIB entries = %d, want 2 ECMP routes", len(entries))
+	}
+	if !entries[0].Equivalent || !entries[1].Equivalent {
+		t.Fatalf("ECMP routes should be marked Equivalent: %#v", entries)
+	}
+	if len(entries[0].NextHops) != 2 {
+		t.Fatalf("entry[0] NextHops = %d, want 2 (all group next-hops)", len(entries[0].NextHops))
+	}
+	if len(entries[1].NextHops) != 2 {
+		t.Fatalf("entry[1] NextHops = %d, want 2 (all group next-hops)", len(entries[1].NextHops))
+	}
+	// Verify weights sum to 1.0
+	var totalWeight float64
+	for _, nh := range entries[0].NextHops {
+		totalWeight += nh.Weight
+	}
+	if totalWeight < 0.99 || totalWeight > 1.01 {
+		t.Fatalf("entry[0] NextHops weights sum to %f, want ~1.0", totalWeight)
+	}
+	totalWeight = 0
+	for _, nh := range entries[1].NextHops {
+		totalWeight += nh.Weight
+	}
+	if totalWeight < 0.99 || totalWeight > 1.01 {
+		t.Fatalf("entry[1] NextHops weights sum to %f, want ~1.0", totalWeight)
+	}
+}
+
 func TestDeriveFIBMarksAddressOnlyNextHopUnresolved(t *testing.T) {
 	prefix := model.MustPrefix("10.0.0.0/24")
 	idx, err := model.BuildTopologyIndex(&model.Topology{
