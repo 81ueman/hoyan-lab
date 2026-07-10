@@ -521,7 +521,7 @@ func (e *Engine) bgpPropagationContext() bgp.PropagationContext {
 			return BehaviorFor(node.Kind).RouteEligibleForAdvertisement(node, route)
 		},
 		ApplyAggregateSuppression: e.applyAggregateSuppression,
-		Prune: e.pruneFunc(),
+		Prune:                     e.pruneFunc(),
 	}
 }
 

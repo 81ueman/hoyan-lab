@@ -553,8 +553,6 @@ func TestValidateScenarioReferencesUnknownSnapshot(t *testing.T) {
 	}
 }
 
-
-
 func TestValidateVarRefsInRCLExpr(t *testing.T) {
 	t.Run("undefined_var_in_where", func(t *testing.T) {
 		doc := &Document{

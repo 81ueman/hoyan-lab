@@ -56,33 +56,10 @@ func TestLocatedFlowCreation(t *testing.T) {
 	}
 }
 
-func TestFlowEquivalenceClassCreation(t *testing.T) {
-	ec := FlowEquivalenceClass{
-		ID:          1,
-		IngressNode: "cust-bj",
-		IngressIntf: "eth0",
-		TotalBytes:  3000000,
-		FlowCount:   3,
-	}
-	if ec.ID != 1 {
-		t.Errorf("unexpected EC ID: %d", ec.ID)
-	}
-	if ec.IngressNode != "cust-bj" {
-		t.Errorf("unexpected ingress node: %s", ec.IngressNode)
-	}
-	if ec.TotalBytes != 3000000 {
-		t.Errorf("unexpected total bytes: %d", ec.TotalBytes)
-	}
-	if ec.FlowCount != 3 {
-		t.Errorf("unexpected flow count: %d", ec.FlowCount)
-	}
-}
-
 func TestLinkLoadCreation(t *testing.T) {
 	ll := LinkLoad{
 		LinkName: "cust-bj--core-bj-1",
 		Bytes:    5000000,
-		Capacity: 10000000000, // 10 Gbps
 	}
 	if ll.LinkName != "cust-bj--core-bj-1" {
 		t.Errorf("unexpected link name: %s", ll.LinkName)
@@ -90,15 +67,12 @@ func TestLinkLoadCreation(t *testing.T) {
 	if ll.Bytes != 5000000 {
 		t.Errorf("unexpected bytes: %d", ll.Bytes)
 	}
-	if ll.Capacity != 10000000000 {
-		t.Errorf("unexpected capacity: %d", ll.Capacity)
-	}
 }
 
 func TestTrafficResultCreation(t *testing.T) {
 	tr := TrafficResult{
 		LinkLoads: map[string]LinkLoad{
-			"link-1": {LinkName: "link-1", Bytes: 100, Capacity: 1000},
+			"link-1": {LinkName: "link-1", Bytes: 100},
 		},
 	}
 	if len(tr.LinkLoads) != 1 {

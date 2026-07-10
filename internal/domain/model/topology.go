@@ -30,14 +30,15 @@ type Node struct {
 }
 
 type Link struct {
-	Name   string
-	A      string
-	B      string
-	Role   string
-	Cost   int
-	Subnet string
-	AIntf  string
-	BIntf  string
+	Name      string
+	A         string
+	B         string
+	Role      string
+	Cost      int
+	Subnet    string
+	AIntf     string
+	BIntf     string
+	Bandwidth uint64 // bps, 0 = use role-based default
 }
 
 type Interface struct {
