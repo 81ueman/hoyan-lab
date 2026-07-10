@@ -1,0 +1,109 @@
+version = "hoyan/v1"
+
+// Model limitation: NSSA type7 routes are not exposed separately in the RIB.
+// The model translates type7 to type5 at the ABR, so NSSA externals appear
+// as external_type_2 on r2 (ABR) and r1 (area 0), but not as a distinct
+// nssa_external_* route type on r4. Only 4 ospf_route_type values exist:
+// intra_area, inter_area, external_type_2, and empty (default routes).
+// The nssa-external-route-reaches-area0 intent verifies the translated
+// type5 reaches area 0, which is the observable effect of NSSA type7.
+
+snapshot "current" {
+  lab = "labs/ospf-stub-nssa"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "both-areas-have-routes" {
+  scenario = "normal"
+
+  and {
+    when where protocol = "ospf", route_type = "intra_area" {
+      count() >= 1
+    }
+    when where protocol = "ospf", route_type = "inter_area" {
+      count() >= 1
+    }
+  }
+}
+
+intent "stub-router-has-default-route" {
+  scenario = "normal"
+
+  when where device = "r3", prefix = "0.0.0.0/0" {
+    count() >= 1
+  }
+}
+
+intent "nssa-router-has-default-route" {
+  scenario = "normal"
+
+  when where device = "r4", prefix = "0.0.0.0/0" {
+    count() >= 1
+  }
+}
+
+intent "stub-area-no-external-routes" {
+  scenario = "normal"
+
+  and {
+    when where device = "r3", protocol = "ospf", route_type = "external_type_1" {
+      count() == 0
+    }
+    when where device = "r3", protocol = "ospf", route_type = "external_type_2" {
+      count() == 0
+    }
+  }
+}
+
+intent "nssa-area-no-type5-external-routes" {
+  scenario = "normal"
+
+  and {
+    when where device = "r4", protocol = "ospf", route_type = "external_type_1" {
+      count() == 0
+    }
+    when where device = "r4", protocol = "ospf", route_type = "external_type_2" {
+      count() == 0
+    }
+  }
+}
+
+intent "nssa-external-route-reaches-area0" {
+  scenario = "normal"
+
+  when where device = "r1", protocol = "ospf", prefix = "198.18.4.0/24", route_type = "external_type_2" {
+    count() >= 1
+  }
+}
+
+intent "area0-sees-stub-router-loopback" {
+  scenario = "normal"
+
+  when where device = "r1", protocol = "ospf", prefix = "10.255.3.3/32", route_type = "inter_area" {
+    count() >= 1
+  }
+}
+
+intent "area0-sees-nssa-router-loopback" {
+  scenario = "normal"
+
+  when where device = "r1", protocol = "ospf", prefix = "10.255.4.4/32", route_type = "inter_area" {
+    count() >= 1
+  }
+}
+
+intent "abr-has-both-route-types" {
+  scenario = "normal"
+
+  and {
+    when where device = "r2", protocol = "ospf", route_type = "intra_area" {
+      count() >= 1
+    }
+    when where device = "r2", protocol = "ospf", route_type = "inter_area" {
+      count() >= 1
+    }
+  }
+}

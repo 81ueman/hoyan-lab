@@ -1,0 +1,61 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/vrf-basic"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "tenant-a-has-routes" {
+  scenario = "normal"
+
+  rib where vrf = "tenant-a" {
+    count() >= 1
+  }
+}
+
+intent "tenant-b-has-routes" {
+  scenario = "normal"
+
+  rib where vrf = "tenant-b" {
+    count() >= 1
+  }
+}
+
+intent "tenant-b-only-prefix-isolated" {
+  scenario = "normal"
+
+  and {
+    rib where vrf = "tenant-b", prefix = "10.66.0.1/32" {
+      count() >= 1
+    }
+    rib where vrf = "tenant-a", prefix = "10.66.0.1/32" {
+      count() == 0
+    }
+  }
+}
+
+intent "overlapping-prefix-exists-in-both-vrfs" {
+  scenario = "normal"
+
+  and {
+    rib where vrf = "tenant-a", prefix = "10.255.0.1/32" {
+      count() >= 1
+    }
+    rib where vrf = "tenant-b", prefix = "10.255.0.1/32" {
+      count() >= 1
+    }
+  }
+}
+
+intent "all-edges-have-routes" {
+  scenario = "normal"
+
+  forall device in ["r1", "r2", "r3"] {
+    rib where device = $device {
+      count() >= 1
+    }
+  }
+}
