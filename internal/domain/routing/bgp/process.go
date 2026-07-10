@@ -48,7 +48,7 @@ func (d DefaultDecisionProcess) Options() DecisionOptions {
 }
 
 func (d DefaultDecisionProcess) Less(receiver model.Node, a, b route.RIBEntry) bool {
-	return less(receiver, a, b, d.shouldCompareMED, false)
+	return less(receiver, a, b, d.OptionsValue, false)
 }
 
 func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEntry) bool {
@@ -72,14 +72,14 @@ func (d DefaultDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEn
 	if OriginCodeRank(a.Attrs.OriginCode) != OriginCodeRank(b.Attrs.OriginCode) {
 		return false
 	}
-	if d.shouldCompareMED(a, b) && a.Attrs.MED != b.Attrs.MED {
+	if shouldCompareMED(a, b, d.OptionsValue) && a.Attrs.MED != b.Attrs.MED {
 		return false
 	}
 	return a.Attrs.LearnedIBGP == b.Attrs.LearnedIBGP
 }
 
-func (d DefaultDecisionProcess) shouldCompareMED(a, b route.RIBEntry) bool {
-	if d.OptionsValue.AlwaysCompareMED {
+func shouldCompareMED(a, b route.RIBEntry, opts DecisionOptions) bool {
+	if opts.AlwaysCompareMED {
 		return true
 	}
 	return NeighboringAS(a.Attrs.ASPath) == NeighboringAS(b.Attrs.ASPath)
@@ -94,7 +94,7 @@ func NewFRRDecisionProcess(options DecisionOptions) FRRDecisionProcess {
 }
 
 func (d FRRDecisionProcess) Less(receiver model.Node, a, b route.RIBEntry) bool {
-	return less(receiver, a, b, d.shouldCompareMED, true)
+	return less(receiver, a, b, d.OptionsValue, true)
 }
 
 func (d FRRDecisionProcess) Equivalent(receiver model.Node, a, b route.RIBEntry) bool {
@@ -195,7 +195,7 @@ func PrependASN(asn uint32, path []uint32) []uint32 {
 	return out
 }
 
-func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEntry, route.RIBEntry) bool, reversePathTie bool) bool {
+func less(receiver model.Node, a, b route.RIBEntry, opts DecisionOptions, reversePathTie bool) bool {
 	a = a.Normalize()
 	b = b.Normalize()
 	if a.SourceKind == model.RouteSourceOSPF && b.SourceKind == model.RouteSourceOSPF {
@@ -225,13 +225,31 @@ func less(receiver model.Node, a, b route.RIBEntry, compareMED func(route.RIBEnt
 	if OriginCodeRank(a.Attrs.OriginCode) != OriginCodeRank(b.Attrs.OriginCode) {
 		return OriginCodeRank(a.Attrs.OriginCode) < OriginCodeRank(b.Attrs.OriginCode)
 	}
-	if compareMED(a, b) && a.Attrs.MED != b.Attrs.MED {
+	if shouldCompareMED(a, b, opts) && a.Attrs.MED != b.Attrs.MED {
 		return a.Attrs.MED < b.Attrs.MED
 	}
 	aExternal := !a.Attrs.LearnedIBGP
 	bExternal := !b.Attrs.LearnedIBGP
 	if aExternal != bExternal {
 		return aExternal
+	}
+	// Cluster-List: shorter list preferred
+	if len(a.Attrs.ClusterList) != len(b.Attrs.ClusterList) {
+		return len(a.Attrs.ClusterList) < len(b.Attrs.ClusterList)
+	}
+	// Originator-ID: lower value preferred when both are set
+	if a.Attrs.OriginatorID != "" && b.Attrs.OriginatorID != "" && a.Attrs.OriginatorID != b.Attrs.OriginatorID {
+		if opts.PreferLowerRouterID {
+			return a.Attrs.OriginatorID < b.Attrs.OriginatorID
+		}
+		return a.Attrs.OriginatorID > b.Attrs.OriginatorID
+	}
+	// Router-ID: compare by FromNode name when CompareRouterID is enabled
+	if opts.CompareRouterID && a.Provenance.FromNode != b.Provenance.FromNode {
+		if opts.PreferLowerRouterID {
+			return a.Provenance.FromNode < b.Provenance.FromNode
+		}
+		return a.Provenance.FromNode > b.Provenance.FromNode
 	}
 	if len(a.Provenance.PathLinks) != len(b.Provenance.PathLinks) {
 		return len(a.Provenance.PathLinks) < len(b.Provenance.PathLinks)
