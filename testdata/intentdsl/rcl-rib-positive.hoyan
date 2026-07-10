@@ -44,6 +44,6 @@ intent "changed-prefix-local-pref-default" {
   scenario = "post"
 
   rib where prefix = $changed_prefix, device_in = $edges, selected = true {
-    distVals(local_pref) == [[0]]
+    distVals(local_pref) == [0]
   }
 }

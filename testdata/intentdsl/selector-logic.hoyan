@@ -15,7 +15,7 @@ intent "logical-and-selects-edge-routes" {
   scenario = "post"
 
   rib where device_in = $edges, prefix = $changed_prefix, selected = true {
-    count() == [3]
+    count() == 3
   }
 }
 
@@ -48,6 +48,6 @@ intent "prefix-within-matches-child-space" {
   scenario = "post"
 
   rib where device_in = $edges, prefix = $changed_prefix {
-    count() == [3]
+    count() == 3
   }
 }

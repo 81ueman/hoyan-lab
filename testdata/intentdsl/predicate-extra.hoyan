@@ -12,7 +12,7 @@ intent "route-has-specific-community" {
   scenario = "normal"
 
   rib where communities contains "65000:100" {
-    count() == [0]
+    count() == 0
   }
 }
 
@@ -20,7 +20,7 @@ intent "aspath-matches-regex" {
   scenario = "normal"
 
   rib where as_path matches ".*99999.*" {
-    count() == [0]
+    count() == 0
   }
 }
 

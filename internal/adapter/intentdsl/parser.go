@@ -1141,7 +1141,13 @@ func (p *parser) parseAggregateExpr() (*aggregateResult, error) {
 		// For eq/ne, values can be arrays or scalars
 		switch v := val.(type) {
 		case []any:
-			result.eq = v
+			// distVals/distCnt expects double-wrapped arrays: ["a"] → [["a"]]
+			// Single-level array ["a"] means the user wrote the new scalar-friendly syntax
+			if strings.HasPrefix(aggName, "distVals") || strings.HasPrefix(aggName, "distCnt") {
+				result.eq = maybeDoubleWrap(v)
+			} else {
+				result.eq = v
+			}
 		case string, int, float64, bool:
 			result.eq = []any{v}
 		default:
@@ -1155,7 +1161,12 @@ func (p *parser) parseAggregateExpr() (*aggregateResult, error) {
 		}
 		switch v := val.(type) {
 		case []any:
-			result.ne = v
+			// distVals/distCnt expects double-wrapped arrays: ["a"] → [["a"]]
+			if strings.HasPrefix(aggName, "distVals") || strings.HasPrefix(aggName, "distCnt") {
+				result.ne = maybeDoubleWrap(v)
+			} else {
+				result.ne = v
+			}
 		case string, int, float64, bool:
 			result.ne = []any{v}
 		default:
@@ -1568,6 +1579,20 @@ func toStringSlice(v any) []string {
 	default:
 		return nil
 	}
+}
+
+// maybeDoubleWrap wraps a single-level []any into a double-wrapped []any{[]any{...}}.
+// distVals/distCnt expects each element in Eq/Ne to be a []any candidate set.
+// When the user writes distVals(x) == ["a"], the parser produces []any{"a"} which
+// needs to become []any{[]any{"a"}}. If the array is already double-wrapped
+// (any element is itself []any), it is returned as-is.
+func maybeDoubleWrap(v []any) []any {
+	for _, elem := range v {
+		if _, ok := elem.([]any); ok {
+			return v // already double-wrapped
+		}
+	}
+	return []any{v}
 }
 
 func intPtr(v int) *int {
