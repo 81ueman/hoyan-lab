@@ -522,6 +522,16 @@ func routeSymbolicTargetResult(result SymbolicRouteReachabilityResult) SymbolicT
 	}
 }
 
+// DataplaneEngine returns the dataplane engine used by the graph for packet forwarding simulation.
+func (g *Graph) DataplaneEngine() *dataplane.Engine {
+	return dataplane.NewEngine(g.topoIndex, g.rib, g.fib)
+}
+
+// TopoIndex returns the topology index.
+func (g *Graph) TopoIndex() *model.TopologyIndex {
+	return g.topoIndex
+}
+
 func FormatPath(p Path) string {
 	if len(p.Nodes) == 0 {
 		return ""
