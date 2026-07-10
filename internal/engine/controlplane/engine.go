@@ -14,16 +14,36 @@ import (
 	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
-type Engine struct {
-	idx *model.TopologyIndex
-	rib domainroute.RIBTable
+// EngineOption configures the control-plane simulation Engine.
+type EngineOption func(*Engine)
+
+// WithMaxFailures enables topology condition pruning during BGP propagation.
+// When maxFailures is >= 0, routes with impossible conditions or more than
+// maxFailures negated link variables will not be propagated further.
+// A negative value disables pruning (default).
+func WithMaxFailures(maxFailures int) EngineOption {
+	return func(e *Engine) {
+		e.maxFailures = maxFailures
+	}
 }
 
-func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable) *Engine {
+type Engine struct {
+	idx         *model.TopologyIndex
+	rib         domainroute.RIBTable
+	maxFailures int // -1 disables pruning
+}
+
+func NewEngine(idx *model.TopologyIndex, rib domainroute.RIBTable, opts ...EngineOption) *Engine {
 	if rib == nil {
 		rib = domainroute.RIBTable{}
 	}
-	return &Engine{idx: idx, rib: rib}
+	e := &Engine{idx: idx, rib: rib, maxFailures: -1}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(e)
+		}
+	}
+	return e
 }
 
 func (e *Engine) Simulate() error {
@@ -482,6 +502,16 @@ func (e *Engine) bgpPropagationContext() bgp.PropagationContext {
 			return BehaviorFor(node.Kind).RouteEligibleForAdvertisement(node, route)
 		},
 		ApplyAggregateSuppression: e.applyAggregateSuppression,
+		Prune: e.pruneFunc(),
+	}
+}
+
+func (e *Engine) pruneFunc() bgp.PruneFunc {
+	if e.maxFailures < 0 {
+		return nil
+	}
+	return func(cond failure.Cond) bool {
+		return bgp.CheckPrune(cond, e.maxFailures) != bgp.PruneNone
 	}
 }
 

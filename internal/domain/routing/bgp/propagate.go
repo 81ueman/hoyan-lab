@@ -6,6 +6,11 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/routing/route"
 )
 
+// PruneFunc is a callback type used by PropagationContext to decide whether
+// a route with the given condition should be pruned (not propagated further)
+// during BGP route propagation. Return true to prune the route.
+type PruneFunc func(cond failure.Cond) bool
+
 // PropagationContext provides the engine-specific operations needed for
 // BGP route propagation through the adjacency graph. The domain-level
 // WalkRoute function uses these callbacks instead of depending directly
@@ -22,6 +27,7 @@ type PropagationContext struct {
 	ControlIngress            func(string, string, route.RIBEntry) bool
 	EligibleForAdvertisement  func(model.Node, route.RIBEntry) bool
 	ApplyAggregateSuppression func(model.Node, route.RIBEntry) route.RIBEntry
+	Prune                     PruneFunc
 }
 
 // WalkRoute propagates a BGP route through all neighbor adjacencies.
@@ -110,6 +116,13 @@ func WalkRoute(ctx PropagationContext, route route.RIBEntry) {
 		ctx.AddRIB(next, entry.NLRI.Prefix, entry)
 
 		if !ctx.EligibleForAdvertisement(nextNode, entry) {
+			continue
+		}
+
+		// Topology condition pruning: skip recursive propagation if the
+		// accumulated condition fails the prune check (e.g., impossible
+		// condition or too many negated link variables).
+		if ctx.Prune != nil && ctx.Prune(entry.Condition) {
 			continue
 		}
 
