@@ -355,8 +355,8 @@ func (p *parser) parseRCLExpr() (*intent.RCLExpr, error) {
 		return p.parseRibEval()
 	case tokKeywordPacket:
 		return p.parsePacket()
-	case tokKeywordRibEq:
-		return p.parseRibEq()
+	case tokKeywordDiff:
+		return p.parseDiff()
 	case tokKeywordAnd:
 		return p.parseAnd()
 	case tokKeywordOr:
@@ -879,30 +879,18 @@ func (p *parser) parsePacket() (*intent.RCLExpr, error) {
 	}, nil
 }
 
-// parseRibEq parses: rib_eq left = "..." right = "..." where ...
-func (p *parser) parseRibEq() (*intent.RCLExpr, error) {
-	p.next() // consume 'rib_eq'
+// parseDiff parses: diff "left" "right" where ...
+func (p *parser) parseDiff() (*intent.RCLExpr, error) {
+	p.next() // consume 'diff'
 
-	if err := p.expect(tokKeywordLeft); err != nil {
-		return nil, err
-	}
-	if err := p.expect(tokAssign); err != nil {
-		return nil, err
-	}
 	if p.tok.kind != tokString {
-		return nil, p.errorf("expected string for left, got %s (%q)", p.tok.kind, p.tok.text)
+		return nil, p.errorf("expected string for left snapshot, got %s (%q)", p.tok.kind, p.tok.text)
 	}
 	left := p.tok.text
 	p.next()
 
-	if err := p.expect(tokKeywordRight); err != nil {
-		return nil, err
-	}
-	if err := p.expect(tokAssign); err != nil {
-		return nil, err
-	}
 	if p.tok.kind != tokString {
-		return nil, p.errorf("expected string for right, got %s (%q)", p.tok.kind, p.tok.text)
+		return nil, p.errorf("expected string for right snapshot, got %s (%q)", p.tok.kind, p.tok.text)
 	}
 	right := p.tok.text
 	p.next()
