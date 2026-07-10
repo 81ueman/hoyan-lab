@@ -1,0 +1,9 @@
+name: bgp-racing
+description: Lab for BGP route update racing detection (SIGCOMM 2020 §5.4, §7.1, Appendix B). Four-node topology with two origins for the same prefix.
+nos:
+  - frr
+checks:
+  - verify
+features:
+  - bgp
+  - racing

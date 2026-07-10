@@ -34,6 +34,7 @@ func NewRootCommand() *cobra.Command {
 		NewLabsCommand(),
 		NewModelCommand(),
 		NewIntentCommand(),
+		NewRacingCommand(),
 	)
 	return cmd
 }

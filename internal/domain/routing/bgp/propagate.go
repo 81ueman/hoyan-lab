@@ -115,7 +115,8 @@ func WalkRoute(ctx PropagationContext, route route.RIBEntry) {
 
 		ctx.AddRIB(next, entry.NLRI.Prefix, entry)
 
-		if !ctx.EligibleForAdvertisement(nextNode, entry) {
+		skipPropagation := !entry.RacingPropagation && !ctx.EligibleForAdvertisement(nextNode, entry)
+		if skipPropagation {
 			continue
 		}
 
