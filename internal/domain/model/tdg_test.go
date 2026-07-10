@@ -6,10 +6,10 @@ import (
 
 func TestTDGNodeCreation(t *testing.T) {
 	node := &TDGNode{
-		ID:       1,
-		Node:     "router1",
-		VRF:      "default",
-		Stage:    "fib_lookup",
+		ID:            1,
+		Node:          "router1",
+		VRF:           "default",
+		Stage:         "fib_lookup",
 		PacketClassID: PrefixClassID(0),
 	}
 	if node.ID != 1 {
