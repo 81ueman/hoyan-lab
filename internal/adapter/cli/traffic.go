@@ -406,11 +406,7 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 	ecList := buildECList(packetClasses, baseBytes)
 
 	// Get root node (first node in topology)
-	rootNode := ""
-	for node := range fibs {
-		rootNode = node
-		break
-	}
+	rootNode := topo.Nodes[0].Name
 
 	// First simulate base case to populate cache and get base loads
 	ws.Simulate(rootNode, failure.None(), ecList, cache, fibs)
@@ -616,15 +612,8 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 	// Build FIB table from topology
 	fibs := buildFIBFromTopo(topo)
 
-	// Get root node (first node with FIB entries)
-	var rootNode string
-	for node := range fibs {
-		rootNode = node
-		break
-	}
-	if rootNode == "" {
-		return fmt.Errorf("no FIB entries in topology")
-	}
+	// Get root node (first node in topology)
+	rootNode := topo.Nodes[0].Name
 
 	// Derive packet classes
 	packetClasses := derivePacketClasses(topo.Nodes)

@@ -93,10 +93,12 @@ func (c *TDGCache) ApplyFailure(tdg *model.TDG, failures failure.Set) *model.TDG
 		removedByNode[ek.from]++
 	}
 
-	// Remove affected edges
-	for _, ek := range toRemove {
-		cloned.RemoveEdge(ek.from, ek.to)
+	// Batch-remove affected edges (single pass, single outEdges rebuild)
+	edgeRefs := make([]model.EdgeRef, len(toRemove))
+	for i, ek := range toRemove {
+		edgeRefs[i] = model.EdgeRef{From: ek.from, To: ek.to}
 	}
+	cloned.BatchRemoveEdges(edgeRefs)
 
 	// Rebalance ECMP weights for nodes that lost some but not all out-edges
 	for fromNode := range removedByNode {

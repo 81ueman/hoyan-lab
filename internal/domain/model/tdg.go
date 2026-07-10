@@ -158,6 +158,31 @@ func (tdg *TDG) SetEdgeWeight(fromName, toName string, weight float64) bool {
 	return false
 }
 
+// BatchRemoveEdges removes multiple edges in one pass and rebuilds the
+// outEdges map once, avoiding O(n*m) when calling RemoveEdge in a loop.
+type EdgeRef struct {
+	From, To string
+}
+
+func (tdg *TDG) BatchRemoveEdges(edges []EdgeRef) {
+	if len(edges) == 0 {
+		return
+	}
+	// Build a set for O(1) lookup
+	removeSet := make(map[string]bool, len(edges))
+	for _, ref := range edges {
+		removeSet[ref.From+"|"+ref.To] = true
+	}
+	keep := make([]*TDGEdge, 0, len(tdg.Edges))
+	for _, edge := range tdg.Edges {
+		if !removeSet[edge.From.Node+"|"+edge.To.Node] {
+			keep = append(keep, edge)
+		}
+	}
+	tdg.Edges = keep
+	tdg.rebuildOutEdges()
+}
+
 // TopologicalOrder returns nodes in topological order (BFS from root).
 func (tdg *TDG) TopologicalOrder() []*TDGNode {
 	if tdg.Root == nil {
