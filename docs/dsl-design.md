@@ -188,6 +188,38 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 
 ---
 
+## Where述語の予約フィールド一覧
+
+where句で使用できるフィールド名のうち、一部は評価エンジンが特別な意味を持つものとして処理する。
+パーサーはこれらを単なる識別子として扱う（特別扱いしない）。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| `device`, `node` | string | デバイス名でフィルタ |
+| `device_in` | `[]string` | 複数デバイスをOR条件でフィルタ（糖衣構文） |
+| `prefix` | string (CIDR) | プレフィックスでフィルタ（指定範囲内のサブネットも含む） |
+| `prefix_within` | string (CIDR) | 指定したCIDR範囲内のプレフィックスのみにマッチ（`within` 演算子で生成） |
+| `protocol` | string | 経路プロトコル（ospf, bgp, static, connected 等） |
+| `vrf` | string | VRF名 |
+| `selected` | bool | best経路のみにフィルタ（`selected = true`） |
+| `nexthop` | string | ネクストホップ（`contains` / `matches` 演算子と併用） |
+| `communities` | `[]string` | BGPコミュニティ（`contains` 演算子と併用） |
+| `large_communities` | `[]string` | BGP Large Community（`contains` 演算子と併用） |
+| `as_path` | string | AS_PATH（`matches` 演算子と併用、または直接比較） |
+| `as_path_len` / `aspath_len` | int | AS_PATHの長さ |
+| `weight` | int | BGP weight |
+| `origin` | string | BGP origin（igp, egp, incomplete） |
+| `med` | int | BGP MED（マルチエグジット識別子） |
+| `local_pref` / `localPref` | int | BGP local preference |
+| `peer` | string | BGPピアアドレス |
+| `peer_as` | int | BGPピアAS番号 |
+| `route_type` | string | OSPF経路タイプ（intra_area, inter_area 等） |
+| `area` | string | OSPFエリア |
+| `cost` | int | OSPFコスト |
+| `connected_class` | string | 直結経路の種別（`"loopback"` / `"link"`） |
+
+---
+
 ## キーワード対応表（YAML → DSL）
 
 ### 構造
