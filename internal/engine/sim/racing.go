@@ -223,9 +223,16 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 					}
 					if cond.Eval(g.raceCtx(answer1)) {
 						selectedInA = cond.Key()
+						break
+					}
+				}
+				for _, cond := range conds {
+					if cond == nil || cond.Key() == failure.False().Key() {
+						continue
 					}
 					if cond.Eval(g.raceCtx(answer2)) {
 						selectedInB = cond.Key()
+						break
 					}
 				}
 				if selectedInA != "" && selectedInB != "" && selectedInA != selectedInB {
