@@ -13,6 +13,7 @@ type Node struct {
 	Name           string
 	Kind           DeviceKind
 	Role           string
+	RouterID       string
 	ASN            uint32
 	Loopback       string
 	Prefixes       []Prefix

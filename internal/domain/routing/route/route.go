@@ -20,6 +20,7 @@ type RIBEntry struct {
 	ForwardingNextHop     NextHop
 	SourceKind            model.RouteSourceKind
 	RouteSource           model.ConfiguredRoute
+	IGPCost               int
 	AggregateContributors []string
 	BaseCond              failure.Cond
 	Condition             failure.Cond
@@ -31,13 +32,16 @@ type NLRI struct {
 }
 
 type BGPAttributes struct {
-	ASPath      []uint32
-	Communities []string
-	OriginCode  model.BGPOriginCode
-	LocalPref   int
-	MED         int
-	LearnedIBGP bool
-	Invalid     bool
+	ASPath       []uint32
+	Communities  []string
+	OriginCode   model.BGPOriginCode
+	OriginatorID string
+	ClusterList  []string
+	LocalPref    int
+	MED          int
+	Weight       int
+	LearnedIBGP  bool
+	Invalid      bool
 }
 
 type Provenance struct {
