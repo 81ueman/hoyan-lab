@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
@@ -35,8 +36,9 @@ func NewTrafficCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.outputPath, "output", "", "output file path (default: stdout)")
 	cmd.Flags().StringVar(&opts.bandwidthPath, "bandwidth", "", "path to bandwidth override JSON file")
 
-	// Register what-if subcommand
+	// Register subcommands
 	cmd.AddCommand(NewWhatIfCommand())
+	cmd.AddCommand(NewKFailCommand())
 	return cmd
 }
 
@@ -435,40 +437,43 @@ func formatWhatIfTable(out io.Writer, result *trafficengine.WhatIfResult) error 
 	fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n", "Link", "Before", "After", "Delta", "Status")
 	fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n", "----", "------", "-----", "-----", "------")
 
-	// Diffs first
-	if len(result.Diffs) > 0 {
-		for _, diff := range result.Diffs {
-			status := formatStatus(diff)
-			fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
-				diff.LinkName,
-				formatBytes(diff.Before),
-				formatBytes(diff.After),
-				formatDelta(diff.Delta, diff.DeltaPct),
-				status)
-		}
+	// Build index of changed link names
+	changed := make(map[string]bool)
+	for _, diff := range result.Diffs {
+		changed[diff.LinkName] = true
 	}
 
-	// Also show links that exist in base but have no diff (unchanged)
-	if len(result.Diffs) > 0 {
-		unchanged := make(map[string]bool)
-		for link := range result.LinkLoads {
-			unchanged[link] = true
-		}
-		for _, diff := range result.Diffs {
-			delete(unchanged, diff.LinkName)
-		}
+	// Collect all link names and sort for deterministic output
+	allLinks := make([]string, 0, len(result.LinkLoads))
+	for link := range result.LinkLoads {
+		allLinks = append(allLinks, link)
+	}
+	sort.Strings(allLinks)
 
-		if len(unchanged) > 0 {
-			fmt.Fprintln(out, "")
-			for link := range unchanged {
-				ll := result.LinkLoads[link]
-				fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
-					link,
-					formatBytes(ll.Bytes),
-					formatBytes(ll.Bytes),
-					"0",
-					"")
+	for _, link := range allLinks {
+		ll := result.LinkLoads[link]
+		if changed[link] {
+			// Find the matching diff
+			for _, diff := range result.Diffs {
+				if diff.LinkName == link {
+					status := formatStatus(diff)
+					fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
+						link,
+						formatBytes(diff.Before),
+						formatBytes(diff.After),
+						formatDelta(diff.Delta, diff.DeltaPct),
+						status)
+					break
+				}
 			}
+		} else {
+			// Unchanged link
+			fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
+				link,
+				formatBytes(ll.Bytes),
+				formatBytes(ll.Bytes),
+				"0",
+				"")
 		}
 	}
 
@@ -533,4 +538,135 @@ func formatStatus(diff trafficengine.LinkLoadChange) string {
 		return "↓ DECREASE"
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// k-failure subcommand
+// ---------------------------------------------------------------------------
+
+type kFailOptions struct {
+	topologyPath string
+	flowsPath    string
+	threshold    float64
+	maxK         int
+	format       string
+	ecmpMode     string
+	sampleRate   float64
+}
+
+func NewKFailCommand() *cobra.Command {
+	var opts kFailOptions
+	cmd := &cobra.Command{
+		Use:   "kfail <topology-path>",
+		Short: "k-failure tolerance analysis for traffic",
+		Long: `Analyze the minimum number of additional failures that would
+cause overload on any link.
+
+Examples:
+  hoyan traffic kfail labs/base-wan --flows flows.json --threshold 80 --max-k 2
+`,
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.topologyPath = args[0]
+			return runKFail(cmd, opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.flowsPath, "flows", "", "path to flows JSON file")
+	cmd.Flags().Float64Var(&opts.threshold, "threshold", 80, "utilization threshold percentage")
+	cmd.Flags().IntVar(&opts.maxK, "max-k", 2, "maximum number of simultaneous failures")
+	cmd.Flags().StringVar(&opts.format, "format", "text", "output format: text or json")
+	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
+	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
+	_ = cmd.MarkFlagRequired("flows")
+	return cmd
+}
+
+func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
+	// Parse ECMP mode
+	ecmpMode, err := parseECMPMode(opts.ecmpMode)
+	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+
+	// Load topology
+	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
+	if err != nil {
+		return fmt.Errorf("loading topology: %w", err)
+	}
+	if len(topo.Nodes) == 0 {
+		return fmt.Errorf("topology has no nodes")
+	}
+
+	// Build FIB table from topology
+	fibs := buildFIBFromTopo(topo)
+
+	// Get root node (first node with FIB entries)
+	var rootNode string
+	for node := range fibs {
+		rootNode = node
+		break
+	}
+	if rootNode == "" {
+		return fmt.Errorf("no FIB entries in topology")
+	}
+
+	// Derive packet classes
+	packetClasses := derivePacketClasses(topo.Nodes)
+
+	// Build EC list from packet classes
+	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
+	ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
+	for _, pc := range packetClasses {
+		ecList = append(ecList, trafficengine.FlowEquivalenceClass{
+			Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+			DstSet:     pc.DstSet,
+			TotalBytes: baseBytes,
+		})
+	}
+
+	// Run k-failure analysis
+	analyzer := trafficengine.NewKFailAnalyzer(trafficengine.SimulatorConfig{ECMPMode: ecmpMode})
+	result := analyzer.Analyze(rootNode, topo, fibs, ecList, opts.threshold, opts.maxK)
+
+	// Format output
+	switch opts.format {
+	case "json":
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	case "text":
+		return formatKFailText(out, result, opts.threshold)
+	default:
+		return fmt.Errorf("unsupported --format %q (use 'text' or 'json')", opts.format)
+	}
+}
+
+func formatKFailText(out io.Writer, result *trafficengine.KFailResult, threshold float64) error {
+	if len(result.Findings) == 0 {
+		fmt.Fprintln(out, "No links exceed the utilization threshold.")
+		return nil
+	}
+
+	for _, f := range result.Findings {
+		if f.K == 0 {
+			fmt.Fprintf(out, "%s exceeds %.0f%% utilization with k=0 (base overload)\n",
+				f.LinkName, f.UtilizationPct)
+		} else if len(f.Failures) > 0 {
+			// Format failure list: e.g. "link:l2-core-bj down"
+			failParts := make([]string, 0, len(f.Failures))
+			for _, elem := range f.Failures {
+				failParts = append(failParts, fmt.Sprintf("%s:%s down", elem.Kind, elem.Name))
+			}
+			fmt.Fprintf(out, "%s fails → %s exceeds %.0f%% with k=%d\n",
+				strings.Join(failParts, ", "),
+				f.LinkName,
+				threshold,
+				f.K)
+		} else {
+			fmt.Fprintf(out, "%s exceeds threshold with k=%d\n",
+				f.LinkName, f.K)
+		}
+	}
+	return nil
 }

@@ -28,15 +28,11 @@ type LinkLoadChange struct {
 // with the base (no-failure) case.
 type WhatIfSimulator struct {
 	config SimulatorConfig
-	base   map[string]model.LinkLoad // base link loads for comparison
 }
 
 // NewWhatIfSimulator creates a new WhatIfSimulator.
 func NewWhatIfSimulator(config SimulatorConfig) *WhatIfSimulator {
-	return &WhatIfSimulator{
-		config: config,
-		base:   nil,
-	}
+	return &WhatIfSimulator{config: config}
 }
 
 // Simulate simulates traffic for a given failure set and compares it with
@@ -94,13 +90,11 @@ func (ws *WhatIfSimulator) Simulate(
 
 	// If no failure, this is the base case
 	if len(failSet.Links) == 0 && len(failSet.Nodes) == 0 {
-		result := &WhatIfResult{
+		return &WhatIfResult{
 			Failure:   failSet,
-			LinkLoads: toLinkLoadsMap(baseLoads),
+			LinkLoads: toLinkLoads(baseLoads),
 			Diffs:     nil,
 		}
-		ws.base = result.LinkLoads
-		return result
 	}
 
 	// Compute failed link loads
@@ -125,18 +119,9 @@ func (ws *WhatIfSimulator) Simulate(
 
 	return &WhatIfResult{
 		Failure:   failSet,
-		LinkLoads: toLinkLoadsMap(failedLoads),
+		LinkLoads: toLinkLoads(failedLoads),
 		Diffs:     diffs,
 	}
-}
-
-// toLinkLoadsMap converts a map[string]uint64 to map[string]model.LinkLoad.
-func toLinkLoadsMap(raw map[string]uint64) map[string]model.LinkLoad {
-	out := make(map[string]model.LinkLoad, len(raw))
-	for link, bytes := range raw {
-		out[link] = model.LinkLoad{LinkName: link, Bytes: bytes}
-	}
-	return out
 }
 
 // computeLinkLoadChanges computes diffs between base and failed link loads.
