@@ -12,6 +12,8 @@ import (
 
 	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
+	"github.com/81ueman/hoyan-lab/internal/engine/dataplane"
+	simeng "github.com/81ueman/hoyan-lab/internal/engine/sim"
 	trafficengine "github.com/81ueman/hoyan-lab/internal/engine/traffic"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
@@ -122,8 +124,12 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	}
 	rootNode := topo.Nodes[0].Name
 
-	// Build FIB table from topology
-	fibs := buildFIBFromTopo(topo)
+	// Build graph with full routing simulation and derive FIB
+	g, err := simeng.NewGraph(topo)
+	if err != nil {
+		return fmt.Errorf("building simulation graph: %w", err)
+	}
+	fibs := fibTableFromGraph(g)
 
 	// Derive packet classes from topology
 	packetClasses := derivePacketClasses(topo.Nodes)
@@ -216,52 +222,49 @@ func loadSnapshotDefs(path string) ([]trafficengine.SnapshotDef, error) {
 	return defs, nil
 }
 
-// buildFIBFromTopo creates a traffic FIB table from topology nodes and links.
-// Each prefix is matched against link neighbors: if an adjacent node also
-// owns the prefix, a next-hop edge is created to that neighbor.
-func buildFIBFromTopo(topo *model.Topology) trafficengine.FIBTable {
+// fibTableFromGraph converts a sim.Graph's FIB to the traffic engine's FIBTable format.
+func fibTableFromGraph(g *simeng.Graph) trafficengine.FIBTable {
 	fibs := trafficengine.FIBTable{}
-
-	// Build prefix → owning nodes index
-	prefixNodes := map[string][]string{}
-	for _, node := range topo.Nodes {
-		for _, prefix := range node.Prefixes {
-			key := prefix.String()
-			prefixNodes[key] = append(prefixNodes[key], node.Name)
-		}
-	}
-
-	// Build adjacency from links
-	adj := map[string][]string{}
-	for _, link := range topo.Links {
-		adj[link.A] = append(adj[link.A], link.B)
-		adj[link.B] = append(adj[link.B], link.A)
-	}
-
-	for _, node := range topo.Nodes {
-		for _, prefix := range node.Prefixes {
-			key := prefix.String()
-			var nextHops []trafficengine.TrafficNextHop
-			for _, peer := range adj[node.Name] {
-				for _, pn := range prefixNodes[key] {
-					if pn == peer {
-						nextHops = append(nextHops, trafficengine.TrafficNextHop{
-							Node:   peer,
-							Weight: 1.0,
-						})
-					}
-				}
+	idx := g.TopoIndex()
+	for _, node := range idx.Topology.Nodes {
+		entries := g.FIB(model.NodeID(node.Name))
+		var tfibEntries []trafficengine.TrafficFIBEntry
+		for _, entry := range entries {
+			nhs := convertNextHops(entry)
+			if len(nhs) == 0 {
+				continue
 			}
-			if len(nextHops) == 0 {
-				continue // sink — no adjacent node to forward to
-			}
-			fibs[node.Name] = append(fibs[node.Name], trafficengine.TrafficFIBEntry{
-				Prefix:   prefix.NetIP(),
-				NextHops: nextHops,
+			tfibEntries = append(tfibEntries, trafficengine.TrafficFIBEntry{
+				Prefix:   entry.Prefix,
+				NextHops: nhs,
 			})
+		}
+		if len(tfibEntries) > 0 {
+			fibs[node.Name] = tfibEntries
 		}
 	}
 	return fibs
+}
+
+// convertNextHops converts dataplane FIB entry next-hops to traffic engine format.
+func convertNextHops(entry dataplane.FIBEntry) []trafficengine.TrafficNextHop {
+	if len(entry.NextHops) > 0 {
+		result := make([]trafficengine.TrafficNextHop, len(entry.NextHops))
+		for i, nh := range entry.NextHops {
+			result[i] = trafficengine.TrafficNextHop{
+				Node:   nh.Node,
+				Weight: nh.Weight,
+			}
+		}
+		return result
+	}
+	if entry.NextHop != "" {
+		return []trafficengine.TrafficNextHop{{
+			Node:   entry.NextHop,
+			Weight: 1.0,
+		}}
+	}
+	return nil
 }
 
 // loadBandwidthOverrides loads bandwidth overrides from a JSON file.
@@ -379,8 +382,12 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 		trafficengine.ApplyBandwidthOverrides(topo, overrides)
 	}
 
-	// Build FIB table from topology
-	fibs := buildFIBFromTopo(topo)
+	// Build graph with full routing simulation and derive FIB
+	g, err := simeng.NewGraph(topo)
+	if err != nil {
+		return fmt.Errorf("building simulation graph: %w", err)
+	}
+	fibs := fibTableFromGraph(g)
 
 	// Derive packet classes
 	packetClasses := derivePacketClasses(topo.Nodes)
@@ -609,8 +616,12 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 		trafficengine.ApplyBandwidthOverrides(topo, overrides)
 	}
 
-	// Build FIB table from topology
-	fibs := buildFIBFromTopo(topo)
+	// Build graph with full routing simulation and derive FIB
+	g, err := simeng.NewGraph(topo)
+	if err != nil {
+		return fmt.Errorf("building simulation graph: %w", err)
+	}
+	fibs := fibTableFromGraph(g)
 
 	// Get root node (first node in topology)
 	rootNode := topo.Nodes[0].Name
