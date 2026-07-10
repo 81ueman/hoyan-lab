@@ -175,7 +175,7 @@ WherePredicate = ident "=" Value          (* exact match *)
                | ident "contains" Value   (* string/array contains *)
                | ident "matches" string   (* regex match *)
                | ident "within" Value     (* prefix within CIDR *)
-               | "not" WherePredicate     (* negation *)
+               | "not" "{" WherePredicate+ "}"  (* negation; block required *)
                | "and" "{" WherePredicate+ "}"  (* compound AND *)
                | "or"  "{" WherePredicate+ "}"  (* compound OR *)
                | "imply" "{" WherePredicate "then" WherePredicate "}"
@@ -214,7 +214,7 @@ ident       = [A-Za-z_][A-Za-z0-9_]*
 | `device_in: [r1, r2]` | `device_in = ["r1", "r2"]` |
 | `communities: { contains: "65001:100" }` | `communities contains "65001:100"` |
 | `as_path: { matches: "65001" }` | `as_path matches "65001"` |
-| `not: { prefix: ... }` | `not prefix = "..."` |
+| `not: { prefix: ... }` | `not { prefix = "..." }` |
 | `and: [{...}, {...}]` | `and { ... ... }` |
 | `or: [{...}, {...}]` | `or { ... ... }` |
 | `imply: [{...}, {...}]` | `imply { ... then ... }` |
@@ -398,7 +398,7 @@ intent "service-prefix-survives-single-core-failure" {
 **DSL:**
 ```
 intent "unrelated-routes-unchanged" {
-  rib_eq left = "pre" right = "post" where not prefix = $changed_prefix
+  rib_eq left = "pre" right = "post" where not { prefix = $changed_prefix }
 }
 ```
 

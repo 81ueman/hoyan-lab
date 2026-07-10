@@ -15,5 +15,5 @@ scenario "normal" {
 }
 
 intent "unrelated-routes-unchanged" {
-  rib_eq left = "pre" right = "post" where not prefix = $changed_prefix
+  rib_eq left = "pre" right = "post" where not { prefix = $changed_prefix }
 }

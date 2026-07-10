@@ -20,7 +20,7 @@ scenario "post" {
 }
 
 intent "unrelated-routes-unchanged" {
-  rib_eq left = "pre" right = "post" where not prefix = $changed_prefix
+  rib_eq left = "pre" right = "post" where not { prefix = $changed_prefix }
 }
 
 intent "changed-prefix-has-routes-on-each-edge" {
