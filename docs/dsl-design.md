@@ -3,7 +3,7 @@
 ## 目標
 
 - YAML の深いネスト（`rcl` → `guard` → `where` / `intent`）を平坦化
-- 自然言語に近いキーワード（`when`、`for`、`rib`、`packet`）
+- 自然言語に近いキーワード（`when`、`forall`、`rib`、`packet`）
 - 変数参照を `${var}` → `$var` に短縮
 - 既存の `intent.Document` AST にコンパイルし、評価エンジンは変更ゼロ
 - 手書き再帰下降パーサーで実装可能な文法
@@ -67,7 +67,7 @@ scenario "one-core-link-failure" {
 intent "service-prefix-visible-on-edges" {
   scenario = "normal"
 
-  for edge in $edges {
+  forall edge in $edges {
     rib where device = $edge, prefix = $changed_prefix {
       count() >= 1
     }

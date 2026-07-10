@@ -1,8 +1,8 @@
 // Package intent provides the intent DSL expansion engine.
 //
-// Expand resolves ${var} variable references using document-level Vars
-// and forall variable bindings, then expands forall clauses into their
-// cartesian product of concrete intents.
+// Expand resolves ${var} variable references using document-level Vars.
+// Forall expansion now happens at parse time in the intentdsl parser;
+// at this stage only variable substitution is performed.
 package intent
 
 import (
