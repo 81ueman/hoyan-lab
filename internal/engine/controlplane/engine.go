@@ -273,7 +273,6 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 				routes[i].BaseCond = failure.And(routes[i].BaseCond, notAgg)
 				routes[i].Condition = failure.And(routes[i].Condition, notAgg)
 			}
-			e.rib[nodeID][vrfNorm][pfx] = routes
 		}
 	}
 	return out
