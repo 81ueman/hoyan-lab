@@ -119,7 +119,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 
 	firstProblem := solver.SymbolicFailureProblem{
 		Elements:    elements,
-		MaxFailures: -1,
+		MaxFailures: len(elements),
 		Goal:        expr,
 	}
 
@@ -174,7 +174,7 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 	// Phase 7: Solve F ∧ blocking to find a different routing outcome.
 	secondProblem := solver.SymbolicFailureProblem{
 		Elements:    elements,
-		MaxFailures: -1,
+		MaxFailures: len(elements),
 		Goal:        symbolic.And(expr, blockExpr),
 	}
 
@@ -250,24 +250,6 @@ func (g *Graph) DetectRacing(prefix model.Prefix) (*RacingResult, error) {
 		}
 
 		result.SatisfiableCount = satisfiableCount
-		if !racing {
-			// Even if no global racing, still report per-router satisfiability.
-			count := 0
-			for _, cond := range conds {
-				if cond == nil || cond.Key() == failure.False().Key() {
-					continue
-				}
-				// Check satisfiability independently
-				evalCtx := failure.Context{
-					Failures:    failure.SetFromElements(answer1.Failures),
-					LinksByName: g.topoIndex.LinksByName,
-				}
-				if cond.Eval(evalCtx) {
-					count++
-				}
-			}
-			result.SatisfiableCount = count
-		}
 		routerResults = append(routerResults, result)
 	}
 
