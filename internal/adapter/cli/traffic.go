@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 
@@ -72,6 +73,18 @@ func parseECMPMode(raw string) (trafficengine.ECMPMode, error) {
 	}
 }
 
+// totalBytesForSample returns the effective byte count after applying the
+// sample rate. A rate of 0.5 means simulate 50% of the traffic.
+func totalBytesForSample(base uint64, rate float64) uint64 {
+	if rate >= 1.0 {
+		return base
+	}
+	if rate <= 0.0 {
+		return 0
+	}
+	return uint64(float64(base) * rate)
+}
+
 // runSingleSnapshot runs a single traffic simulation using a topology file.
 func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
@@ -91,15 +104,16 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	packetClasses := derivePacketClasses(topo.Nodes)
 
 	allResults := make(map[string]map[string]uint64)
+	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
 
 	// Parallel mode: simulate all classes concurrently in one call
 	if opts.workers > 1 && len(packetClasses) > 1 {
 		ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
 		for _, pc := range packetClasses {
 			ecList = append(ecList, trafficengine.FlowEquivalenceClass{
-				Key:    trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
-				DstSet: pc.DstSet,
-				TotalBytes: 1000000,
+				Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+				DstSet:     pc.DstSet,
+				TotalBytes: baseBytes,
 			})
 		}
 		linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
@@ -107,7 +121,7 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	} else {
 		// Serial mode: simulate each class individually
 		for _, pc := range packetClasses {
-			linkLoads := sim.SimulateClass(rootNode, pc, fibs, 1000000)
+			linkLoads := sim.SimulateClass(rootNode, pc, fibs, baseBytes)
 			allResults[fmt.Sprintf("class_%d", pc.ID)] = linkLoads
 		}
 	}
@@ -128,6 +142,7 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 }
 
 // runMultiSnapshot runs multi-snapshot traffic simulation.
+// Snapshot definitions are loaded from the JSON file specified by --snapshots.
 func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
@@ -138,17 +153,17 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 		return fmt.Errorf("topology has no nodes")
 	}
 	rootNode := topo.Nodes[0].Name
-	fibs := buildFIBFromTopoNodes(topo.Nodes)
-	packetClasses := derivePacketClasses(topo.Nodes)
 
-	// Build snapshot definitions from the topology FIB
-	snapshotDefs := []trafficengine.SnapshotDef{
-		{
-			Label:      "baseline",
-			FIBs:       fibs,
-			TotalBytes: 1000000,
-		},
+	// Load snapshot definitions from JSON file
+	snapshotDefs, err := loadSnapshotDefs(opts.snapshotsPath)
+	if err != nil {
+		return fmt.Errorf("loading snapshots from %q: %w", opts.snapshotsPath, err)
 	}
+	if len(snapshotDefs) == 0 {
+		return fmt.Errorf("no snapshot definitions found in %q", opts.snapshotsPath)
+	}
+
+	packetClasses := derivePacketClasses(topo.Nodes)
 
 	var result model.MultiSnapshotResult
 	for _, pc := range packetClasses {
@@ -160,6 +175,22 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(result)
+}
+
+// loadSnapshotDefs loads snapshot definitions from a JSON file.
+// The file should contain an array of SnapshotDef objects with label, fibs, and total_bytes.
+func loadSnapshotDefs(path string) ([]trafficengine.SnapshotDef, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap in a struct since JSON array top-level is valid
+	var defs []trafficengine.SnapshotDef
+	if err := json.Unmarshal(data, &defs); err != nil {
+		return nil, fmt.Errorf("decoding snapshot definitions: %w", err)
+	}
+	return defs, nil
 }
 
 // buildFIBFromTopoNodes creates a traffic FIB table from topology nodes.

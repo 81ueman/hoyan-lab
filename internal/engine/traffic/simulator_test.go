@@ -231,14 +231,14 @@ func TestSimulateParallel(t *testing.T) {
 			Key: FlowEquivalenceClassKey{
 				PrefixClassID: 1,
 			},
-			DstSet:    model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
 			TotalBytes: 1000,
 		},
 		{
 			Key: FlowEquivalenceClassKey{
 				PrefixClassID: 2,
 			},
-			DstSet:    model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
 			TotalBytes: 2000,
 		},
 	}
@@ -309,8 +309,8 @@ func TestSimulateParallelZeroWorkers(t *testing.T) {
 
 	ecs := []FlowEquivalenceClass{
 		{
-			Key: FlowEquivalenceClassKey{PrefixClassID: 1},
-			DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			Key:        FlowEquivalenceClassKey{PrefixClassID: 1},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
 			TotalBytes: 500,
 		},
 	}

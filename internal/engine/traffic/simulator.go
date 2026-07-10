@@ -228,9 +228,9 @@ func (ts *TrafficSimulator) SimulateParallel(
 
 // SnapshotDef defines a single snapshot for multi-snapshot simulation.
 type SnapshotDef struct {
-	Label      string
-	FIBs       FIBTable
-	TotalBytes uint64
+	Label      string   `json:"label" yaml:"label"`
+	FIBs       FIBTable `json:"fibs" yaml:"fibs"`
+	TotalBytes uint64   `json:"total_bytes" yaml:"total_bytes"`
 }
 
 // simulateFlow simulates a single flow through the network using hash-based ECMP.

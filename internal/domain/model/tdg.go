@@ -22,11 +22,11 @@ type TDGEdge struct {
 type TDG struct {
 	Nodes []*TDGNode
 	Edges []*TDGEdge
-	Root  *TDGNode  // ingress node for this class
+	Root  *TDGNode   // ingress node for this class
 	Sinks []*TDGNode // destination nodes (origination points)
 
-	nodeIndex  map[string]*TDGNode // name -> node for fast lookup
-	outEdges   map[string][]*TDGEdge // name -> outgoing edges
+	nodeIndex map[string]*TDGNode   // name -> node for fast lookup
+	outEdges  map[string][]*TDGEdge // name -> outgoing edges
 }
 
 // NewTDG creates an empty Traffic Distribution Graph.
