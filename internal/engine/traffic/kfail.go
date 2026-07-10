@@ -59,15 +59,6 @@ func (ka *KFailAnalyzer) Analyze(
 	cache := NewTDGCache()
 	ws := NewWhatIfSimulator(ka.config)
 
-	// Build list of packet classes from ECs
-	packetClasses := make([]model.PacketClass, len(ecs))
-	for i, ec := range ecs {
-		packetClasses[i] = model.PacketClass{
-			PrefixClassID: ec.Key.PrefixClassID,
-			DstSet:        ec.DstSet,
-		}
-	}
-
 	// Compute base (no-failure) link loads
 	baseResult := ws.Simulate(rootNode, failure.None(), ecs, cache, fibs)
 	if baseResult == nil {

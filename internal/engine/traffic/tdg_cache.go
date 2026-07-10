@@ -7,11 +7,9 @@ import (
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
 
-// cachedTDG stores a built TDG along with its key metadata.
+// cachedTDG stores a built TDG.
 type cachedTDG struct {
-	tdg     *model.TDG
-	ingress string
-	classID int
+	tdg *model.TDG
 }
 
 // TDGCache caches TDGs keyed by ingress node and packet class.
@@ -44,9 +42,7 @@ func (c *TDGCache) GetOrBuild(ingress string, pc model.PacketClass, fibs FIBTabl
 
 	tdg := BuildTDG(ingress, pc, fibs)
 	c.entries[key] = &cachedTDG{
-		tdg:     tdg,
-		ingress: ingress,
-		classID: int(pc.PrefixClassID),
+		tdg: tdg,
 	}
 	return tdg
 }
