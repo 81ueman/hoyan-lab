@@ -1,42 +1,25 @@
 package model
 
-import "net/netip"
-
-// Flow is a 5-tuple representing a single traffic flow.
-type Flow struct {
-	SrcIP    netip.Addr
-	DstIP    netip.Addr
-	Protocol string // "tcp", "udp", "icmp"
-	SrcPort  int
-	DstPort  int
-}
-
-// LocatedFlow is a flow with network ingress point and traffic volume.
-type LocatedFlow struct {
-	Flow        Flow
-	IngressNode string
-	IngressIntf string
-	Bytes       uint64
-}
-
-// FlowEquivalenceClass groups flows with identical forwarding behavior.
-type FlowEquivalenceClass struct {
-	ID          int
-	PacketClass PacketClass // reuse existing
-	IngressNode string
-	IngressIntf string
-	TotalBytes  uint64
-	FlowCount   int
-}
-
-// LinkLoad represents traffic load on a single link.
-type LinkLoad struct {
-	LinkName string
-	Bytes    uint64
-	Capacity uint64 // bps
-}
-
-// TrafficResult is the output of a traffic simulation run.
+// TrafficResult holds the traffic simulation result for one snapshot.
 type TrafficResult struct {
-	LinkLoads map[string]LinkLoad
+	// Label identifies this snapshot (e.g., "baseline", "after-change").
+	Label string `json:"label,omitempty" yaml:"label,omitempty"`
+	// LinkLoads maps link name -> bytes carried.
+	LinkLoads map[string]uint64 `json:"link_loads" yaml:"link_loads"`
+}
+
+// LinkLoadDiff represents the change in load on a single link between
+// two consecutive snapshots.
+type LinkLoadDiff struct {
+	LinkName  string  `json:"link_name" yaml:"link_name"`
+	Before    uint64  `json:"before" yaml:"before"`
+	After     uint64  `json:"after" yaml:"after"`
+	ChangePct float64 `json:"change_pct" yaml:"change_pct"`
+}
+
+// MultiSnapshotResult holds results from simulating multiple traffic snapshots
+// against the same topology.
+type MultiSnapshotResult struct {
+	Snapshots []TrafficResult `json:"snapshots" yaml:"snapshots"`
+	Diffs     []LinkLoadDiff  `json:"diffs" yaml:"diffs"`
 }

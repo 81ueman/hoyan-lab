@@ -1,237 +1,323 @@
-package traffic_test
+package traffic
 
 import (
+	"math"
+	"net/netip"
 	"testing"
 
-	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	domainroute "github.com/81ueman/hoyan-lab/internal/domain/routing/route"
-	"github.com/81ueman/hoyan-lab/internal/engine/dataplane"
-	"github.com/81ueman/hoyan-lab/internal/engine/traffic"
 )
 
-// TestTrafficSimulatorSimplePath tests simulation on a simple two-node topology.
-func TestTrafficSimulatorSimplePath(t *testing.T) {
-	// Topology: node-a -- link-ab -- node-b
-	// node-b originates prefix 10.4.0.0/16
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "node-a", Kind: model.KindFRR, ASN: 65001, Prefixes: []model.Prefix{}},
-			{Name: "node-b", Kind: model.KindFRR, ASN: 65002, Prefixes: model.MustPrefixes("10.4.0.0/16")},
+func TestTrafficSimulatorBasic(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
 		},
-		Links: []model.Link{
-			{Name: "link-ab", A: "node-a", B: "node-b", Cost: 10},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
 		},
-	}
-	idx, err := model.BuildTopologyIndex(topo)
-	if err != nil {
-		t.Fatal(err)
 	}
 
-	// Build a minimal FIB: node-a has a route to 10.4.0.0/16 via node-b
-	prefix := model.MustPrefix("10.4.0.0/16")
-	rib := domainroute.RIBTable{
-		"node-a": {
-			model.NetworkInstanceDefault: {prefix: {
-				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					ForwardingNextHop: domainroute.NextHop{Node: "node-b"},
-					SelectedCond:      failure.True(),
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
+	packetClass := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
+
+	linkLoads := sim.SimulateClass("router1", packetClass, fibs, 1000)
+	if len(linkLoads) != 2 {
+		t.Errorf("expected 2 links, got %d", len(linkLoads))
+	}
+	if linkLoads["router1->router2"] != 1000 {
+		t.Errorf("expected 1000 on router1->router2, got %d", linkLoads["router1->router2"])
+	}
+	if linkLoads["router2->router3"] != 1000 {
+		t.Errorf("expected 1000 on router2->router3, got %d", linkLoads["router2->router3"])
+	}
+}
+
+func TestTrafficSimulatorWithFlows(t *testing.T) {
+	sim := NewTrafficSimulator(SimulatorConfig{ECMPMode: ECMPModeHash})
+
+	fibs := FIBTable{
+		"router1": {
+			{
+				Prefix: model.MustPrefix("10.0.0.0/24").NetIP(),
+				NextHops: []TrafficNextHop{
+					{Node: "router2", Weight: 0.5},
+					{Node: "router3", Weight: 0.5},
 				},
-			}},
+			},
 		},
-		"node-b": {
-			model.NetworkInstanceDefault: {prefix: {
-				{
-					NLRI:         domainroute.NLRI{Prefix: prefix},
-					SourceKind:   model.RouteSourceConnected,
-					SelectedCond: failure.True(),
-					RouteSource:  model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-				},
-			}},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router3": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
 		},
 	}
-	fib := dataplane.FIBTable{}
-	eng := dataplane.NewEngine(idx, rib, fib)
-	eng.DeriveFIB()
 
-	sim := traffic.NewSimulator(eng, idx)
+	packetClass := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
 
-	ecs := []model.FlowEquivalenceClass{
+	flows := []Flow{
+		{SrcIP: netip.MustParseAddr("10.0.0.1"), DstIP: netip.MustParseAddr("10.0.0.2"), Protocol: "tcp", SrcPort: 10001, DstPort: 80},
+		{SrcIP: netip.MustParseAddr("10.0.0.3"), DstIP: netip.MustParseAddr("10.0.0.4"), Protocol: "udp", SrcPort: 53, DstPort: 443},
+	}
+
+	linkLoads := sim.SimulateClassWithFlows("router1", packetClass, fibs, flows)
+	if len(linkLoads) == 0 {
+		t.Errorf("expected non-zero link loads")
+	}
+	// Each flow traverses 2 links, carrying 1500 bytes per hop
+	// Total = flows * hops * 1500 = 2 * 2 * 1500
+	totalBytes := uint64(0)
+	for _, bytes := range linkLoads {
+		totalBytes += bytes
+	}
+	expectedTotal := uint64(len(flows)) * 2 * 1500
+	if totalBytes != expectedTotal {
+		t.Errorf("expected total bytes %d, got %d", expectedTotal, totalBytes)
+	}
+}
+
+func TestMultiSnapshotSameTopology(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	packetClass := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
+
+	// Same FIB for both snapshots
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
+		},
+	}
+
+	snapshots := []SnapshotDef{
+		{Label: "baseline", FIBs: fibs, TotalBytes: 1000},
+		{Label: "after-update", FIBs: fibs, TotalBytes: 1000},
+	}
+
+	result := sim.SimulateMultiSnapshot("router1", packetClass, snapshots, nil)
+	if len(result.Snapshots) != 2 {
+		t.Errorf("expected 2 snapshots, got %d", len(result.Snapshots))
+	}
+	if result.Snapshots[0].Label != "baseline" {
+		t.Errorf("expected first snapshot label 'baseline', got %s", result.Snapshots[0].Label)
+	}
+	if result.Snapshots[1].Label != "after-update" {
+		t.Errorf("expected second snapshot label 'after-update', got %s", result.Snapshots[1].Label)
+	}
+
+	// No diffs expected since they use the same FIB and traffic load
+	if len(result.Diffs) != 0 {
+		t.Errorf("expected 0 diffs for identical snapshots, got %d", len(result.Diffs))
+	}
+}
+
+func TestMultiSnapshotTopologyChange(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	packetClass := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
+
+	// Snapshot 1: router1 -> router2 -> router3
+	fibs1 := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
+		},
+	}
+
+	// Snapshot 2: router1 -> router4 -> router3 (rerouted)
+	fibs2 := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router4": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
+		},
+	}
+
+	snapshots := []SnapshotDef{
+		{Label: "baseline", FIBs: fibs1, TotalBytes: 1000},
+		{Label: "reroute", FIBs: fibs2, TotalBytes: 1000},
+	}
+
+	result := sim.SimulateMultiSnapshot("router1", packetClass, snapshots, nil)
+	if len(result.Snapshots) != 2 {
+		t.Errorf("expected 2 snapshots, got %d", len(result.Snapshots))
+	}
+
+	// Should have diffs for changed links
+	if len(result.Diffs) == 0 {
+		t.Errorf("expected non-zero diffs for changed topology")
+	}
+
+	// Check specific diffs
+	for _, diff := range result.Diffs {
+		switch diff.LinkName {
+		case "router1->router2":
+			if diff.Before != 1000 || diff.After != 0 {
+				t.Errorf("router1->router2: expected before=1000 after=0, got before=%d after=%d", diff.Before, diff.After)
+			}
+			if diff.ChangePct != -100 {
+				t.Errorf("router1->router2: expected -100%% change, got %f%%", diff.ChangePct)
+			}
+		case "router1->router4":
+			if diff.Before != 0 || diff.After != 1000 {
+				t.Errorf("router1->router4: expected before=0 after=1000, got before=%d after=%d", diff.Before, diff.After)
+			}
+			if !math.IsInf(diff.ChangePct, 1) {
+				t.Errorf("router1->router4: expected +Inf change, got %f", diff.ChangePct)
+			}
+		case "router2->router3":
+			if diff.Before != 1000 || diff.After != 0 {
+				t.Errorf("router2->router3: expected before=1000 after=0, got before=%d after=%d", diff.Before, diff.After)
+			}
+			if diff.ChangePct != -100 {
+				t.Errorf("router2->router3: expected -100%% change, got %f%%", diff.ChangePct)
+			}
+		case "router4->router3":
+			if diff.Before != 0 || diff.After != 1000 {
+				t.Errorf("router4->router3: expected before=0 after=1000, got before=%d after=%d", diff.Before, diff.After)
+			}
+			if !math.IsInf(diff.ChangePct, 1) {
+				t.Errorf("router4->router3: expected +Inf change, got %f", diff.ChangePct)
+			}
+		}
+	}
+}
+
+func TestComputeDiffsNoSnapshots(t *testing.T) {
+	diffs := ComputeDiffs(nil)
+	if len(diffs) != 0 {
+		t.Errorf("expected 0 diffs for nil, got %d", len(diffs))
+	}
+}
+
+func TestComputeDiffsSingleSnapshot(t *testing.T) {
+	diffs := ComputeDiffs([]model.TrafficResult{
+		{Label: "single", LinkLoads: map[string]uint64{"link1": 100}},
+	})
+	if len(diffs) != 0 {
+		t.Errorf("expected 0 diffs for single snapshot, got %d", len(diffs))
+	}
+}
+
+func TestSimulateParallel(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
+		},
+	}
+
+	ecs := []FlowEquivalenceClass{
 		{
-			ID:          0,
-			IngressNode: "node-a",
-			TotalBytes:  1000,
-			FlowCount:   1,
-			PacketClass: model.PacketClass{
-				PrefixClassID: 0,
-				Protocol:      "tcp",
-				DstPort:       model.ExactPort(443),
-				DstSet:        model.ExactPrefixSet{Prefix: prefix},
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 1,
+			},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 1000,
+		},
+		{
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 2,
+			},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 2000,
+		},
+	}
+
+	result := sim.SimulateParallel("router1", ecs, fibs, 2)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links")
+	}
+	// Total bytes: 1000 + 2000 = 3000 on each of 2 links
+	total := uint64(0)
+	for _, bytes := range result {
+		total += bytes
+	}
+	expectedTotal := uint64(3000 * 2) // 3000 per class * 2 links
+	if total != expectedTotal {
+		t.Errorf("expected total bytes %d, got %d", expectedTotal, total)
+	}
+}
+
+func TestSimulateParallelWithFlows(t *testing.T) {
+	sim := NewTrafficSimulator(SimulatorConfig{ECMPMode: ECMPModeHash})
+
+	fibs := FIBTable{
+		"router1": {
+			{
+				Prefix: model.MustPrefix("10.0.0.0/24").NetIP(),
+				NextHops: []TrafficNextHop{
+					{Node: "router2", Weight: 0.5},
+					{Node: "router3", Weight: 0.5},
+				},
+			},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router3": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+	}
+
+	ecs := []FlowEquivalenceClass{
+		{
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 1,
+			},
+			DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			Flows: []SampledFlow{
+				{Flow: Flow{SrcIP: netip.MustParseAddr("10.0.0.1"), DstIP: netip.MustParseAddr("10.0.0.100"), Protocol: "tcp", SrcPort: 80, DstPort: 80}, DSCP: 0},
+				{Flow: Flow{SrcIP: netip.MustParseAddr("10.0.0.2"), DstIP: netip.MustParseAddr("10.0.0.100"), Protocol: "tcp", SrcPort: 81, DstPort: 80}, DSCP: 0},
 			},
 		},
 	}
 
-	result, err := sim.Simulate(ecs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Should have link load for link-ab
-	ll, ok := result.LinkLoads["link-ab"]
-	if !ok {
-		t.Fatalf("expected link load for 'link-ab', got %v", result.LinkLoads)
-	}
-	if ll.Bytes != 1000 {
-		t.Errorf("link-ab bytes = %d, want 1000", ll.Bytes)
+	result := sim.SimulateParallel("router1", ecs, fibs, 2)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links for parallel flow simulation")
 	}
 }
 
-// TestTrafficSimulatorECMP tests simulation with ECMP via two intermediate routers.
-// Topology: node-a -- link-a-mid1 -- mid-1 -- link-mid1-b -- node-b
-//
-//	node-a -- link-a-mid2 -- mid-2 -- link-mid2-b -- node-b
-func TestTrafficSimulatorECMP(t *testing.T) {
-	topo := &model.Topology{
-		Nodes: []model.Node{
-			{Name: "node-a", Kind: model.DeviceKind("generic"), ASN: 65001},
-			{Name: "mid-1", Kind: model.DeviceKind("generic"), ASN: 65002},
-			{Name: "mid-2", Kind: model.DeviceKind("generic"), ASN: 65003},
-			{Name: "node-b", Kind: model.DeviceKind("generic"), ASN: 65004, Prefixes: model.MustPrefixes("10.4.0.0/16")},
+func TestSimulateParallelZeroWorkers(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
 		},
-		Links: []model.Link{
-			{Name: "link-a-mid1", A: "node-a", B: "mid-1", Cost: 10},
-			{Name: "link-a-mid2", A: "node-a", B: "mid-2", Cost: 10},
-			{Name: "link-mid1-b", A: "mid-1", B: "node-b", Cost: 10},
-			{Name: "link-mid2-b", A: "mid-2", B: "node-b", Cost: 10},
-		},
-	}
-	idx, err := model.BuildTopologyIndex(topo)
-	if err != nil {
-		t.Fatal(err)
 	}
 
-	// Build FIB with two equivalent routes (ECMP)
-	prefix := model.MustPrefix("10.4.0.0/16")
-	rib := domainroute.RIBTable{
-		"node-a": {
-			model.NetworkInstanceDefault: {prefix: {
-				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					Provenance:        domainroute.Provenance{OriginNode: "b", PathNodes: []string{"b", "mid-1", "node-a"}},
-					ForwardingNextHop: domainroute.NextHop{Node: "mid-1"},
-					SelectedCond:      failure.LinkVar("link-mid1-b"),
-					Attrs:             domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65002, 65004}},
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-				},
-				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					Provenance:        domainroute.Provenance{OriginNode: "b", PathNodes: []string{"b", "mid-2", "node-a"}},
-					ForwardingNextHop: domainroute.NextHop{Node: "mid-2"},
-					SelectedCond:      failure.LinkVar("link-mid2-b"),
-					Attrs:             domainroute.BGPAttributes{LocalPref: 100, ASPath: []uint32{65003, 65004}},
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-				},
-			}},
-		},
-		"mid-1": {
-			model.NetworkInstanceDefault: {prefix: {
-				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					ForwardingNextHop: domainroute.NextHop{Node: "node-b"},
-					SelectedCond:      failure.True(),
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-				},
-			}},
-		},
-		"mid-2": {
-			model.NetworkInstanceDefault: {prefix: {
-				{
-					NLRI:              domainroute.NLRI{Prefix: prefix},
-					ForwardingNextHop: domainroute.NextHop{Node: "node-b"},
-					SelectedCond:      failure.True(),
-					RouteSource:       model.ConfiguredRoute{NetworkInstance: model.NetworkInstanceDefault},
-				},
-			}},
-		},
-	}
-	fib := dataplane.FIBTable{}
-	eng := dataplane.NewEngine(idx, rib, fib)
-	eng.DeriveFIB()
-
-	// Verify ECMP is detected — the test MUST exercise ECMP behavior
-	entries := eng.SymbolicLookupFIB("node-a", "10.4.1.10")
-	if len(entries) == 0 {
-		t.Fatal("expected at least one FIB entry")
-	}
-	var ecmpNHS []dataplane.NextHopEntry
-	for _, c := range entries {
-		if len(c.Entry.NextHops) > 1 {
-			ecmpNHS = c.Entry.NextHops
-			break
-		}
-	}
-	if len(ecmpNHS) < 2 {
-		t.Fatalf("expected ECMP with 2+ next-hops, got %d: %+v", len(ecmpNHS), ecmpNHS)
-	}
-
-	sim := traffic.NewSimulator(eng, idx)
-
-	ecs := []model.FlowEquivalenceClass{
+	ecs := []FlowEquivalenceClass{
 		{
-			ID:          0,
-			IngressNode: "node-a",
-			TotalBytes:  2000,
-			FlowCount:   2,
-			PacketClass: model.PacketClass{
-				PrefixClassID: 0,
-				Protocol:      "tcp",
-				DstPort:       model.ExactPort(443),
-				DstSet:        model.ExactPrefixSet{Prefix: prefix},
-			},
+			Key:        FlowEquivalenceClassKey{PrefixClassID: 1},
+			DstSet:     model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 500,
 		},
 	}
 
-	result, err := sim.Simulate(ecs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Each ECMP path carries ~1000 bytes (2000 * 0.5).
-	// Path 1: node-a -> mid-1 -> node-b  (links: link-a-mid1, link-mid1-b)
-	// Path 2: node-a -> mid-2 -> node-b  (links: link-a-mid2, link-mid2-b)
-	// All 4 links should get ~1000 bytes each.
-	expectedWeight := 1000 // 2000 * 0.5
-	for _, name := range []string{"link-a-mid1", "link-mid1-b", "link-a-mid2", "link-mid2-b"} {
-		ll, ok := result.LinkLoads[name]
-		if !ok {
-			t.Errorf("missing link load for %q", name)
-			continue
-		}
-		if ll.Bytes != uint64(expectedWeight) {
-			t.Errorf("%s bytes = %d, want %d", name, ll.Bytes, expectedWeight)
-		}
-	}
-
-	// Sum of all link loads should equal total bytes * hop count
-	// Each of 4 links gets 1000 = 4000 total (2000 total * 2 hops per path)
-	var sum uint64
-	for _, ll := range result.LinkLoads {
-		sum += ll.Bytes
-	}
-	if sum != 4000 {
-		t.Errorf("sum of all link loads = %d, want 4000", sum)
-	}
-}
-
-func TestTrafficSimulatorEmptyInput(t *testing.T) {
-	sim := traffic.NewSimulator(nil, &model.TopologyIndex{})
-	result, err := sim.Simulate(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.LinkLoads) != 0 {
-		t.Errorf("expected empty link loads, got %v", result.LinkLoads)
+	// 0 workers should default to GOMAXPROCS
+	result := sim.SimulateParallel("router1", ecs, fibs, 0)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links")
 	}
 }

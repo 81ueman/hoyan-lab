@@ -4,164 +4,260 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
-	"sort"
+	"os"
+	"runtime"
+	"strings"
 
-	"github.com/81ueman/hoyan-lab/internal/adapter/flowinput"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
-	"github.com/81ueman/hoyan-lab/internal/engine/sim"
-	"github.com/81ueman/hoyan-lab/internal/engine/traffic"
+	trafficengine "github.com/81ueman/hoyan-lab/internal/engine/traffic"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
 	"github.com/spf13/cobra"
 )
 
 func NewTrafficCommand() *cobra.Command {
+	var opts trafficOptions
 	cmd := &cobra.Command{
-		Use:           "traffic",
-		Short:         "Traffic simulation and analysis commands",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-	}
-	cmd.AddCommand(NewTrafficSimulateCommand())
-	return cmd
-}
-
-func NewTrafficSimulateCommand() *cobra.Command {
-	var opts trafficSimulateOptions
-	cmd := &cobra.Command{
-		Use:           "simulate",
-		Short:         "Simulate traffic load on the lab topology",
-		SilenceUsage:  true,
-		SilenceErrors: true,
+		Use:          "traffic <topology-path>",
+		Short:        "Simulate traffic distribution through the network",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				return ExitError{Code: 2, Err: fmt.Errorf("unexpected arguments: %s", args)}
-			}
-			if err := opts.validate(); err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			if err := runTrafficSimulate(opts, cmd.OutOrStdout()); err != nil {
-				return ExitError{Code: 2, Err: err}
-			}
-			return nil
+			opts.topologyPath = args[0]
+			return runTraffic(cmd, opts, cmd.OutOrStdout())
 		},
 	}
-	addLabFlag(cmd, &opts.labPath)
-	cmd.Flags().StringVar(&opts.flowsPath, "flows", "", "path to JSON traffic flow file")
-	cmd.Flags().StringVar(&opts.format, "format", "table", "output format: table, json")
-	cmd.MarkFlagRequired("flows")
+	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
+	cmd.Flags().StringVar(&opts.snapshotsPath, "snapshots", "", "path to multi-snapshot JSON file")
+	cmd.Flags().IntVar(&opts.workers, "workers", runtime.GOMAXPROCS(0), "parallelism for simulation")
+	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
+	cmd.Flags().StringVar(&opts.outputPath, "output", "", "output file path (default: stdout)")
 	return cmd
 }
 
-type trafficSimulateOptions struct {
-	labPath   string
-	flowsPath string
-	format    string
+type trafficOptions struct {
+	topologyPath  string
+	ecmpMode      string
+	snapshotsPath string
+	workers       int
+	sampleRate    float64
+	outputPath    string
 }
 
-func (o trafficSimulateOptions) validate() error {
-	switch o.format {
-	case "table", "json":
-		return nil
+func runTraffic(cmd *cobra.Command, opts trafficOptions, out io.Writer) error {
+	ecmpMode, err := parseECMPMode(opts.ecmpMode)
+	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+
+	if opts.sampleRate < 0.0 || opts.sampleRate > 1.0 {
+		return ExitError{Code: 2, Err: fmt.Errorf("--sample-rate must be between 0.0 and 1.0, got %f", opts.sampleRate)}
+	}
+
+	simConfig := trafficengine.SimulatorConfig{ECMPMode: ecmpMode}
+	sim := trafficengine.NewTrafficSimulator(simConfig)
+
+	if opts.snapshotsPath != "" {
+		return runMultiSnapshot(sim, opts, out)
+	}
+	return runSingleSnapshot(sim, opts, out)
+}
+
+func parseECMPMode(raw string) (trafficengine.ECMPMode, error) {
+	switch strings.ToLower(raw) {
+	case "uniform":
+		return trafficengine.ECMPModeUniform, nil
+	case "hash":
+		return trafficengine.ECMPModeHash, nil
 	default:
-		return fmt.Errorf("--format must be \"table\" or \"json\", got %q", o.format)
+		return 0, fmt.Errorf("--ecmp-mode must be 'uniform' or 'hash', got %q", raw)
 	}
 }
 
-func runTrafficSimulate(opts trafficSimulateOptions, out io.Writer) error {
-	// 1. Resolve lab directory and topology path
-	labDir := opts.labPath
-	if labDir == "" {
-		labDir = defaultLabDir
-	} else {
-		var err error
-		labDir, err = resolveLabDir(labDir)
-		if err != nil {
-			return err
-		}
+// totalBytesForSample returns the effective byte count after applying the
+// sample rate. A rate of 0.5 means simulate 50% of the traffic.
+func totalBytesForSample(base uint64, rate float64) uint64 {
+	if rate >= 1.0 {
+		return base
 	}
-	topologyPath := filepath.Join(labDir, labTopologyFile)
+	if rate <= 0.0 {
+		return 0
+	}
+	return uint64(float64(base) * rate)
+}
 
-	// 2. Load topology and build graph
-	topo, err := topology.LoadTopology(topologyPath)
+// runSingleSnapshot runs a single traffic simulation using a topology file.
+func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
+	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
 		return fmt.Errorf("loading topology: %w", err)
 	}
-	g, err := sim.NewGraph(topo)
-	if err != nil {
-		return fmt.Errorf("building simulation graph: %w", err)
-	}
 
-	// 3. Load flows from JSON
-	flowsFile := opts.flowsPath
-	if !filepath.IsAbs(flowsFile) {
-		flowsFile = filepath.Join(labDir, flowsFile)
+	if len(topo.Nodes) == 0 {
+		return fmt.Errorf("topology has no nodes")
 	}
-	flows, err := flowinput.LoadJSONFile(flowsFile)
-	if err != nil {
-		return fmt.Errorf("loading flows: %w", err)
-	}
-	if len(flows) == 0 {
-		fmt.Fprintln(out, "no flows loaded")
-		return nil
-	}
+	rootNode := topo.Nodes[0].Name
 
-	// 4. Build prefix universe from topology
-	universe, err := model.NewPrefixUniverse(topo)
-	if err != nil {
-		return fmt.Errorf("building prefix universe: %w", err)
-	}
+	// Build FIB table from topology
+	fibs := buildFIBFromTopo(topo)
 
-	// 5. Classify flows into equivalence classes
-	classifier := traffic.NewFlowClassifier(universe)
-	ecs := classifier.Classify(flows)
+	// Derive packet classes from topology
+	packetClasses := derivePacketClasses(topo.Nodes)
 
-	// 6. Simulate traffic
-	eng := g.DataplaneEngine()
-	idx := g.TopoIndex()
-	simulator := traffic.NewSimulator(eng, idx)
-	result, err := simulator.Simulate(ecs)
-	if err != nil {
-		return fmt.Errorf("simulating traffic: %w", err)
-	}
+	allResults := make(map[string]map[string]uint64)
+	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
 
-	// 7. Output result
-	return outputTrafficResult(out, result, opts.format)
-}
-
-func outputTrafficResult(out io.Writer, result model.TrafficResult, format string) error {
-	switch format {
-	case "json":
-		enc := json.NewEncoder(out)
-		enc.SetEscapeHTML(false)
-		enc.SetIndent("", "  ")
-		return enc.Encode(result)
-	default:
-		return writeTrafficTable(out, result)
-	}
-}
-
-func writeTrafficTable(out io.Writer, result model.TrafficResult) error {
-	if len(result.LinkLoads) == 0 {
-		fmt.Fprintln(out, "no link loads")
-		return nil
-	}
-	// Sort by link name
-	names := make([]string, 0, len(result.LinkLoads))
-	for name := range result.LinkLoads {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	fmt.Fprintf(out, "%-40s %12s %12s %8s\n", "Link", "Bytes", "Capacity", "Util%")
-	fmt.Fprintln(out, "-------------------------------------------+------------+------------+--------")
-	for _, name := range names {
-		ll := result.LinkLoads[name]
-		utilPct := 0.0
-		if ll.Capacity > 0 {
-			utilPct = float64(ll.Bytes) * 8 / float64(ll.Capacity) * 100 // bytes to bits
+	// Parallel mode: simulate all classes concurrently in one call
+	if opts.workers > 1 && len(packetClasses) > 1 {
+		ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
+		for _, pc := range packetClasses {
+			ecList = append(ecList, trafficengine.FlowEquivalenceClass{
+				Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+				DstSet:     pc.DstSet,
+				TotalBytes: baseBytes,
+			})
 		}
-		fmt.Fprintf(out, "%-40s %12d %12d %7.2f%%\n", name, ll.Bytes, ll.Capacity, utilPct)
+		linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
+		allResults["all_classes"] = linkLoads
+	} else {
+		// Serial mode: simulate each class individually
+		for _, pc := range packetClasses {
+			linkLoads := sim.SimulateClass(rootNode, pc, fibs, baseBytes)
+			allResults[fmt.Sprintf("class_%d", pc.ID)] = linkLoads
+		}
 	}
-	return nil
+
+	output := map[string]interface{}{
+		"root_node": rootNode,
+		"results":   allResults,
+		"config": map[string]interface{}{
+			"ecmp_mode":   opts.ecmpMode,
+			"workers":     opts.workers,
+			"sample_rate": opts.sampleRate,
+		},
+	}
+
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(output)
+}
+
+// runMultiSnapshot runs multi-snapshot traffic simulation.
+// Snapshot definitions are loaded from the JSON file specified by --snapshots.
+func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
+	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
+	if err != nil {
+		return fmt.Errorf("loading topology: %w", err)
+	}
+
+	if len(topo.Nodes) == 0 {
+		return fmt.Errorf("topology has no nodes")
+	}
+	rootNode := topo.Nodes[0].Name
+
+	// Load snapshot definitions from JSON file
+	snapshotDefs, err := loadSnapshotDefs(opts.snapshotsPath)
+	if err != nil {
+		return fmt.Errorf("loading snapshots from %q: %w", opts.snapshotsPath, err)
+	}
+	if len(snapshotDefs) == 0 {
+		return fmt.Errorf("no snapshot definitions found in %q", opts.snapshotsPath)
+	}
+
+	packetClasses := derivePacketClasses(topo.Nodes)
+
+	var result model.MultiSnapshotResult
+	for _, pc := range packetClasses {
+		r := sim.SimulateMultiSnapshot(rootNode, pc, snapshotDefs, nil)
+		result.Snapshots = append(result.Snapshots, r.Snapshots...)
+		result.Diffs = append(result.Diffs, r.Diffs...)
+	}
+
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(result)
+}
+
+// loadSnapshotDefs loads snapshot definitions from a JSON file.
+// The file should contain an array of SnapshotDef objects with label, fibs, and total_bytes.
+func loadSnapshotDefs(path string) ([]trafficengine.SnapshotDef, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap in a struct since JSON array top-level is valid
+	var defs []trafficengine.SnapshotDef
+	if err := json.Unmarshal(data, &defs); err != nil {
+		return nil, fmt.Errorf("decoding snapshot definitions: %w", err)
+	}
+	return defs, nil
+}
+
+// buildFIBFromTopo creates a traffic FIB table from topology nodes and links.
+// Each prefix is matched against link neighbors: if an adjacent node also
+// owns the prefix, a next-hop edge is created to that neighbor.
+func buildFIBFromTopo(topo *model.Topology) trafficengine.FIBTable {
+	fibs := trafficengine.FIBTable{}
+
+	// Build prefix → owning nodes index
+	prefixNodes := map[string][]string{}
+	for _, node := range topo.Nodes {
+		for _, prefix := range node.Prefixes {
+			key := prefix.String()
+			prefixNodes[key] = append(prefixNodes[key], node.Name)
+		}
+	}
+
+	// Build adjacency from links
+	adj := map[string][]string{}
+	for _, link := range topo.Links {
+		adj[link.A] = append(adj[link.A], link.B)
+		adj[link.B] = append(adj[link.B], link.A)
+	}
+
+	for _, node := range topo.Nodes {
+		for _, prefix := range node.Prefixes {
+			key := prefix.String()
+			var nextHops []trafficengine.TrafficNextHop
+			for _, peer := range adj[node.Name] {
+				for _, pn := range prefixNodes[key] {
+					if pn == peer {
+						nextHops = append(nextHops, trafficengine.TrafficNextHop{
+							Node:   peer,
+							Weight: 1.0,
+						})
+					}
+				}
+			}
+			if len(nextHops) == 0 {
+				continue // sink — no adjacent node to forward to
+			}
+			fibs[node.Name] = append(fibs[node.Name], trafficengine.TrafficFIBEntry{
+				Prefix:   prefix.NetIP(),
+				NextHops: nextHops,
+			})
+		}
+	}
+	return fibs
+}
+
+// derivePacketClasses creates packet classes from topology node prefixes.
+func derivePacketClasses(nodes []model.Node) []model.PacketClass {
+	var classes []model.PacketClass
+	seen := map[string]bool{}
+	for _, node := range nodes {
+		for _, prefix := range node.Prefixes {
+			key := prefix.String()
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			classes = append(classes, model.PacketClass{
+				ID:            model.PacketClassID(len(classes)),
+				PrefixClassID: model.PrefixClassID(len(classes)),
+				DstSet:        model.ExactPrefixSet{Prefix: prefix},
+			})
+		}
+	}
+	return classes
 }
