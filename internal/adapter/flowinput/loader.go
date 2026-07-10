@@ -69,7 +69,7 @@ func LoadJSONFile(path string) ([]model.LocatedFlow, error) {
 	return LoadJSON(f)
 }
 
-// splitIngress splits an ingress identifier into node and interface.
+// SplitIngress splits an ingress identifier into node and interface.
 // Supports formats like "node" or "node:interface".
 func SplitIngress(ingress string) (node, intf string) {
 	if ingress == "" {
