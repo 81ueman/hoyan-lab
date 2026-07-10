@@ -31,7 +31,7 @@ func TestWhatIfSimulatorBasic(t *testing.T) {
 
 	// Simulate base case (no failure)
 	failSet := failure.None()
-	result := ws.Simulate(failSet, []FlowEquivalenceClass{ec}, cache, fibs)
+	result := ws.Simulate("router1", failSet, []FlowEquivalenceClass{ec}, cache, fibs)
 	if result == nil {
 		t.Fatal("Simulate returned nil")
 	}
@@ -72,7 +72,7 @@ func TestWhatIfSimulatorLinkFailure(t *testing.T) {
 
 	// Now simulate with a link failure
 	failSet := failure.Links("router2->router3")
-	result := ws.Simulate(failSet, []FlowEquivalenceClass{ec}, cache, fibs)
+	result := ws.Simulate("router1", failSet, []FlowEquivalenceClass{ec}, cache, fibs)
 	if result == nil {
 		t.Fatal("Simulate returned nil")
 	}
@@ -109,7 +109,7 @@ func TestWhatIfSimulatorNoBase(t *testing.T) {
 
 	// Simulate with a failure before building base - should build base automatically
 	failSet := failure.Links("nonexistent")
-	result := ws.Simulate(failSet, []FlowEquivalenceClass{ec}, cache, fibs)
+	result := ws.Simulate("router1", failSet, []FlowEquivalenceClass{ec}, cache, fibs)
 	if result == nil {
 		t.Fatal("Simulate returned nil")
 	}
@@ -154,7 +154,7 @@ func TestWhatIfSimulatorECMPLoadShift(t *testing.T) {
 
 	// Fail router2 - all traffic should shift to router3
 	failSet := failure.Nodes("router2")
-	result := ws.Simulate(failSet, []FlowEquivalenceClass{ec}, cache, fibs)
+	result := ws.Simulate("router1", failSet, []FlowEquivalenceClass{ec}, cache, fibs)
 
 	// router1->router3 should carry all 1000 bytes
 	ll, ok := result.LinkLoads["router1->router3"]
@@ -197,7 +197,7 @@ func TestWhatIfSimulatorFailureInResult(t *testing.T) {
 	}
 
 	failSet := failure.Links("router1->router2")
-	result := ws.Simulate(failSet, []FlowEquivalenceClass{ec}, cache, fibs)
+	result := ws.Simulate("router1", failSet, []FlowEquivalenceClass{ec}, cache, fibs)
 
 	// Verify the failure set is recorded in the result
 	if !result.Failure.Links["router1->router2"] {

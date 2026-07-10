@@ -43,29 +43,17 @@ func NewWhatIfSimulator(config SimulatorConfig) *WhatIfSimulator {
 // the base case. If no base case has been recorded, the current simulation
 // is stored as the base and returned with no diffs.
 //
+// rootNode is the ingress node for traffic simulation.
 // ecs is the list of flow equivalence classes to simulate.
 // cache is used to build and cache TDGs.
 // fibs is the FIB table to use for simulations (same for base and failure).
 func (ws *WhatIfSimulator) Simulate(
+	rootNode string,
 	failSet failure.Set,
 	ecs []FlowEquivalenceClass,
 	cache *TDGCache,
 	fibs FIBTable,
 ) *WhatIfResult {
-	// Determine the root node from the first EC's ingress or first FIB entry
-	var rootNode string
-	if len(ecs) > 0 {
-		// Try to find the root from the first EC's key
-		// The simulator doesn't store ingress in FlowEquivalenceClass,
-		// so we need to derive it from the FIB table or use the first node
-	}
-	if rootNode == "" {
-		// Use the first node in FIB table
-		for node := range fibs {
-			rootNode = node
-			break
-		}
-	}
 	if rootNode == "" {
 		return nil
 	}

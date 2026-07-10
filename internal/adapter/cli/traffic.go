@@ -396,11 +396,18 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 		})
 	}
 
+	// Get root node (first node in topology)
+	rootNode := ""
+	for node := range fibs {
+		rootNode = node
+		break
+	}
+
 	// First simulate base case to populate cache and get base loads
-	ws.Simulate(failure.None(), ecList, cache, fibs)
+	ws.Simulate(rootNode, failure.None(), ecList, cache, fibs)
 
 	// Then simulate with the specified failure
-	result := ws.Simulate(failSet, ecList, cache, fibs)
+	result := ws.Simulate(rootNode, failSet, ecList, cache, fibs)
 	if result == nil {
 		return fmt.Errorf("what-if simulation returned nil")
 	}
