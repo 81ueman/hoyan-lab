@@ -133,14 +133,7 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 
 	// Parallel mode: simulate all classes concurrently in one call
 	if opts.workers > 1 && len(packetClasses) > 1 {
-		ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
-		for _, pc := range packetClasses {
-			ecList = append(ecList, trafficengine.FlowEquivalenceClass{
-				Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
-				DstSet:     pc.DstSet,
-				TotalBytes: baseBytes,
-			})
-		}
+		ecList := buildECList(packetClasses, baseBytes)
 		linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
 		allResults["all_classes"] = linkLoads
 	} else {
@@ -305,6 +298,19 @@ func derivePacketClasses(nodes []model.Node) []model.PacketClass {
 	return classes
 }
 
+// buildECList converts packet classes into flow equivalence classes for simulation.
+func buildECList(classes []model.PacketClass, baseBytes uint64) []trafficengine.FlowEquivalenceClass {
+	ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(classes))
+	for _, pc := range classes {
+		ecList = append(ecList, trafficengine.FlowEquivalenceClass{
+			Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+			DstSet:     pc.DstSet,
+			TotalBytes: baseBytes,
+		})
+	}
+	return ecList
+}
+
 // ---------------------------------------------------------------------------
 // What-if subcommand
 // ---------------------------------------------------------------------------
@@ -345,7 +351,6 @@ Examples:
 	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
 	cmd.Flags().IntVar(&opts.workers, "workers", runtime.GOMAXPROCS(0), "parallelism for simulation")
-	_ = cmd.MarkFlagRequired("flows")
 	return cmd
 }
 
@@ -578,7 +583,6 @@ Examples:
 	cmd.Flags().StringVar(&opts.format, "format", "text", "output format: text or json")
 	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
-	_ = cmd.MarkFlagRequired("flows")
 	return cmd
 }
 
@@ -616,14 +620,7 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 
 	// Build EC list from packet classes
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
-	ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
-	for _, pc := range packetClasses {
-		ecList = append(ecList, trafficengine.FlowEquivalenceClass{
-			Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
-			DstSet:     pc.DstSet,
-			TotalBytes: baseBytes,
-		})
-	}
+	ecList := buildECList(packetClasses, baseBytes)
 
 	// Run k-failure analysis
 	analyzer := trafficengine.NewKFailAnalyzer(trafficengine.SimulatorConfig{ECMPMode: ecmpMode})
