@@ -38,7 +38,7 @@ intent "logical-not-excludes-changed-prefix" {
 
   rib where and {
     device_in = $edges
-    not prefix = $changed_prefix
+    not { prefix = $changed_prefix }
   } {
     count() >= 3
   }

@@ -1258,19 +1258,14 @@ func (p *parser) parseOneWhereEntry() (map[string]any, error) {
 
 	case tokKeywordNot:
 		p.next()
-		if p.tok.kind == tokLBrace {
-			p.next()
-			inner, err := p.parseOneWhereEntry()
-			if err != nil {
-				return nil, err
-			}
-			if err := p.expect(tokRBrace); err != nil {
-				return nil, err
-			}
-			return map[string]any{"not": inner}, nil
+		if err := p.expect(tokLBrace); err != nil {
+			return nil, err
 		}
-		inner, err := p.parseSingleWherePredicate()
+		inner, err := p.parseOneWhereEntry()
 		if err != nil {
+			return nil, err
+		}
+		if err := p.expect(tokRBrace); err != nil {
 			return nil, err
 		}
 		return map[string]any{"not": inner}, nil
@@ -1368,24 +1363,18 @@ func (p *parser) parseWherePredicates() (map[string]any, error) {
 
 		case tokKeywordNot:
 			p.next()
-			// not prefix = "..." or not { prefix = "..." }
-			if p.tok.kind == tokLBrace {
-				p.next()
-				inner, err := p.parseWherePredicates()
-				if err != nil {
-					return nil, err
-				}
-				if err := p.expect(tokRBrace); err != nil {
-					return nil, err
-				}
-				result["not"] = inner
-			} else {
-				inner, err := p.parseSingleWherePredicate()
-				if err != nil {
-					return nil, err
-				}
-				result["not"] = inner
+			// not { ... } — block form is now required
+			if err := p.expect(tokLBrace); err != nil {
+				return nil, err
 			}
+			inner, err := p.parseWherePredicates()
+			if err != nil {
+				return nil, err
+			}
+			if err := p.expect(tokRBrace); err != nil {
+				return nil, err
+			}
+			result["not"] = inner
 			// Don't return — parse more predicates if comma follows
 			continue
 
