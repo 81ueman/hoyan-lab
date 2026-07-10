@@ -386,7 +386,7 @@ intent "where-shapes" {
       protocol = "bgp"
       protocol = "static"
     }
-    imply {
+    if {
       prefix within "10.0.0.0/8"
       then selected = true
     }
