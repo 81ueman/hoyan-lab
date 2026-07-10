@@ -74,6 +74,8 @@ type FlowEquivalenceClass struct {
 	Flows []SampledFlow
 	// TotalBytes is the total traffic volume for this class.
 	TotalBytes uint64
+	// DstSet is the destination prefix set for FIB lookups.
+	DstSet model.PrefixSet
 }
 
 // SamplingConfig configures flow sampling behavior.

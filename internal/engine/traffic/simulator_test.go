@@ -213,3 +213,111 @@ func TestComputeDiffsSingleSnapshot(t *testing.T) {
 		t.Errorf("expected 0 diffs for single snapshot, got %d", len(diffs))
 	}
 }
+
+func TestSimulateParallel(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router3", Weight: 1.0}}},
+		},
+	}
+
+	ecs := []FlowEquivalenceClass{
+		{
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 1,
+			},
+			DstSet:    model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 1000,
+		},
+		{
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 2,
+			},
+			DstSet:    model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 2000,
+		},
+	}
+
+	result := sim.SimulateParallel("router1", ecs, fibs, 2)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links")
+	}
+	// Total bytes: 1000 + 2000 = 3000 on each of 2 links
+	total := uint64(0)
+	for _, bytes := range result {
+		total += bytes
+	}
+	expectedTotal := uint64(3000 * 2) // 3000 per class * 2 links
+	if total != expectedTotal {
+		t.Errorf("expected total bytes %d, got %d", expectedTotal, total)
+	}
+}
+
+func TestSimulateParallelWithFlows(t *testing.T) {
+	sim := NewTrafficSimulator(SimulatorConfig{ECMPMode: ECMPModeHash})
+
+	fibs := FIBTable{
+		"router1": {
+			{
+				Prefix: model.MustPrefix("10.0.0.0/24").NetIP(),
+				NextHops: []TrafficNextHop{
+					{Node: "router2", Weight: 0.5},
+					{Node: "router3", Weight: 0.5},
+				},
+			},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router3": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+	}
+
+	ecs := []FlowEquivalenceClass{
+		{
+			Key: FlowEquivalenceClassKey{
+				PrefixClassID: 1,
+			},
+			DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			Flows: []SampledFlow{
+				{Flow: Flow{SrcIP: netip.MustParseAddr("10.0.0.1"), DstIP: netip.MustParseAddr("10.0.0.100"), Protocol: "tcp", SrcPort: 80, DstPort: 80}, DSCP: 0},
+				{Flow: Flow{SrcIP: netip.MustParseAddr("10.0.0.2"), DstIP: netip.MustParseAddr("10.0.0.100"), Protocol: "tcp", SrcPort: 81, DstPort: 80}, DSCP: 0},
+			},
+		},
+	}
+
+	result := sim.SimulateParallel("router1", ecs, fibs, 2)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links for parallel flow simulation")
+	}
+}
+
+func TestSimulateParallelZeroWorkers(t *testing.T) {
+	sim := NewTrafficSimulator(DefaultSimulatorConfig())
+
+	fibs := FIBTable{
+		"router1": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router2", Weight: 1.0}}},
+		},
+	}
+
+	ecs := []FlowEquivalenceClass{
+		{
+			Key: FlowEquivalenceClassKey{PrefixClassID: 1},
+			DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+			TotalBytes: 500,
+		},
+	}
+
+	// 0 workers should default to GOMAXPROCS
+	result := sim.SimulateParallel("router1", ecs, fibs, 0)
+	if len(result) == 0 {
+		t.Errorf("expected non-zero links")
+	}
+}

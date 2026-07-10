@@ -2,7 +2,9 @@ package traffic
 
 import (
 	"math"
+	"runtime"
 	"sort"
+	"sync"
 
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 )
@@ -146,6 +148,70 @@ func ComputeDiffs(snapshots []model.TrafficResult) []model.LinkLoadDiff {
 	})
 
 	return diffs
+}
+
+// SimulateParallel simulates traffic for multiple equivalence classes in parallel.
+// Each EC is independently simulated on its own goroutine, bounded by workers.
+func (ts *TrafficSimulator) SimulateParallel(
+	rootNode string,
+	ecs []FlowEquivalenceClass,
+	fibs FIBTable,
+	workers int,
+) map[string]uint64 {
+	if workers <= 0 {
+		workers = runtime.GOMAXPROCS(0)
+	}
+
+	var mu sync.Mutex
+	linkBytes := map[string]uint64{}
+	ch := make(chan map[string]uint64, workers)
+	sem := make(chan struct{}, workers)
+
+	go func() {
+		var wg sync.WaitGroup
+		for _, ec := range ecs {
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(ec FlowEquivalenceClass) {
+				defer func() { <-sem }()
+				defer wg.Done()
+
+				pc := model.PacketClass{
+					PrefixClassID: ec.Key.PrefixClassID,
+					DstSet:        ec.DstSet,
+				}
+				// If we have flows in the EC, simulate with flows
+				if len(ec.Flows) > 0 && ts.config.ECMPMode == ECMPModeHash {
+					flows := make([]Flow, len(ec.Flows))
+					for i, sf := range ec.Flows {
+						flows[i] = sf.Flow
+					}
+					result := ts.SimulateClassWithFlows(rootNode, pc, fibs, flows)
+					ch <- result
+				} else {
+					// Use total bytes if available, otherwise fallback
+					bytes := ec.TotalBytes
+					if bytes == 0 {
+						bytes = uint64(len(ec.Flows)) * 1500
+					}
+					result := ts.SimulateClass(rootNode, pc, fibs, bytes)
+					ch <- result
+				}
+			}(ec)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	for result := range ch {
+		for link, bytes := range result {
+			mu.Lock()
+			linkBytes[link] += bytes
+			mu.Unlock()
+		}
+	}
+
+	return linkBytes
 }
 
 // SnapshotDef defines a single snapshot for multi-snapshot simulation.
