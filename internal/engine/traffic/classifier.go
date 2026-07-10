@@ -132,7 +132,13 @@ func (c *Classifier) ClassifyFlowsFromPacketClass(pc model.PacketClass, flows []
 			matching = append(matching, f)
 		}
 	}
-	return c.ClassifyFlows(matching)
+	classes := c.ClassifyFlows(matching)
+	// Propagate PrefixClassID from the packet class, since groupByKey()
+	// does not have access to it when classifying raw flows.
+	for i := range classes {
+		classes[i].Key.PrefixClassID = pc.PrefixClassID
+	}
+	return classes
 }
 
 // sampleFlows applies the configured sampling strategy.
@@ -178,8 +184,10 @@ func (c *Classifier) sampleTopN(flows []SampledFlow) []SampledFlow {
 	sorted := make([]SampledFlow, len(flows))
 	copy(sorted, flows)
 	sort.Slice(sorted, func(i, j int) bool {
-		// Sort by DstIP bytes as a proxy for volume
-		return sorted[i].DstIP.String() < sorted[j].DstIP.String()
+		// Sort by 5-tuple keys for deterministic ordering.
+		// In production, this would sort by actual byte volume
+		// when per-flow byte counters are available.
+		return flowSortKey(sorted[i]) < flowSortKey(sorted[j])
 	})
 	return sorted[:n]
 }
@@ -283,4 +291,11 @@ func portSetString(ps model.PortSet) string {
 		return "any"
 	}
 	return ps.String()
+}
+
+// flowSortKey returns a deterministic sort key for a sampled flow.
+// Used by top-N sampling when actual byte counts are unavailable.
+func flowSortKey(f SampledFlow) string {
+	return fmt.Sprintf("%s|%s|%s|%d|%d",
+		f.SrcIP.String(), f.DstIP.String(), f.Protocol, f.SrcPort, f.DstPort)
 }

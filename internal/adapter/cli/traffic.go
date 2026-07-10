@@ -90,31 +90,26 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	// Derive packet classes from topology
 	packetClasses := derivePacketClasses(topo.Nodes)
 
-	classifier := trafficengine.NewClassifier(trafficengine.SamplingConfig{
-		Rate:     opts.sampleRate,
-		Strategy: trafficengine.SamplingRandom,
-	})
-
 	allResults := make(map[string]map[string]uint64)
-	for _, pc := range packetClasses {
-		// Classify flows for this packet class
-		ecs := classifier.ClassifyFlowsFromPacketClass(pc, nil)
-		_ = ecs
 
-		var linkLoads map[string]uint64
-		if opts.workers > 1 && len(packetClasses) > 1 {
-			ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
-			for _, pc2 := range packetClasses {
-				ecList = append(ecList, trafficengine.FlowEquivalenceClass{
-					Key:    trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc2, trafficengine.DSCPDefault),
-					DstSet: pc2.DstSet,
-				})
-			}
-			linkLoads = sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
-		} else {
-			linkLoads = sim.SimulateClass(rootNode, pc, fibs, 1000000)
+	// Parallel mode: simulate all classes concurrently in one call
+	if opts.workers > 1 && len(packetClasses) > 1 {
+		ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
+		for _, pc := range packetClasses {
+			ecList = append(ecList, trafficengine.FlowEquivalenceClass{
+				Key:    trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+				DstSet: pc.DstSet,
+				TotalBytes: 1000000,
+			})
 		}
-		allResults[fmt.Sprintf("class_%d", pc.ID)] = linkLoads
+		linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
+		allResults["all_classes"] = linkLoads
+	} else {
+		// Serial mode: simulate each class individually
+		for _, pc := range packetClasses {
+			linkLoads := sim.SimulateClass(rootNode, pc, fibs, 1000000)
+			allResults[fmt.Sprintf("class_%d", pc.ID)] = linkLoads
+		}
 	}
 
 	output := map[string]interface{}{
@@ -155,15 +150,8 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 		},
 	}
 
-	classifier := trafficengine.NewClassifier(trafficengine.SamplingConfig{
-		Rate:     opts.sampleRate,
-		Strategy: trafficengine.SamplingRandom,
-	})
-
 	var result model.MultiSnapshotResult
 	for _, pc := range packetClasses {
-		ecs := classifier.ClassifyFlowsFromPacketClass(pc, nil)
-		_ = ecs
 		r := sim.SimulateMultiSnapshot(rootNode, pc, snapshotDefs, nil)
 		result.Snapshots = append(result.Snapshots, r.Snapshots...)
 		result.Diffs = append(result.Diffs, r.Diffs...)
