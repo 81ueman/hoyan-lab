@@ -30,11 +30,12 @@ type FailureSearchOptions = failure.SearchOptions
 type Cond = failure.Cond
 
 type Graph struct {
-	topo      *model.Topology
-	topoIndex *model.TopologyIndex
-	rib       domainroute.RIBTable
-	fib       dataplane.FIBTable
-	solver    solver.Backend
+	topo        *model.Topology
+	topoIndex   *model.TopologyIndex
+	rib         domainroute.RIBTable
+	fib         dataplane.FIBTable
+	solver      solver.Backend
+	maxFailures int // -1 disables pruning
 }
 
 type GraphOption func(*Graph)
@@ -42,6 +43,16 @@ type GraphOption func(*Graph)
 func WithSolverBackend(backend solver.Backend) GraphOption {
 	return func(g *Graph) {
 		g.solver = backend
+	}
+}
+
+// WithMaxFailures enables topology condition pruning during graph construction.
+// When maxFailures is >= 0, routes with impossible conditions or more than
+// maxFailures negated link variables will not be propagated further during
+// BGP simulation. A negative value disables pruning (default).
+func WithMaxFailures(maxFailures int) GraphOption {
+	return func(g *Graph) {
+		g.maxFailures = maxFailures
 	}
 }
 
@@ -80,17 +91,22 @@ func NewGraph(topo *model.Topology, opts ...GraphOption) (*Graph, error) {
 		return nil, err
 	}
 	g := &Graph{
-		topo:      topo,
-		topoIndex: idx,
-		rib:       domainroute.RIBTable{},
-		fib:       dataplane.FIBTable{},
+		topo:        topo,
+		topoIndex:   idx,
+		rib:         domainroute.RIBTable{},
+		fib:         dataplane.FIBTable{},
+		maxFailures: -1,
 	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(g)
 		}
 	}
-	if err := controlplane.NewEngine(idx, g.rib).Simulate(); err != nil {
+	var engineOpts []controlplane.EngineOption
+	if g.maxFailures >= 0 {
+		engineOpts = append(engineOpts, controlplane.WithMaxFailures(g.maxFailures))
+	}
+	if err := controlplane.NewEngine(idx, g.rib, engineOpts...).Simulate(); err != nil {
 		return nil, err
 	}
 	dataplane.NewEngine(idx, g.rib, g.fib).DeriveFIB()

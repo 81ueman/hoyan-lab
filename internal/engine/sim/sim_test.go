@@ -546,3 +546,57 @@ type concreteOnlyTarget struct{}
 func (concreteOnlyTarget) Reachable(g *Graph, from string, failures FailureSet) bool {
 	return false
 }
+
+func TestGraphWithMaxFailuresOption(t *testing.T) {
+	g, err := NewGraph(
+		minimalPruneTopo(),
+		WithMaxFailures(1),
+		WithSolverBackend(enumerate.Backend{}),
+	)
+	if err != nil {
+		t.Fatalf("NewGraph with WithMaxFailures failed: %v", err)
+	}
+	if g == nil {
+		t.Fatal("NewGraph returned nil")
+	}
+	prefix := model.MustPrefix("10.0.0.0/24")
+	routes := g.RIB("router-b", prefix)
+	if len(routes) == 0 {
+		t.Fatalf("expected routes on router-b for prefix %s", prefix)
+	}
+}
+
+func TestGraphWithMaxFailuresNegative(t *testing.T) {
+	g, err := NewGraph(
+		minimalPruneTopo(),
+		WithMaxFailures(-1),
+		WithSolverBackend(enumerate.Backend{}),
+	)
+	if err != nil {
+		t.Fatalf("NewGraph with WithMaxFailures(-1) failed: %v", err)
+	}
+	if g == nil {
+		t.Fatal("NewGraph returned nil")
+	}
+}
+
+func minimalPruneTopo() *model.Topology {
+	return &model.Topology{
+		Nodes: []model.Node{
+			{Name: "router-a", ASN: 65001, Kind: model.KindFRR,
+				Prefixes: []model.Prefix{model.MustPrefix("10.0.0.0/24")},
+				Neighbors: []model.BGPNeighbor{
+					{PeerNode: "router-b", RemoteAS: 65002, Activated: true},
+				},
+			},
+			{Name: "router-b", ASN: 65002, Kind: model.KindFRR,
+				Neighbors: []model.BGPNeighbor{
+					{PeerNode: "router-a", RemoteAS: 65001, Activated: true},
+				},
+			},
+		},
+		Links: []model.Link{
+			{Name: "a-b", A: "router-a", B: "router-b"},
+		},
+	}
+}
