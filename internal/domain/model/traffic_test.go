@@ -56,28 +56,6 @@ func TestLocatedFlowCreation(t *testing.T) {
 	}
 }
 
-func TestFlowEquivalenceClassCreation(t *testing.T) {
-	ec := FlowEquivalenceClass{
-		ID:          1,
-		IngressNode: "cust-bj",
-		IngressIntf: "eth0",
-		TotalBytes:  3000000,
-		FlowCount:   3,
-	}
-	if ec.ID != 1 {
-		t.Errorf("unexpected EC ID: %d", ec.ID)
-	}
-	if ec.IngressNode != "cust-bj" {
-		t.Errorf("unexpected ingress node: %s", ec.IngressNode)
-	}
-	if ec.TotalBytes != 3000000 {
-		t.Errorf("unexpected total bytes: %d", ec.TotalBytes)
-	}
-	if ec.FlowCount != 3 {
-		t.Errorf("unexpected flow count: %d", ec.FlowCount)
-	}
-}
-
 func TestLinkLoadCreation(t *testing.T) {
 	ll := LinkLoad{
 		LinkName: "cust-bj--core-bj-1",

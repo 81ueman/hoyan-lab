@@ -19,15 +19,6 @@ type LocatedFlow struct {
 	Bytes       uint64
 }
 
-// FlowEquivalenceClass groups flows with the same forwarding behavior.
-type FlowEquivalenceClass struct {
-	ID          PacketClassID
-	IngressNode string
-	IngressIntf string
-	TotalBytes  uint64
-	FlowCount   int
-}
-
 // LinkLoad represents the load on a single link.
 type LinkLoad struct {
 	LinkName string

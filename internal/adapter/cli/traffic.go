@@ -394,14 +394,7 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 
 	// Build EC list from packet classes
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
-	ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
-	for _, pc := range packetClasses {
-		ecList = append(ecList, trafficengine.FlowEquivalenceClass{
-			Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
-			DstSet:     pc.DstSet,
-			TotalBytes: baseBytes,
-		})
-	}
+	ecList := buildECList(packetClasses, baseBytes)
 
 	// Get root node (first node in topology)
 	rootNode := ""
