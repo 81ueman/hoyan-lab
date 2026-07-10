@@ -1,0 +1,39 @@
+version = "hoyan/v1"
+
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+let changed_prefix = "10.4.0.0/16"
+
+snapshot "pre" {
+  lab = "labs/intent-change-before"
+}
+
+snapshot "post" {
+  lab = "labs/intent-change-after"
+}
+
+scenario "post" {
+  snapshot = "post"
+}
+
+intent "unrelated-routes-unchanged" {
+  scenario = "post"
+  diff "pre" "post" where not { prefix = $changed_prefix }
+}
+
+intent "changed-prefix-has-routes-on-each-edge" {
+  scenario = "post"
+
+  forall edge in $edges {
+    rib where device = $edge, prefix = $changed_prefix, selected = true {
+      count() >= 1
+    }
+  }
+}
+
+intent "changed-prefix-nexthop-diversity" {
+  scenario = "post"
+
+  rib where prefix = $changed_prefix, device_in = $edges, selected = true {
+    distCnt(nexthop) >= 1
+  }
+}

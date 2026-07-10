@@ -1,0 +1,28 @@
+version = "hoyan/v1"
+
+let edges = ["bj-edge1", "sh-edge1", "gz-edge1"]
+let prefixes = ["10.4.0.0/16", "10.5.0.0/16"]
+
+snapshot "current" {
+  lab = "labs/intent-change-before"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "all-edges-have-routes" {
+  scenario = "normal"
+
+  forall edge in $edges {
+    forall prefix in $prefixes {
+      rib where device = $edge, prefix = $prefix {
+        count() >= 1
+      }
+    }
+  }
+}
+
+intent "no-change-detected" {
+  diff "current" "current"
+}

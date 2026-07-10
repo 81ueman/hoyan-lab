@@ -1,0 +1,51 @@
+version = "hoyan/v1"
+
+snapshot "current" {
+  lab = "labs/ospf-vrf"
+}
+
+scenario "normal" {
+  snapshot = "current"
+}
+
+intent "tenant-a-has-ospf-routes" {
+  scenario = "normal"
+
+  rib where vrf = "tenant-a", protocol = "ospf" {
+    count() >= 1
+  }
+}
+
+intent "tenant-b-has-ospf-routes" {
+  scenario = "normal"
+
+  rib where vrf = "tenant-b", protocol = "ospf" {
+    count() >= 1
+  }
+}
+
+intent "vrf-isolation" {
+  scenario = "normal"
+
+  and {
+    rib where vrf = "tenant-a", prefix = "10.10.0.1/32" {
+      count() >= 1
+    }
+    rib where vrf = "tenant-b", prefix = "10.10.0.1/32" {
+      count() == 0
+    }
+  }
+}
+
+intent "tenant-b-service-isolated" {
+  scenario = "normal"
+
+  and {
+    rib where vrf = "tenant-b", prefix = "10.20.0.1/32" {
+      count() >= 1
+    }
+    rib where vrf = "tenant-a", prefix = "10.20.0.1/32" {
+      count() == 0
+    }
+  }
+}
