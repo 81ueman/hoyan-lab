@@ -255,6 +255,25 @@ func (e *Engine) aggregateRoutes(node model.Node) []domainroute.RIBEntry {
 			Condition:             cond,
 		}
 		out = append(out, entry.Normalize())
+
+		// Apply exclusive topology condition to more-specific routes.
+		// Each more-specific route i gets Ci ∧ ¬C_agg as its condition,
+		// making the aggregate and individuals mutually exclusive.
+		notAgg := failure.Not(cond)
+		vrfNorm := model.NormalizeNetworkInstance(string(route.NetworkInstance))
+		nodeID := model.NodeID(node.Name)
+		for _, pfxStr := range contributors {
+			pfx := model.MustPrefix(pfxStr)
+			routes := e.rib[nodeID][vrfNorm][pfx]
+			for i := range routes {
+				r := routes[i].Normalize()
+				if r.SourceKind == model.RouteSourceAggregate {
+					continue
+				}
+				routes[i].BaseCond = failure.And(routes[i].BaseCond, notAgg)
+				routes[i].Condition = failure.And(routes[i].Condition, notAgg)
+			}
+		}
 	}
 	return out
 }
@@ -293,7 +312,7 @@ func (e *Engine) aggregateContributorCondVRF(node string, vrf model.NetworkInsta
 		prefixes = append(prefixes, prefix)
 	}
 	sort.Strings(prefixes)
-	return failure.Or(contributors...), prefixes, true
+	return failure.And(contributors...), prefixes, true
 }
 
 func isMoreSpecificWithin(candidate, aggregate model.Prefix) bool {
