@@ -80,12 +80,12 @@ func TestVerifyPacketReachable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
-	// 2 forall intents × 3 customers = 6 expanded intents
-	if report.Summary.Total != 6 {
-		t.Fatalf("Summary.Total = %d, want 6", report.Summary.Total)
+	// 2 intents, each with forall expanded to And(3)
+	if report.Summary.Total != 2 {
+		t.Fatalf("Summary.Total = %d, want 2", report.Summary.Total)
 	}
-	if report.Summary.Passed != 6 {
-		t.Fatalf("Summary.Passed = %d, want 6", report.Summary.Passed)
+	if report.Summary.Passed != 2 {
+		t.Fatalf("Summary.Passed = %d, want 2", report.Summary.Passed)
 	}
 	if report.Summary.Failed != 0 {
 		t.Fatalf("Summary.Failed = %d, want 0", report.Summary.Failed)
@@ -103,12 +103,12 @@ func TestVerifyForall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
-	// 1 forall intent × 3 sources = 3 expanded intents
-	if report.Summary.Total != 3 {
-		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
+	// 1 intent with forall expanded to And(3)
+	if report.Summary.Total != 1 {
+		t.Fatalf("Summary.Total = %d, want 1", report.Summary.Total)
 	}
-	if report.Summary.Passed != 3 {
-		t.Fatalf("Summary.Passed = %d, want 3", report.Summary.Passed)
+	if report.Summary.Passed != 1 {
+		t.Fatalf("Summary.Passed = %d, want 1", report.Summary.Passed)
 	}
 	if report.Summary.Failed != 0 {
 		t.Fatalf("Summary.Failed = %d, want 0", report.Summary.Failed)
@@ -126,9 +126,9 @@ func TestVerifyRIBEq(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
-	// 4 intents: 1 rib_eq (no forall) + 1 forall(edge:3) + 1 rib_eval + 1 rib_eval = 6
-	if report.Summary.Total != 6 {
-		t.Fatalf("Summary.Total = %d, want 6", report.Summary.Total)
+	// 4 intents: forall expanded at parse time into And
+	if report.Summary.Total != 4 {
+		t.Fatalf("Summary.Total = %d, want 4", report.Summary.Total)
 	}
 	if report.Summary.Failed != 0 {
 		t.Fatalf("Summary.Failed = %d, want 0", report.Summary.Failed)
@@ -216,18 +216,13 @@ func TestVerifyPacketFailureScenario(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
-	// 1 forall intent × 3 customers = 3 expanded intents
+	// 1 intent with forall expanded to And(3)
 	// expect: false + max: 1 → HTTPS is NOT reachable under some single link failure → pass
-	if report.Summary.Total != 3 {
-		t.Fatalf("Summary.Total = %d, want 3", report.Summary.Total)
+	if report.Summary.Total != 1 {
+		t.Fatalf("Summary.Total = %d, want 1", report.Summary.Total)
 	}
-	if report.Summary.Passed != 3 {
-		for _, r := range report.Results {
-			if r.Status != "pass" {
-				t.Logf("Result %q Status = %q, Reason = %q", r.Name, r.Status, r.Actual.Reason)
-			}
-		}
-		t.Fatalf("Summary.Passed = %d, want 3 (expect: false + max: 1 should pass when failure breaks reachability)", report.Summary.Passed)
+	if report.Summary.Passed != 1 {
+		t.Fatalf("Summary.Passed = %d, want 1 (expect: false + max: 1 should pass when failure breaks reachability)", report.Summary.Passed)
 	}
 }
 
@@ -237,36 +232,46 @@ func TestVerifyRIBFibBasic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Verify() error: %v", err)
 	}
-	// 2 forall intents × 3 edges = 6 expanded intents
-	if report.Summary.Total != 6 {
-		t.Fatalf("Summary.Total = %d, want 6", report.Summary.Total)
+	// 2 intents, each with forall expanded to And(3)
+	if report.Summary.Total != 2 {
+		t.Fatalf("Summary.Total = %d, want 2", report.Summary.Total)
 	}
-	if report.Summary.Passed != 6 {
-		t.Fatalf("Summary.Passed = %d, want 6", report.Summary.Passed)
+	if report.Summary.Passed != 2 {
+		t.Fatalf("Summary.Passed = %d, want 2", report.Summary.Passed)
 	}
 }
 
-func TestExpandDocumentForallCartesianProduct(t *testing.T) {
+func TestParseForallCartesianProduct(t *testing.T) {
 	doc := loadTestDoc(t, "testdata/intentdsl/forall-cartesian.hoyan")
 	expanded, err := Expand(doc)
 	if err != nil {
 		t.Fatalf("Expand() error: %v", err)
 	}
-	if len(expanded.Intents) != 4 {
-		t.Fatalf("len(expanded.Intents) = %d, want 4", len(expanded.Intents))
+	// No doc-level expansion — RCL forall is expanded at parse time
+	if len(expanded.Intents) != 1 {
+		t.Fatalf("len(expanded.Intents) = %d, want 1", len(expanded.Intents))
 	}
+	rcl := expanded.Intents[0].RCL
+	if rcl == nil || len(rcl.And) != 4 {
+		t.Fatalf("expected And with 4 entries (2 devices x 2 prefixes), got %#v", rcl)
+	}
+	// Verify the cartesian product combinations
 	seen := map[string]bool{}
-	for _, in := range expanded.Intents {
-		seen[in.Name] = true
+	for _, expr := range rcl.And {
+		where := expr.RIBEval.Where
+		device, _ := where["device"].(string)
+		prefix, _ := where["prefix"].(string)
+		key := device + "/" + prefix
+		seen[key] = true
 	}
 	for _, want := range []string{
-		"cartesian-rib-check[device=bj-edge1,prefix=10.4.0.0/16]",
-		"cartesian-rib-check[device=bj-edge1,prefix=203.0.113.0/24]",
-		"cartesian-rib-check[device=sh-edge1,prefix=10.4.0.0/16]",
-		"cartesian-rib-check[device=sh-edge1,prefix=203.0.113.0/24]",
+		"bj-edge1/10.4.0.0/16",
+		"bj-edge1/203.0.113.0/24",
+		"sh-edge1/10.4.0.0/16",
+		"sh-edge1/203.0.113.0/24",
 	} {
 		if !seen[want] {
-			t.Fatalf("expanded names missing %q; got %#v", want, seen)
+			t.Fatalf("cartesian product missing %q; got %#v", want, seen)
 		}
 	}
 }

@@ -48,7 +48,7 @@ intent "edge2-sees-edge1-loopback-via-bgp" {
 intent "core-routers-have-ospf-to-loopbacks" {
   scenario = "normal"
 
-  for device in ["core1", "core2"] {
+  forall device in ["core1", "core2"] {
     and {
       when where protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1
@@ -64,7 +64,7 @@ intent "core-routers-have-ospf-to-loopbacks" {
 intent "cross-protocol-routes-for-edge1-loopback" {
   scenario = "normal"
 
-  for device in ["edge1", "core1", "core2", "edge2"] {
+  forall device in ["edge1", "core1", "core2", "edge2"] {
     and {
       when where protocol = "ospf", prefix = "10.255.1.1/32" {
         count() >= 1

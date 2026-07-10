@@ -25,10 +25,10 @@ intent "unrelated-routes-unchanged" {
 
 intent "changed-prefix-has-routes-on-each-edge" {
   scenario = "post"
-  forall edge in $edges
-
-  rib where device = $edge, prefix = $changed_prefix, selected = true {
-    count() >= 1
+  forall edge in $edges {
+    rib where device = $edge, prefix = $changed_prefix, selected = true {
+      count() >= 1
+    }
   }
 }
 

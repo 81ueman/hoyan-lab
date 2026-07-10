@@ -13,18 +13,18 @@ scenario "normal" {
 
 intent "service-prefix-visible-on-edges" {
   scenario = "normal"
-  forall edge in $edges
-
-  rib where device = $edge, prefix = $service_prefix {
-    count() >= 1
+  forall edge in $edges {
+    rib where device = $edge, prefix = $service_prefix {
+      count() >= 1
+    }
   }
 }
 
 intent "service-prefix-installed-on-edges" {
   scenario = "normal"
-  forall edge in $edges
-
-  rib where device = $edge, prefix = $service_prefix {
-    count() >= 1
+  forall edge in $edges {
+    rib where device = $edge, prefix = $service_prefix {
+      count() >= 1
+    }
   }
 }

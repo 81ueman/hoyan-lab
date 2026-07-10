@@ -14,7 +14,7 @@ scenario "normal" {
 intent "rcl-forall-var-ref" {
   scenario = "normal"
 
-  for edge in $edges {
+  forall edge in $edges {
     rib where device = $edge, prefix = $service_prefix {
       count() >= 1
     }

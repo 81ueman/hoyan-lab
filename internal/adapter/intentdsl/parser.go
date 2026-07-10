@@ -324,12 +324,6 @@ func (p *parser) parseIntentDecl() (intent.Intent, error) {
 			}
 			in.Scenario = p.tok.text
 			p.next()
-		case p.tok.kind == tokKeywordForall:
-			forall, err := p.parseDocLevelForall()
-			if err != nil {
-				return in, err
-			}
-			in.Forall = forall
 		default:
 			// It's the RCL expression. IntentBody allows exactly one top-level RCL expression.
 			if in.RCL != nil {
@@ -350,44 +344,12 @@ func (p *parser) parseIntentDecl() (intent.Intent, error) {
 	return in, nil
 }
 
-// parseDocLevelForall parses the document-level forall (key=value pairs).
-// e.g.: forall src in $customers
-func (p *parser) parseDocLevelForall() (map[string]any, error) {
-	p.next() // consume 'forall'
-	bindings := map[string]any{}
-
-	for {
-		if p.tok.kind != tokIdent {
-			return nil, p.errorf("expected variable name after 'forall', got %s (%q)", p.tok.kind, p.tok.text)
-		}
-		varName := p.tok.text
-		p.next()
-
-		if err := p.expect(tokKeywordIn); err != nil {
-			return nil, err
-		}
-
-		val, err := p.parseValue()
-		if err != nil {
-			return nil, err
-		}
-		bindings[varName] = val
-
-		if p.tok.kind != tokComma {
-			break
-		}
-		p.next()
-	}
-
-	return bindings, nil
-}
-
 // parseRCLExpr parses an RCL-level expression.
 func (p *parser) parseRCLExpr() (*intent.RCLExpr, error) {
 	switch p.tok.kind {
 	case tokKeywordWhen:
 		return p.parseGuard()
-	case tokKeywordFor:
+	case tokKeywordForall:
 		return p.parseForall()
 	case tokKeywordRib:
 		return p.parseRibEval()
@@ -444,28 +406,44 @@ func (p *parser) parseGuard() (*intent.RCLExpr, error) {
 	}, nil
 }
 
-// parseForall parses: for var in array { expr }
+// parseForall parses: forall var in array { expr }
+// or: forall var1 in arr1, var2 in arr2 { expr } (cartesian product)
 func (p *parser) parseForall() (*intent.RCLExpr, error) {
-	p.next() // consume 'for'
+	p.next() // consume 'forall'
 
-	if p.tok.kind != tokIdent {
-		return nil, p.errorf("expected variable name after 'for', got %s (%q)", p.tok.kind, p.tok.text)
+	// Parse variable bindings (comma-separated)
+	type binding struct {
+		name string
+		vals []string
 	}
-	varName := p.tok.text
-	p.next()
+	var bindings []binding
 
-	if err := p.expect(tokKeywordIn); err != nil {
-		return nil, err
-	}
+	for {
+		if p.tok.kind != tokIdent {
+			return nil, p.errorf("expected variable name after 'forall', got %s (%q)", p.tok.kind, p.tok.text)
+		}
+		varName := p.tok.text
+		p.next()
 
-	val, err := p.parseValue()
-	if err != nil {
-		return nil, err
-	}
+		if err := p.expect(tokKeywordIn); err != nil {
+			return nil, err
+		}
 
-	vals, err := p.forallValues(val)
-	if err != nil {
-		return nil, err
+		val, err := p.parseValue()
+		if err != nil {
+			return nil, err
+		}
+
+		vals, err := p.forallValues(val)
+		if err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, binding{name: varName, vals: vals})
+
+		if p.tok.kind != tokComma {
+			break
+		}
+		p.next()
 	}
 
 	// Parse the block as the inner intent
@@ -475,22 +453,67 @@ func (p *parser) parseForall() (*intent.RCLExpr, error) {
 	}
 
 	inner := p.blockToRCLExpr(block)
-	if len(vals) > 0 && rclUsesVarRef(inner, varName) {
-		exprs := make([]intent.RCLExpr, 0, len(vals))
-		for _, v := range vals {
-			expr := substituteRCLVarRef(inner, varName, v)
+
+	if len(bindings) == 0 {
+		return nil, p.errorf("forall requires at least one variable binding")
+	}
+
+	// Compute the cartesian product and expand
+	// Start with one empty combination
+	combos := []map[string]string{{}}
+	for _, b := range bindings {
+		var next []map[string]string
+		for _, combo := range combos {
+			for _, v := range b.vals {
+				cp := make(map[string]string, len(combo)+1)
+				for k, val := range combo {
+					cp[k] = val
+				}
+				cp[b.name] = v
+				next = append(next, cp)
+			}
+		}
+		combos = next
+	}
+
+	// Check if any binding's variable is used in the inner expression
+	anyVarUsed := false
+	for _, b := range bindings {
+		if rclUsesVarRef(inner, b.name) {
+			anyVarUsed = true
+			break
+		}
+	}
+
+	if len(combos) > 0 && anyVarUsed {
+		exprs := make([]intent.RCLExpr, 0, len(combos))
+		for _, combo := range combos {
+			expr := *inner
+			for _, b := range bindings {
+				expr = substituteRCLVarRef(&expr, b.name, combo[b.name])
+			}
 			exprs = append(exprs, expr)
 		}
 		return &intent.RCLExpr{And: exprs}, nil
 	}
 
-	return &intent.RCLExpr{
-		Forall: &intent.ForallExpr{
-			Var:    varName,
-			In:     vals,
-			Intent: *inner,
-		},
-	}, nil
+	// For single binding, use ForallExpr
+	if len(bindings) == 1 {
+		return &intent.RCLExpr{
+			Forall: &intent.ForallExpr{
+				Var:    bindings[0].name,
+				In:     bindings[0].vals,
+				Intent: *inner,
+			},
+		}, nil
+	}
+
+	// Multiple bindings without var refs: still expand at parse time
+	exprs := make([]intent.RCLExpr, 0, len(combos))
+	for range combos {
+		exprs = append(exprs, *inner)
+	}
+	return &intent.RCLExpr{And: exprs}, nil
 }
 
 func (p *parser) forallValues(val any) ([]string, error) {

@@ -13,9 +13,9 @@ scenario "normal" {
 
 intent "customer-http-denied" {
   scenario = "normal"
-  forall src in $sources
-
-  rib where device = $src, prefix = $service_prefix {
-    count() >= 1
+  forall src in $sources {
+    rib where device = $src, prefix = $service_prefix {
+      count() >= 1
+    }
   }
 }

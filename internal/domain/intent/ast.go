@@ -30,10 +30,9 @@ type FailureConstraints struct {
 }
 
 type Intent struct {
-	Name     string         `yaml:"name" json:"name"`
-	Scenario string         `yaml:"scenario,omitempty" json:"scenario,omitempty"`
-	Forall   map[string]any `yaml:"forall,omitempty" json:"forall,omitempty"`
-	RCL      *RCLExpr       `yaml:"rcl" json:"rcl"`
+	Name     string   `yaml:"name" json:"name"`
+	Scenario string   `yaml:"scenario,omitempty" json:"scenario,omitempty"`
+	RCL      *RCLExpr `yaml:"rcl" json:"rcl"`
 	Group    map[string]any `yaml:"-" json:"group,omitempty"`
 }
 

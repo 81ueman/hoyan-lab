@@ -13,9 +13,9 @@ scenario "normal" {
 
 intent "cartesian-rib-check" {
   scenario = "normal"
-  forall device in $devices, prefix in $prefixes
-
-  rib where device = $device, prefix = $prefix {
-    count() >= 0
+  forall device in $devices, prefix in $prefixes {
+    rib where device = $device, prefix = $prefix {
+      count() >= 0
+    }
   }
 }

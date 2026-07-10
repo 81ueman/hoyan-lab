@@ -13,14 +13,14 @@ scenario "normal" {
 
 intent "customers-http-denied" {
   scenario = "normal"
-  forall src in $customers
-
-  packet from $src to $service_ip tcp/80 expect false
+  forall src in $customers {
+    packet from $src to $service_ip tcp/80 expect false
+  }
 }
 
 intent "customers-https-allowed" {
   scenario = "normal"
-  forall src in $customers
-
-  packet from $src to $service_ip tcp/443 expect true
+  forall src in $customers {
+    packet from $src to $service_ip tcp/443 expect true
+  }
 }
