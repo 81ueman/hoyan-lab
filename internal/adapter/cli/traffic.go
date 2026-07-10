@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"runtime"
 	"strings"
 
+	"github.com/81ueman/hoyan-lab/internal/domain/failure"
 	"github.com/81ueman/hoyan-lab/internal/domain/model"
 	trafficengine "github.com/81ueman/hoyan-lab/internal/engine/traffic"
 	"github.com/81ueman/hoyan-lab/internal/usecase/topology"
@@ -32,6 +34,9 @@ func NewTrafficCommand() *cobra.Command {
 	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
 	cmd.Flags().StringVar(&opts.outputPath, "output", "", "output file path (default: stdout)")
 	cmd.Flags().StringVar(&opts.bandwidthPath, "bandwidth", "", "path to bandwidth override JSON file")
+
+	// Register what-if subcommand
+	cmd.AddCommand(NewWhatIfCommand())
 	return cmd
 }
 
@@ -296,4 +301,229 @@ func derivePacketClasses(nodes []model.Node) []model.PacketClass {
 		}
 	}
 	return classes
+}
+
+// ---------------------------------------------------------------------------
+// What-if subcommand
+// ---------------------------------------------------------------------------
+
+type whatIfOptions struct {
+	topologyPath string
+	flowsPath    string
+	failLinks    []string
+	failNodes    []string
+	format       string
+	ecmpMode     string
+	sampleRate   float64
+	workers      int
+}
+
+func NewWhatIfCommand() *cobra.Command {
+	var opts whatIfOptions
+	cmd := &cobra.Command{
+		Use:   "what-if <topology-path>",
+		Short: "What-if failure analysis for traffic simulation",
+		Long: `Simulate traffic under link/node failures and compare with the base case.
+
+Examples:
+  hoyan traffic what-if labs/base-wan --flows flows.json --fail-link l2-core-bj
+  hoyan traffic what-if labs/base-wan --flows flows.json --fail-link l2-core-bj --fail-node core-hz --format table
+`,
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.topologyPath = args[0]
+			return runWhatIf(cmd, opts, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&opts.flowsPath, "flows", "", "path to flows JSON file")
+	cmd.Flags().StringArrayVar(&opts.failLinks, "fail-link", nil, "link name to fail (can be repeated)")
+	cmd.Flags().StringArrayVar(&opts.failNodes, "fail-node", nil, "node name to fail (can be repeated)")
+	cmd.Flags().StringVar(&opts.format, "format", "table", "output format: table or json")
+	cmd.Flags().StringVar(&opts.ecmpMode, "ecmp-mode", "uniform", "ECMP mode: uniform or hash")
+	cmd.Flags().Float64Var(&opts.sampleRate, "sample-rate", 1.0, "flow sampling rate (0.0-1.0)")
+	cmd.Flags().IntVar(&opts.workers, "workers", runtime.GOMAXPROCS(0), "parallelism for simulation")
+	_ = cmd.MarkFlagRequired("flows")
+	return cmd
+}
+
+func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
+	// Parse ECMP mode
+	ecmpMode, err := parseECMPMode(opts.ecmpMode)
+	if err != nil {
+		return ExitError{Code: 2, Err: err}
+	}
+
+	// Load topology
+	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
+	if err != nil {
+		return fmt.Errorf("loading topology: %w", err)
+	}
+	if len(topo.Nodes) == 0 {
+		return fmt.Errorf("topology has no nodes")
+	}
+
+	// Build FIB table from topology
+	fibs := buildFIBFromTopo(topo)
+
+	// Derive packet classes
+	packetClasses := derivePacketClasses(topo.Nodes)
+
+	// Build failure set: convert []string to []model.LinkID/NodeID
+	linkIDs := make([]model.LinkID, len(opts.failLinks))
+	for i, name := range opts.failLinks {
+		linkIDs[i] = model.LinkID(name)
+	}
+	nodeIDs := make([]model.NodeID, len(opts.failNodes))
+	for i, name := range opts.failNodes {
+		nodeIDs[i] = model.NodeID(name)
+	}
+	failSet := failure.NewSet(linkIDs, nodeIDs)
+
+	// Create cache and what-if simulator
+	cache := trafficengine.NewTDGCache()
+	simConfig := trafficengine.SimulatorConfig{ECMPMode: ecmpMode}
+	ws := trafficengine.NewWhatIfSimulator(simConfig)
+
+	// Build EC list from packet classes
+	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
+	ecList := make([]trafficengine.FlowEquivalenceClass, 0, len(packetClasses))
+	for _, pc := range packetClasses {
+		ecList = append(ecList, trafficengine.FlowEquivalenceClass{
+			Key:        trafficengine.FlowEquivalenceClassKeyFromPacketClass(pc, trafficengine.DSCPDefault),
+			DstSet:     pc.DstSet,
+			TotalBytes: baseBytes,
+		})
+	}
+
+	// First simulate base case to populate cache and get base loads
+	ws.Simulate(failure.None(), ecList, cache, fibs)
+
+	// Then simulate with the specified failure
+	result := ws.Simulate(failSet, ecList, cache, fibs)
+	if result == nil {
+		return fmt.Errorf("what-if simulation returned nil")
+	}
+
+	// Format output
+	switch opts.format {
+	case "json":
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	case "table":
+		return formatWhatIfTable(out, result)
+	default:
+		return fmt.Errorf("unsupported --format %q (use 'table' or 'json')", opts.format)
+	}
+}
+
+func formatWhatIfTable(out io.Writer, result *trafficengine.WhatIfResult) error {
+	// Print failure summary
+	fmt.Fprintf(out, "WHAT-IF ANALYSIS\n")
+	fmt.Fprintf(out, "%-20s %s\n", "Failures:", formatFailureSet(result.Failure))
+	fmt.Fprintln(out, "")
+
+	// Header
+	fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n", "Link", "Before", "After", "Delta", "Status")
+	fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n", "----", "------", "-----", "-----", "------")
+
+	// Diffs first
+	if len(result.Diffs) > 0 {
+		for _, diff := range result.Diffs {
+			status := formatStatus(diff)
+			fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
+				diff.LinkName,
+				formatBytes(diff.Before),
+				formatBytes(diff.After),
+				formatDelta(diff.Delta, diff.DeltaPct),
+				status)
+		}
+	}
+
+	// Also show links that exist in base but have no diff (unchanged)
+	if len(result.Diffs) > 0 {
+		unchanged := make(map[string]bool)
+		for link := range result.LinkLoads {
+			unchanged[link] = true
+		}
+		for _, diff := range result.Diffs {
+			delete(unchanged, diff.LinkName)
+		}
+
+		if len(unchanged) > 0 {
+			fmt.Fprintln(out, "")
+			for link := range unchanged {
+				ll := result.LinkLoads[link]
+				fmt.Fprintf(out, "%-25s %-12s %-12s %-12s %s\n",
+					link,
+					formatBytes(ll.Bytes),
+					formatBytes(ll.Bytes),
+					"0",
+					"")
+			}
+		}
+	}
+
+	return nil
+}
+
+func formatFailureSet(fs failure.Set) string {
+	parts := make([]string, 0, len(fs.Links)+len(fs.Nodes))
+	for link := range fs.Links {
+		parts = append(parts, fmt.Sprintf("link:%s down", string(link)))
+	}
+	for node := range fs.Nodes {
+		parts = append(parts, fmt.Sprintf("node:%s down", string(node)))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatBytes(b uint64) string {
+	switch {
+	case b >= 1_000_000_000:
+		return fmt.Sprintf("%.1f GB", float64(b)/1_000_000_000)
+	case b >= 1_000_000:
+		return fmt.Sprintf("%.1f MB", float64(b)/1_000_000)
+	case b >= 1_000:
+		return fmt.Sprintf("%.1f KB", float64(b)/1_000)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
+func formatDelta(delta int64, pct float64) string {
+	sign := "+"
+	if delta < 0 {
+		sign = ""
+	}
+	if pct == 0 {
+		return "0"
+	}
+	if math.IsInf(pct, 1) {
+		return fmt.Sprintf("%s∞", sign)
+	}
+	if math.IsInf(pct, -1) {
+		return "-∞"
+	}
+	return fmt.Sprintf("%s%d (%.0f%%)", sign, delta, pct)
+}
+
+func formatStatus(diff trafficengine.LinkLoadChange) string {
+	if diff.Delta > 0 && diff.DeltaPct > 50 {
+		return "⚠ OVERLOAD"
+	}
+	if diff.Delta < 0 && diff.DeltaPct < -50 {
+		return "↓ DRASTIC"
+	}
+	if diff.Delta > 0 {
+		return "↑ INCREASE"
+	}
+	if diff.Delta < 0 {
+		return "↓ DECREASE"
+	}
+	return ""
 }
