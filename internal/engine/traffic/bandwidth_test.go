@@ -12,7 +12,7 @@ func TestLinkBandwidthExplicit(t *testing.T) {
 		Bandwidth: 25_000_000_000, // 25 Gbps
 		Role:      "core",
 	}
-	bw := linkBandwidth(link, &model.Topology{})
+	bw := linkBandwidth(link)
 	if bw != 25_000_000_000 {
 		t.Errorf("expected 25 Gbps, got %d", bw)
 	}
@@ -37,7 +37,7 @@ func TestLinkBandwidthRoleDefault(t *testing.T) {
 				Name: "test-link",
 				Role: tt.role,
 			}
-			bw := linkBandwidth(link, &model.Topology{})
+			bw := linkBandwidth(link)
 			if bw != tt.want {
 				t.Errorf("linkBandwidth() = %d, want %d", bw, tt.want)
 			}
@@ -67,13 +67,13 @@ func TestBandwidthOverride(t *testing.T) {
 	}
 
 	// link with override should use explicit bandwidth
-	bw := linkBandwidth(topo.Links[0], topo)
+	bw := linkBandwidth(topo.Links[0])
 	if bw != 100_000_000_000 {
 		t.Errorf("linkBandwidth(link1) = %d, want 100 Gbps", bw)
 	}
 
 	// link without override should use role default
-	bw = linkBandwidth(topo.Links[1], topo)
+	bw = linkBandwidth(topo.Links[1])
 	if bw != 10_000_000_000 {
 		t.Errorf("linkBandwidth(link2) = %d, want 10 Gbps", bw)
 	}

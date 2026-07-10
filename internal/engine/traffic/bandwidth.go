@@ -6,7 +6,7 @@ import (
 
 // linkBandwidth returns the bandwidth for a link, using the explicit bandwidth
 // when set (non-zero), otherwise falling back to a role-based default.
-func linkBandwidth(link model.Link, topo *model.Topology) uint64 {
+func linkBandwidth(link model.Link) uint64 {
 	if link.Bandwidth > 0 {
 		return link.Bandwidth
 	}

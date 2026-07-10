@@ -1,7 +1,6 @@
 package traffic
 
 import (
-	"fmt"
 	"math"
 	"sort"
 
@@ -167,33 +166,10 @@ func (ka *KFailAnalyzer) Analyze(
 func linkBandwidthForName(topo *model.Topology, linkName string) uint64 {
 	for _, link := range topo.Links {
 		if link.Name == linkName {
-			return linkBandwidth(link, topo)
+			return linkBandwidth(link)
 		}
 	}
 	return 0
-}
-
-// String returns a human-readable representation of a KFailResult.
-func (r *KFailResult) String() string {
-	if len(r.Findings) == 0 {
-		return "No links exceed threshold"
-	}
-
-	out := fmt.Sprintf("Links exceeding threshold (k=%d findings):\n", len(r.Findings))
-	for _, f := range r.Findings {
-		failDesc := "none"
-		if len(f.Failures) > 0 {
-			parts := make([]string, len(f.Failures))
-			for i, elem := range f.Failures {
-				parts[i] = fmt.Sprintf("%s:%s", elem.Kind, elem.Name)
-			}
-			failDesc = fmt.Sprintf("k=%d [%s]", f.K, joinStrings(parts, ", "))
-		} else {
-			failDesc = fmt.Sprintf("k=%d (base overload)", f.K)
-		}
-		out += fmt.Sprintf("  %s: %.2f%% util - %s\n", f.LinkName, f.UtilizationPct, failDesc)
-	}
-	return out
 }
 
 func sortFindings(findings []KFailFinding) {
@@ -205,13 +181,4 @@ func sortFindings(findings []KFailFinding) {
 	})
 }
 
-func joinStrings(parts []string, sep string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += sep
-		}
-		out += p
-	}
-	return out
-}
+
