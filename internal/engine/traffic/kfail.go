@@ -12,7 +12,7 @@ import (
 // KFailFinding represents a k-failure finding: a link that exceeds the
 // utilization threshold with k additional failures.
 type KFailFinding struct {
-	LinkName      string
+	LinkName       string
 	UtilizationPct float64
 	K              int
 	Failures       []solver.FailureElement
@@ -180,5 +180,3 @@ func sortFindings(findings []KFailFinding) {
 		return findings[i].LinkName < findings[j].LinkName
 	})
 }
-
-

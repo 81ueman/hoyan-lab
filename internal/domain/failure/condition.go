@@ -230,6 +230,7 @@ func NegatedLinkCount(c Cond) int {
 //   - Or(x, Not(x), ...) → True (tautology)
 //   - And(Or(a, b), Not(a), Not(b)) → False (De Morgan)
 //   - Or(And(a, b), Not(a), Not(b)) → True (De Morgan)
+//
 // It recursively simplifies children and then applies these deeper checks.
 func SimplifyCond(c Cond) Cond {
 	c = normalizeCond(c)

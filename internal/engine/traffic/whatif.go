@@ -17,11 +17,11 @@ type WhatIfResult struct {
 
 // LinkLoadChange represents a change in link load between base and failure.
 type LinkLoadChange struct {
-	LinkName  string
-	Before    uint64
-	After     uint64
-	Delta     int64
-	DeltaPct  float64
+	LinkName string
+	Before   uint64
+	After    uint64
+	Delta    int64
+	DeltaPct float64
 }
 
 // WhatIfSimulator simulates traffic under failure conditions and compares

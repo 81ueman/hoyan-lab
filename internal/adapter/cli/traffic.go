@@ -43,14 +43,14 @@ func NewTrafficCommand() *cobra.Command {
 }
 
 type trafficOptions struct {
-	topologyPath   string
-	ecmpMode       string
-	snapshotsPath  string
-	workers        int
-	sampleRate     float64
-	outputPath     string
-	bandwidthPath  string
-	bandwidthData  trafficengine.BandwidthOverride
+	topologyPath  string
+	ecmpMode      string
+	snapshotsPath string
+	workers       int
+	sampleRate    float64
+	outputPath    string
+	bandwidthPath string
+	bandwidthData trafficengine.BandwidthOverride
 }
 
 func runTraffic(cmd *cobra.Command, opts trafficOptions, out io.Writer) error {
