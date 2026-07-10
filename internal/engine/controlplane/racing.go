@@ -102,8 +102,6 @@ func (e *Engine) CollectRacingCandidates(prefix model.Prefix) map[string][]failu
 	return conds
 }
 
-
-
 // PrefixWithMultipleOrigins returns BGP prefixes that have RIB entries
 // originating from more than one distinct origin node. Only routes with
 // BGP or Aggregate SourceKind are considered.

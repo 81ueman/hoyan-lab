@@ -26,7 +26,7 @@ func NewIntentCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.AddCommand(NewIntentValidateCommand(), NewIntentExpandCommand(), NewIntentVerifyCommand())
+	cmd.AddCommand(NewIntentValidateCommand(), NewIntentExpandCommand(), NewIntentVerifyCommand(), NewRacingCommand())
 	return cmd
 }
 
