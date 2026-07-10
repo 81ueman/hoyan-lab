@@ -193,6 +193,9 @@ func TestVerifyGuard(t *testing.T) {
 			if r.Actual.Count != 0 {
 				t.Fatalf("Result %q Actual.Count = %d, want 0 (vacuous pass)", r.Name, r.Actual.Count)
 			}
+			if r.Actual.Warning == "" {
+				t.Fatalf("Result %q Actual.Warning is empty, want a warning about vacuous truth", r.Name)
+			}
 		case "guard-premise-true-inner-fails":
 			if r.Status != "fail" {
 				t.Fatalf("Result %q Status = %q, want \"fail\"", r.Name, r.Status)

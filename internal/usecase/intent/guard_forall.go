@@ -16,7 +16,8 @@ func evalGuard(g *GuardExpr, snapshot SnapshotContext, rowFilter map[string]any,
 	}
 	if len(matching) == 0 {
 		// Premise false → pass (vacuously true)
-		return "pass", Actual{Count: 0}
+		// Warning: no rows matched — user should check their where predicates
+		return "pass", Actual{Count: 0, Warning: "WARNING: no rows matched the guard condition — check your where predicates"}
 	}
 	// Evaluate inner intent with combined filter (guard's where AND inherited rowFilter)
 	combined := mergeWhereFilters(rowFilter, g.Where)
