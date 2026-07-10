@@ -26,11 +26,28 @@ func (c *FlowClassifier) Classify(flows []model.LocatedFlow) []model.FlowEquival
 	keys := make([]string, 0) // maintain insertion order for determinism
 	for _, f := range flows {
 		dstPrefix := model.PrefixFromNetIP(netip.PrefixFrom(f.Flow.DstIP, f.Flow.DstIP.BitLen()))
-		classID, _ := c.universe.ClassForPrefix(dstPrefix)
+		classID, ok := c.universe.ClassForPrefix(dstPrefix)
+		if !ok {
+			continue // skip flows with no matching prefix class
+		}
 		key := fmt.Sprintf("%d|%s|%d|%s", classID, f.Flow.Protocol, f.Flow.DstPort, f.IngressNode)
 		if _, ok := groups[key]; !ok {
+			// Build PacketClass from the prefix class and flow attributes
+			pktClass := model.PacketClass{
+				PrefixClassID: classID,
+				Protocol:      f.Flow.Protocol,
+				DstPort:       model.ExactPort(f.Flow.DstPort),
+			}
+			// Look up the prefix class space
+			for _, pc := range c.universe.Classes {
+				if pc.ID == classID {
+					pktClass.DstSet = pc.Space
+					break
+				}
+			}
 			groups[key] = &model.FlowEquivalenceClass{
 				ID:          len(groups),
+				PacketClass: pktClass,
 				IngressNode: f.IngressNode,
 				IngressIntf: f.IngressIntf,
 			}
