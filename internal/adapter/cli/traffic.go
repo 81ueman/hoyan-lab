@@ -131,8 +131,11 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	}
 	fibs := fibTableFromGraph(g)
 
-	// Derive packet classes from topology
-	packetClasses := derivePacketClasses(topo.Nodes)
+	// Derive packet classes from the full network model (ACL, RIB, FIB)
+	packetClasses, err := derivePacketClassesFromModel(topo, g)
+	if err != nil {
+		return fmt.Errorf("deriving packet classes: %w", err)
+	}
 
 	// Find ingress nodes (customer-facing) for multi-ingress simulation
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
@@ -205,7 +208,18 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 		return fmt.Errorf("no snapshot definitions found in %q", opts.snapshotsPath)
 	}
 
-	packetClasses := derivePacketClasses(topo.Nodes)
+	// Build graph with full routing simulation for packet class derivation
+	g, err := simeng.NewGraph(topo)
+	if err != nil {
+		return fmt.Errorf("building simulation graph: %w", err)
+	}
+
+	// Derive packet classes from the full network model (ACL, RIB, FIB)
+	packetClasses, err := derivePacketClassesFromModel(topo, g)
+	if err != nil {
+		return fmt.Errorf("deriving packet classes: %w", err)
+	}
+
 	upstreamNodes := resolveUpstreamNodes(topo)
 
 	// Aggregate snapshots by label across all ingress nodes and packet classes
@@ -325,25 +339,21 @@ func loadBandwidthOverrides(path string) (trafficengine.BandwidthOverride, error
 	return overrides, nil
 }
 
-// derivePacketClasses creates packet classes from topology node prefixes.
-func derivePacketClasses(nodes []model.Node) []model.PacketClass {
-	var classes []model.PacketClass
-	seen := map[string]bool{}
-	for _, node := range nodes {
-		for _, prefix := range node.Prefixes {
-			key := prefix.String()
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			classes = append(classes, model.PacketClass{
-				ID:            model.PacketClassID(len(classes)),
-				PrefixClassID: model.PrefixClassID(len(classes)),
-				DstSet:        model.ExactPrefixSet{Prefix: prefix},
-			})
-		}
+// derivePacketClassesFromModel creates packet classes from the full network model
+// including ACL predicates, FIB entries, and RIB prefixes — not just node.Prefixes.
+// This yields Protocol, Port, and Interface dimensions in addition to destination prefixes.
+func derivePacketClassesFromModel(topo *model.Topology, graph *simeng.Graph) ([]model.PacketClass, error) {
+	predicates := model.CollectPrefixPredicateMetadata(topo)
+	predicates = append(predicates, simeng.CollectRIBPrefixPredicates(graph)...)
+	predicates = append(predicates, simeng.CollectFIBPrefixPredicates(graph)...)
+
+	universe, err := model.BuildPrefixUniverseFromPredicates(predicates)
+	if err != nil {
+		return nil, fmt.Errorf("building prefix universe: %w", err)
 	}
-	return classes
+
+	headerSpace := model.NewHeaderSpace(topo, universe)
+	return headerSpace.Classes, nil
 }
 
 // buildECList converts packet classes into flow equivalence classes for simulation.
@@ -434,8 +444,11 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 	}
 	fibs := fibTableFromGraph(g)
 
-	// Derive packet classes
-	packetClasses := derivePacketClasses(topo.Nodes)
+	// Derive packet classes from the full network model (ACL, RIB, FIB)
+	packetClasses, err := derivePacketClassesFromModel(topo, g)
+	if err != nil {
+		return fmt.Errorf("deriving packet classes: %w", err)
+	}
 
 	// Build failure set: convert []string to []model.LinkID/NodeID
 	linkIDs := make([]model.LinkID, len(opts.failLinks))
@@ -694,8 +707,11 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 	// Get upstream nodes (customer-facing ingress resolved to upstream)
 	upstreamNodes := resolveUpstreamNodes(topo)
 
-	// Derive packet classes
-	packetClasses := derivePacketClasses(topo.Nodes)
+	// Derive packet classes from the full network model (ACL, RIB, FIB)
+	packetClasses, err := derivePacketClassesFromModel(topo, g)
+	if err != nil {
+		return fmt.Errorf("deriving packet classes: %w", err)
+	}
 
 	// Build EC list from packet classes
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
