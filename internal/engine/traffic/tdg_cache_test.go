@@ -212,6 +212,125 @@ func TestApplyFailureECMPRebalancing(t *testing.T) {
 	}
 }
 
+func TestApplyFailureAllECMPMembersFailMarksSink(t *testing.T) {
+	cache := NewTDGCache()
+
+	fibs := FIBTable{
+		"router1": {
+			{
+				Prefix: model.MustPrefix("10.0.0.0/24").NetIP(),
+				NextHops: []TrafficNextHop{
+					{Node: "router2", Weight: 0.5},
+					{Node: "router3", Weight: 0.5},
+				},
+			},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router3": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router4", Weight: 1.0}}},
+		},
+		"router4": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router5", Weight: 1.0}}},
+		},
+	}
+	pc := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
+
+	tdg := cache.GetOrBuild("router1", pc, fibs)
+
+	// Fail both router2 and router3 – router1 loses ALL out-edges
+	failSet := failure.Nodes("router2", "router3")
+	failed := cache.ApplyFailure(tdg, failSet)
+
+	// router1 should be marked as a sink since all ECMP members failed
+	found := false
+	for _, sink := range failed.Sinks {
+		if sink.Node == "router1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected router1 to be marked as sink after all ECMP members failed, sinks: %v", sinkNames(failed.Sinks))
+	}
+
+	// router1 should have no outgoing edges
+	if len(failed.OutEdges("router1")) != 0 {
+		t.Errorf("expected router1 to have no out-edges, got %d", len(failed.OutEdges("router1")))
+	}
+}
+
+func TestApplyFailureAllECMPMembersFailNotSinkIfSomeRemain(t *testing.T) {
+	cache := NewTDGCache()
+
+	fibs := FIBTable{
+		"router1": {
+			{
+				Prefix: model.MustPrefix("10.0.0.0/24").NetIP(),
+				NextHops: []TrafficNextHop{
+					{Node: "router2", Weight: 0.25},
+					{Node: "router3", Weight: 0.25},
+					{Node: "router4", Weight: 0.25},
+					{Node: "router5", Weight: 0.25},
+				},
+			},
+		},
+		"router2": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router6", Weight: 1.0}}},
+		},
+		"router3": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router6", Weight: 1.0}}},
+		},
+		"router4": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router6", Weight: 1.0}}},
+		},
+		"router5": {
+			{Prefix: model.MustPrefix("10.0.0.0/24").NetIP(), NextHops: []TrafficNextHop{{Node: "router6", Weight: 1.0}}},
+		},
+	}
+	pc := model.PacketClass{
+		DstSet: model.ExactPrefixSet{Prefix: model.MustPrefix("10.0.0.0/24")},
+	}
+
+	tdg := cache.GetOrBuild("router1", pc, fibs)
+
+	// Fail router2 and router3 – router1 still has router4 and router5
+	failSet := failure.Nodes("router2", "router3")
+	failed := cache.ApplyFailure(tdg, failSet)
+
+	// router1 should NOT be a sink
+	for _, sink := range failed.Sinks {
+		if sink.Node == "router1" {
+			t.Errorf("router1 should NOT be a sink when some ECMP members remain")
+		}
+	}
+
+	// Remaining edges should be rebalanced to sum to 1.0
+	outEdges := failed.OutEdges("router1")
+	if len(outEdges) != 2 {
+		t.Fatalf("expected 2 remaining out-edges, got %d", len(outEdges))
+	}
+	totalWeight := 0.0
+	for _, edge := range outEdges {
+		totalWeight += edge.Weight
+	}
+	if totalWeight < 0.99 || totalWeight > 1.01 {
+		t.Errorf("expected remaining weights to sum to 1.0, got %f", totalWeight)
+	}
+}
+
+// sinkNames extracts node names from a sink slice for readable test output.
+func sinkNames(sinks []*model.TDGNode) []string {
+	names := make([]string, len(sinks))
+	for i, s := range sinks {
+		names[i] = s.Node
+	}
+	return names
+}
+
 func TestApplyFailureNoAffectedEdges(t *testing.T) {
 	cache := NewTDGCache()
 

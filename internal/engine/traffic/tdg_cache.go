@@ -96,10 +96,12 @@ func (c *TDGCache) ApplyFailure(tdg *model.TDG, failures failure.Set) *model.TDG
 	}
 	cloned.BatchRemoveEdges(edgeRefs)
 
-	// Rebalance ECMP weights for nodes that lost some but not all out-edges
+	// Rebalance ECMP weights for nodes that lost some but not all out-edges.
+	// If all out-edges were removed, mark the node as a sink.
 	for fromNode := range removedByNode {
 		outEdges := cloned.OutEdges(fromNode)
 		if len(outEdges) == 0 {
+			cloned.AddSink(fromNode)
 			continue
 		}
 		// Only rebalance if at least one edge was removed from this source
