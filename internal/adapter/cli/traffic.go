@@ -108,6 +108,7 @@ func totalBytesForSample(base uint64, rate float64) uint64 {
 }
 
 // runSingleSnapshot runs a single traffic simulation using a topology file.
+// Traffic is simulated from each customer-facing ingress node and aggregated.
 func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
@@ -122,7 +123,6 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	if len(topo.Nodes) == 0 {
 		return fmt.Errorf("topology has no nodes")
 	}
-	rootNode := topo.Nodes[0].Name
 
 	// Build graph with full routing simulation and derive FIB
 	g, err := simeng.NewGraph(topo)
@@ -134,25 +134,38 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 	// Derive packet classes from topology
 	packetClasses := derivePacketClasses(topo.Nodes)
 
-	allResults := make(map[string]map[string]uint64)
+	// Find ingress nodes (customer-facing) for multi-ingress simulation
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
+	upstreamNodes := resolveUpstreamNodes(topo)
 
-	// Parallel mode: simulate all classes concurrently in one call
-	if opts.workers > 1 && len(packetClasses) > 1 {
-		ecList := buildECList(packetClasses, baseBytes)
-		linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
-		allResults["all_classes"] = linkLoads
-	} else {
-		// Serial mode: simulate each class individually
-		for _, pc := range packetClasses {
-			linkLoads := sim.SimulateClass(rootNode, pc, fibs, baseBytes)
-			allResults[fmt.Sprintf("class_%d", pc.ID)] = linkLoads
+	// Aggregate link loads across all ingress nodes
+	aggregated := make(map[string]uint64)
+
+	for _, rootNode := range upstreamNodes {
+		// Parallel mode: simulate all classes concurrently in one call
+		if opts.workers > 1 && len(packetClasses) > 1 {
+			ecList := buildECList(packetClasses, baseBytes)
+			linkLoads := sim.SimulateParallel(rootNode, ecList, fibs, opts.workers)
+			for link, bytes := range linkLoads {
+				aggregated[link] += bytes
+			}
+		} else {
+			// Serial mode: simulate each class individually
+			for _, pc := range packetClasses {
+				linkLoads := sim.SimulateClass(rootNode, pc, fibs, baseBytes)
+				for link, bytes := range linkLoads {
+					aggregated[link] += bytes
+				}
+			}
 		}
 	}
 
+	allResults := make(map[string]map[string]uint64)
+	allResults["all_ingress"] = aggregated
+
 	output := map[string]interface{}{
-		"root_node": rootNode,
-		"results":   allResults,
+		"ingress_nodes": upstreamNodes,
+		"results":       allResults,
 		"config": map[string]interface{}{
 			"ecmp_mode":   opts.ecmpMode,
 			"workers":     opts.workers,
@@ -167,6 +180,7 @@ func runSingleSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions,
 
 // runMultiSnapshot runs multi-snapshot traffic simulation.
 // Snapshot definitions are loaded from the JSON file specified by --snapshots.
+// Traffic is simulated from each customer-facing ingress node and aggregated.
 func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, out io.Writer) error {
 	topo, _, _, err := topology.LoadDomainTopologyWithRuntime(opts.topologyPath, topology.LoadOptions{})
 	if err != nil {
@@ -181,7 +195,6 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 	if len(topo.Nodes) == 0 {
 		return fmt.Errorf("topology has no nodes")
 	}
-	rootNode := topo.Nodes[0].Name
 
 	// Load snapshot definitions from JSON file
 	snapshotDefs, err := loadSnapshotDefs(opts.snapshotsPath)
@@ -193,13 +206,45 @@ func runMultiSnapshot(sim *trafficengine.TrafficSimulator, opts trafficOptions, 
 	}
 
 	packetClasses := derivePacketClasses(topo.Nodes)
+	upstreamNodes := resolveUpstreamNodes(topo)
 
-	var result model.MultiSnapshotResult
-	for _, pc := range packetClasses {
-		r := sim.SimulateMultiSnapshot(rootNode, pc, snapshotDefs, nil)
-		result.Snapshots = append(result.Snapshots, r.Snapshots...)
-		result.Diffs = append(result.Diffs, r.Diffs...)
+	// Aggregate snapshots by label across all ingress nodes and packet classes
+	snapshotAgg := make(map[string]map[string]uint64) // label → link → bytes
+
+	for _, rootNode := range upstreamNodes {
+		for _, pc := range packetClasses {
+			r := sim.SimulateMultiSnapshot(rootNode, pc, snapshotDefs, nil)
+			for _, snap := range r.Snapshots {
+				if snapshotAgg[snap.Label] == nil {
+					snapshotAgg[snap.Label] = make(map[string]uint64)
+				}
+				for _, ll := range snap.LinkLoads {
+					snapshotAgg[snap.Label][ll.LinkName] += ll.Bytes
+				}
+			}
+		}
 	}
+
+	// Build final result, sorted by label for deterministic output
+	var result model.MultiSnapshotResult
+	var labels []string
+	for label := range snapshotAgg {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+
+	for _, label := range labels {
+		linkLoads := make(map[string]model.LinkLoad)
+		for link, bytes := range snapshotAgg[label] {
+			linkLoads[link] = model.LinkLoad{LinkName: link, Bytes: bytes}
+		}
+		result.Snapshots = append(result.Snapshots, model.TrafficResult{
+			Label:     label,
+			LinkLoads: linkLoads,
+		})
+	}
+
+	result.Diffs = trafficengine.ComputeDiffs(result.Snapshots)
 
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -412,16 +457,39 @@ func runWhatIf(cmd *cobra.Command, opts whatIfOptions, out io.Writer) error {
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
 	ecList := buildECList(packetClasses, baseBytes)
 
-	// Get root node (first node in topology)
-	rootNode := topo.Nodes[0].Name
+	// Find ingress nodes for multi-ingress simulation
+	upstreamNodes := resolveUpstreamNodes(topo)
 
-	// First simulate base case to populate cache and get base loads
-	ws.Simulate(rootNode, failure.None(), ecList, cache, fibs)
+	// Aggregate base and failed loads across all ingress nodes
+	aggregatedBase := make(map[string]uint64)
+	aggregatedFailed := make(map[string]uint64)
 
-	// Then simulate with the specified failure
-	result := ws.Simulate(rootNode, failSet, ecList, cache, fibs)
-	if result == nil {
-		return fmt.Errorf("what-if simulation returned nil")
+	for _, rootNode := range upstreamNodes {
+		// Simulate base case (populates cache)
+		baseResult := ws.Simulate(rootNode, failure.None(), ecList, cache, fibs)
+		if baseResult != nil {
+			for link := range baseResult.LinkLoads {
+				aggregatedBase[link] += baseResult.LinkLoads[link].Bytes
+			}
+		}
+
+		// Simulate with the specified failure
+		failResult := ws.Simulate(rootNode, failSet, ecList, cache, fibs)
+		if failResult != nil {
+			for link := range failResult.LinkLoads {
+				aggregatedFailed[link] += failResult.LinkLoads[link].Bytes
+			}
+		}
+	}
+
+	// Create aggregated result with diffs from aggregated loads
+	result := &trafficengine.WhatIfResult{
+		Failure:   failSet,
+		LinkLoads: make(map[string]model.LinkLoad),
+		Diffs:     computeLinkLoadChanges(aggregatedBase, aggregatedFailed),
+	}
+	for link, bytes := range aggregatedFailed {
+		result.LinkLoads[link] = model.LinkLoad{LinkName: link, Bytes: bytes}
 	}
 
 	// Format output
@@ -677,4 +745,99 @@ func formatKFailText(out io.Writer, result *trafficengine.KFailResult, threshold
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Multi-ingress helpers
+// ---------------------------------------------------------------------------
+
+// findIngressNodes returns the names of customer-facing nodes that should
+// be used as traffic ingress points. A node is considered an ingress if its
+// Role is "customer" or its name has the "cust-" prefix.
+func findIngressNodes(nodes []model.Node) []string {
+	var ingressNodes []string
+	for _, node := range nodes {
+		if node.Role == "customer" || strings.HasPrefix(node.Name, "cust-") {
+			ingressNodes = append(ingressNodes, node.Name)
+		}
+	}
+	sort.Strings(ingressNodes)
+	return ingressNodes
+}
+
+// findUpstreamNode returns the first upstream neighbor of the given node
+// by looking at topology links. If no neighbor is found, returns the node
+// itself as a safe fallback.
+func findUpstreamNode(name string, topo *model.Topology) string {
+	for _, link := range topo.Links {
+		if link.A == name {
+			return link.B
+		}
+		if link.B == name {
+			return link.A
+		}
+	}
+	return name
+}
+
+// resolveUpstreamNodes finds customer-facing ingress nodes and resolves each
+// to its upstream (edge) node for traffic simulation. If no customer nodes
+// exist, it falls back to the first topology node to preserve backward
+// compatibility with non-customer topologies.
+func resolveUpstreamNodes(topo *model.Topology) []string {
+	ingressNodes := findIngressNodes(topo.Nodes)
+	if len(ingressNodes) == 0 {
+		// Fallback: no customer nodes, use first node as root
+		return []string{topo.Nodes[0].Name}
+	}
+	upstreamNodes := make([]string, 0, len(ingressNodes))
+	for _, ingress := range ingressNodes {
+		upstreamNodes = append(upstreamNodes, findUpstreamNode(ingress, topo))
+	}
+	return upstreamNodes
+}
+
+// computeLinkLoadChanges computes diffs between base and failed link loads.
+// This mirrors trafficengine.computeLinkLoadChanges but is in the cli package
+// so it can be used for multi-ingress result aggregation.
+func computeLinkLoadChanges(base, failed map[string]uint64) []trafficengine.LinkLoadChange {
+	allLinks := make(map[string]bool)
+	for link := range base {
+		allLinks[link] = true
+	}
+	for link := range failed {
+		allLinks[link] = true
+	}
+
+	var changes []trafficengine.LinkLoadChange
+	for link := range allLinks {
+		before := base[link]
+		after := failed[link]
+		delta := int64(after) - int64(before)
+		if delta == 0 {
+			continue
+		}
+
+		var deltaPct float64
+		if before > 0 {
+			deltaPct = float64(delta) / float64(before) * 100.0
+			deltaPct = math.Round(deltaPct*100) / 100
+		} else {
+			deltaPct = math.Inf(1)
+		}
+
+		changes = append(changes, trafficengine.LinkLoadChange{
+			LinkName: link,
+			Before:   before,
+			After:    after,
+			Delta:    delta,
+			DeltaPct: deltaPct,
+		})
+	}
+
+	sort.Slice(changes, func(i, j int) bool {
+		return changes[i].LinkName < changes[j].LinkName
+	})
+
+	return changes
 }
