@@ -691,8 +691,8 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 	}
 	fibs := fibTableFromGraph(g)
 
-	// Get root node (first node in topology)
-	rootNode := topo.Nodes[0].Name
+	// Get upstream nodes (customer-facing ingress resolved to upstream)
+	upstreamNodes := resolveUpstreamNodes(topo)
 
 	// Derive packet classes
 	packetClasses := derivePacketClasses(topo.Nodes)
@@ -701,9 +701,32 @@ func runKFail(cmd *cobra.Command, opts kFailOptions, out io.Writer) error {
 	baseBytes := totalBytesForSample(1000000, opts.sampleRate)
 	ecList := buildECList(packetClasses, baseBytes)
 
-	// Run k-failure analysis
+	// Run k-failure analysis across all ingress nodes with dedup
 	analyzer := trafficengine.NewKFailAnalyzer(trafficengine.SimulatorConfig{ECMPMode: ecmpMode})
-	result := analyzer.Analyze(rootNode, topo, fibs, ecList, opts.threshold, opts.maxK)
+	allFindings := make([]trafficengine.KFailFinding, 0)
+	seen := make(map[string]bool) // dedup key: "linkName|k|failures-sorted"
+
+	for _, rootNode := range upstreamNodes {
+		result := analyzer.Analyze(rootNode, topo, fibs, ecList, opts.threshold, opts.maxK)
+		if result == nil {
+			continue
+		}
+		for _, f := range result.Findings {
+			// Build dedup key from link name, k, and sorted failure strings
+			failStrs := make([]string, len(f.Failures))
+			for i, elem := range f.Failures {
+				failStrs[i] = elem.String()
+			}
+			sort.Strings(failStrs)
+			key := f.LinkName + "|" + fmt.Sprintf("%d", f.K) + "|" + strings.Join(failStrs, ",")
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			allFindings = append(allFindings, f)
+		}
+	}
+	result := &trafficengine.KFailResult{Findings: allFindings}
 
 	// Format output
 	switch opts.format {
